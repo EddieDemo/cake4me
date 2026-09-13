@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="mode-builder">
-  <!-- Phase 3: the recipient's moment. Gate → open → blow → reveal. No hash = builder. Hash = viewer. -->
+  <!-- Phase 3 + spin: gate → open → spin/blow → reveal. No plate; the cake is a lazy susan. No hash = builder. Hash = viewer. -->
   <main class="stage">
     <canvas id="cake" aria-label="A birthday cake"></canvas>
     <canvas id="confetti" aria-hidden="true"></canvas>
@@ -102,10 +102,10 @@
         <div class="vstate" id="vs-gate">
           <p class="lead">Someone sent you a cake.</p>
           <button type="button" class="primary" id="open-cake">Open</button>
-          <button type="button" class="link" id="use-mic">Use microphone to blow</button>
+          <button type="button" class="link" id="use-mic">Or blow into your microphone</button>
         </div>
         <div class="vstate" id="vs-blow" hidden>
-          <p class="lead" id="blow-hint">Blow… or swipe to blow</p>
+          <p class="lead" id="blow-hint">Spin it — there's a message on the back</p>
           <p class="hint" id="mic-status">&nbsp;</p>
         </div>
         <div class="vstate" id="vs-revealed" hidden>

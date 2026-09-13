@@ -1,25 +1,21 @@
-# Cake — v0.5 (Phase 3: the recipient's moment)
+# Cake — v0.7 (message on the back)
 
-Open a cake link and you get the whole arc: gate → open → blow → beat → reveal.
+One change, but it changes the shape of the recipient's moment.
 
-**Gate.** A closed box with a ribbon, "Someone sent you a cake", one button: **Open**. Under it, a quiet "Use microphone to blow" link (hidden if the browser can't do it). The Open tap unlocks audio for later.
+**The message now lives permanently on the reverse side of the cake.** It's baked into the texture at theta = π, so it's always there — the recipient just can't see it until they turn the cake round. Nothing "reveals" it.
 
-**Open.** Ribbon loosens and drops, lid lifts and tilts away, the box sinks while the cake rises and settles, candles light in a ripple from the centre out (capped at 1.2s), the header fades in, then "Blow… or swipe to blow".
+- The hint now reads **"Spin it — there's a message on the back"**, which teaches the gesture and gives a reason to use it in the same sentence.
+- Spinning is also what blows the candles out, so one gesture does everything. Find the message, and if you spin hard you take the candles with you.
+- **Blowing the candles out no longer reveals anything.** It earns the confetti and moves you on to "Cut the cake". You can read the message before, during or after.
+- No more letter-by-letter piping and no auto-turn at the end. The cake is never taken out of your hands.
+- The **builder starts facing the message** so the sender can see what they're typing. Same cake, different starting rotation.
 
-**Blow.**
-- *Swipe* (always works): horizontal drag across the cake. Distance-based (one wave per ~70px), so a slow swipe works as well as a flick. Flames lean in the swipe direction first. Each wave puts out a front-to-back group; about three swipes for a full cake.
-- *Mic* (bonus): low band (≈0–400Hz) energy over a 500ms room-noise calibration; needs ≥150ms sustained. Flames flatten and lean away; louder and longer puts out more. Denied or unsupported → the link just disappears. Never an error.
-- Each candle: flame snaps out in 80ms, a smoke wisp rises and drifts with the breath. The warm light fades with the count.
+## Consequence worth knowing
+A recipient can now finish the whole thing without ever seeing the message, if they only ever spin gently and never go round the back. Two cheap safeguards if that turns out to happen (neither is in yet):
+1. Open the box with the cake already part-turned, so a sliver of the message is visible and begs to be chased.
+2. After a few seconds of no interaction, nudge the cake a few degrees so the message edge peeks into view.
 
-**The beat.** 500ms of nothing after the last candle. Don't shorten it.
+Worth testing on real people before adding either.
 
-**Reveal.** Paper confetti (2D overlay, 120 pieces, tier colours), the cake turns to face you and tilts 8°, the message pipes itself onto the frosting letter by letter (~35ms/char, capped at 1.2s), then **Cut the cake** pops in (Phase 4 does the cutting; tapping it says so), **Relight the candles** (reverse ripple, blow again, confetti again: good for filming) and **Send someone a cake**.
-
-## Console
-`cake.debug()` → blow state, lit count, viewer state · `cake.blowAll()` → skip to the reveal · `cake.rotate = false`
-
-## Things to feel for on the phone
-- Does the open sequence build anticipation or drag? (It's ~2.4s.)
-- Does swiping feel like blowing, or like scrubbing?
-- Mic: try it in real Safari and inside WhatsApp's browser. The second may not offer it at all; that's expected.
-- The beat. If it feels awkward, that's usually the confetti being late, not the pause being long.
+## Everything else
+Unchanged from v0.6: no plate, 36° camera, spin with momentum, mic as the bonus input, relight, confetti.

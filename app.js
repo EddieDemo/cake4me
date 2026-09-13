@@ -56,7 +56,7 @@
     2: [ { r: 2.5, h: 1.5 }, { r: 1.45, h: 1.3 } ]
   };
   var CAP_H = 0.32;
-  var PLATE_TOP = 0.12;
+  var PLATE_TOP = 0;      // cake sits on the ground; the contact shadow does the grounding
   var ROTATION_SECONDS_PER_TURN = 24;
   var MAX_PIXEL_RATIO = 2;
 
@@ -148,7 +148,10 @@
     var all = tweens.slice(); tweens = [];
     all.forEach(function (o) { o.update(1, 1); if (o.done) o.done(); });
   }
-  function killTweens() { tweens = []; }
+  function killTweens(tag) {
+    if (!tag) { tweens = []; return; }
+    tweens = tweens.filter(function (o) { return o.tag !== tag; });
+  }
 
   // =====================================================================
   //  Renderer, scene, camera, lights
@@ -176,19 +179,38 @@
 
   var cakeGroup = new THREE.Group();
   scene.add(cakeGroup);
-  var plate = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.4, 3.4, 0.12, 64),
-    new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.35 })
+
+  // Contact shadow instead of a plate: a soft dark disc on the ground.
+  // Lives in the scene, not cakeGroup, so it never spins.
+  var shadowTex = (function () {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var g = c.getContext('2d');
+    // Core stays strong out to ~0.62 of the radius (that's where the cake's own footprint
+    // ends), then falls away, so what you actually see is a soft ring hugging the base.
+    var grad = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+    grad.addColorStop(0.00, 'rgba(70,45,40,0.46)');
+    grad.addColorStop(0.62, 'rgba(70,45,40,0.40)');
+    grad.addColorStop(0.76, 'rgba(70,45,40,0.18)');
+    grad.addColorStop(0.90, 'rgba(70,45,40,0.05)');
+    grad.addColorStop(1.00, 'rgba(70,45,40,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    var t = new THREE.CanvasTexture(c); t.__shared = true; return t;
+  })();
+  var contactShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })
   );
-  plate.position.y = 0.06;
-  cakeGroup.add(plate);
-  var rim = new THREE.Mesh(
-    new THREE.TorusGeometry(3.3, 0.08, 12, 96),
-    new THREE.MeshStandardMaterial({ color: 0x9ad3f0, roughness: 0.4 })
-  );
-  rim.rotation.x = Math.PI / 2;
-  rim.position.y = 0.12;
-  cakeGroup.add(rim);
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = 0.004;
+  contactShadow.renderOrder = -1;
+  scene.add(contactShadow);
+  function fitShadow(radius) {
+    // The solid core of the gradient sits at ~52% of the texture, so scale so that
+    // core lands just outside the cake's footprint. Perspective does the squashing.
+    var w = radius * 3.3;
+    contactShadow.scale.set(w, w, 1);
+  }
+
   var built = new THREE.Group();
   cakeGroup.add(built);
 
@@ -359,6 +381,7 @@
     // Materials created for this build are "shared" only until the next build.
     localShared.forEach(function (m) { m.__shared = false; });
 
+    fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = Math.min(1.6, 0.25 + flames.length * 0.03);
 
@@ -597,7 +620,8 @@
     var t = new THREE.CanvasTexture(c);
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = THREE.RepeatWrapping;
-    t.offset.x = 0.5;              // canvas centre → front of the cylinder (+z)
+    t.offset.x = 0;                // canvas centre → BACK of the cylinder (theta = π).
+                                   // The message is always on the reverse side; you spin to find it.
     t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     return t;
   }
@@ -690,20 +714,24 @@
     frameCamera();
   }
   // Keep the whole plate in shot whatever the canvas aspect (portrait phones are narrow).
-  var camTargetY = 1.35, camDistMul = 1, camY = 1.35, camMul = 1;
+  // Elevation: 26° read as "table height"; 36° shows the candles and the top face,
+  // which is the shot. Past ~40° the message on the side starts to squash.
+  var CAM_ELEV_DEG = 36;
+  var FRAME_RADIUS = 3.0;        // widest cake (two-tier r=2.5) plus a little air
+  var camTargetY = 1.0, camDistMul = 1, camY = 1.0, camMul = 1;
   function frameCamera() {
     var vHalf = THREE.MathUtils.degToRad(camera.fov / 2);
     var hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
-    var dist = Math.max(12.4, 4.1 / Math.tan(hHalf)) * camMul;
-    camera.position.set(0, dist * 0.5, dist);
+    var dist = Math.max(9.0, FRAME_RADIUS / Math.tan(hHalf)) * camMul;
+    var e = THREE.MathUtils.degToRad(CAM_ELEV_DEG);
+    camera.position.set(0, dist * Math.sin(e), dist * Math.cos(e));
     camera.lookAt(0, camY, 0);
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', function () { setTimeout(resize, 200); });
 
   var clock = new THREE.Clock();
-  var turn = (Math.PI * 2) / ROTATION_SECONDS_PER_TURN;
-  var rotating = true;
+  var spinEnabled = true;     // off only while the cake is inside the closed box
   var running = false;
 
   function frame() {
@@ -717,7 +745,7 @@
       camMul += (camDistMul - camMul) * Math.min(1, dt * 6);
       frameCamera();
     }
-    if (rotating && !reduceMotion) cakeGroup.rotation.y += turn * dt;
+    if (spinEnabled) updateSpin(now, dt);
     if (ceremony && ceremony.labelShown) positionLidLabel();
     for (var i = 0; i < flames.length; i++) {
       var f = flames[i];
@@ -734,7 +762,6 @@
     }
     updateSmoke(dt);
     updateRipple(now);
-    updateBlow(now, dt);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
@@ -743,7 +770,7 @@
   //  Ceremony: box rises, lid lowers, ribbon tightens, label, share.
   //  Objects live in cakeGroup so they turn with the cake.
   // =====================================================================
-  var BOX = { half: 3.9, wall: 0.08, h: 0 };          // h set per tier
+  var BOX = { half: 2.95, wall: 0.07, h: 0 };         // hugs the cake; h set per tier
   var box = new THREE.Group(), lid = new THREE.Group(), ribbon = new THREE.Group();
   box.visible = lid.visible = ribbon.visible = false;
   cakeGroup.add(box); cakeGroup.add(lid); cakeGroup.add(ribbon);
@@ -818,7 +845,7 @@
     ribbon.visible = false; ribbon.scale.set(0.001, 1, 0.001);
 
     // Camera lifts to keep the lid in frame
-    camTargetY = 2.5; camDistMul = 1.6;
+    camTargetY = 1.5; camDistMul = 1.25;
 
     var startAt = 200;
     tween({ delay: startAt, duration: 700, ease: EASE.lift,
@@ -849,7 +876,7 @@
     ceremony = null;
     box.visible = lid.visible = ribbon.visible = false;
     showLidLabel(false);
-    camTargetY = 1.35; camDistMul = 1;
+    camTargetY = 1.0; camDistMul = 1;
   }
 
   var _v3 = new THREE.Vector3();
@@ -945,43 +972,78 @@
       .sort(function (a, b) { return a[1] - b[1]; }).map(function (p) { return p[0]; });
   }
 
-  // ---- Blowing (swipe or mic) ----
-  var blow = { enabled: false, lastWave: 0, swipeVX: 0, swipeUntil: 0, micLevel: 0, micHold: 0, total: 0, allOutAt: 0, revealed: false };
+  // ---- Spin physics ----
+  // One model: the cake is a lazy susan. Drag it, fling it, it coasts and decays back
+  // to the ambient spin. Spin it fast enough and the wind puts the candles out.
+  // There is no separate "blow" gesture.
+  var SPIN = {
+    idle: (Math.PI * 2) / ROTATION_SECONDS_PER_TURN,   // ambient, rad/s (~0.26)
+    max: 22,                                           // hard cap, rad/s
+    drag: 1.9,                                         // coast decay, per second
+    blowAt: 3.2,                                       // wind starts to bite, rad/s
+    blowFull: 11                                       // a wave every 120ms up here
+  };
+  var omega = SPIN.idle;        // current angular velocity, rad/s
+  var dragging = false;
+  var spinFree = false;         // true once the user has taken hold of the cake
+
+  var blow = { enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: 0, revealed: false };
 
   function extinguish(f, dirX, dirZ) {
     if (f.lit <= 0.5 || f.__out) return;
     f.__out = true;
-    var start = performance.now();
     tween({ duration: 80, ease: EASE.snap,
       update: function (k) { f.lit = 1 - k; },
       done: function () { f.lit = 0; f.__out = false; f.leanX = f.leanZ = 0; puffSmoke(f, dirX, dirZ); checkAllOut(); } });
   }
   function wave(strength, dirX, dirZ) {
+    for (var j = 0; j < flames.length; j++) {         // rescue any flame stranded mid-extinguish
+      if (flames[j].__out && flames[j].lit > 0 && flames[j].lit < 1) { flames[j].lit = 0; flames[j].__out = false; }
+    }
     var order = frontToBackOrder();
-    if (!order.length) return;
-    var size = Math.max(1, Math.ceil(blow.total / 6 * (0.6 + strength)));
+    if (!order.length) { checkAllOut(); return; }
+    var size = Math.max(1, Math.ceil(blow.total / 6 * (0.5 + strength)));
     for (var i = 0; i < Math.min(size, order.length); i++) extinguish(flames[order[i]], dirX, dirZ);
   }
   function setLean(sideways, away) {
     for (var i = 0; i < flames.length; i++) { flames[i].leanX = sideways; flames[i].leanZ = away; }
   }
-  function updateBlow(now, dt) {
-    if (!blow.enabled) return;
-    var swiping = now < blow.swipeUntil && Math.abs(blow.swipeVX) > 0.05;
-    var mic = blow.micLevel;
-    if (swiping) setLean(Math.max(-1, Math.min(1, blow.swipeVX)), 0);
-    else if (mic > 0) setLean(0, mic);
+
+  function updateSpin(now, dt) {
+    // Drag sets omega directly (see the pointer handlers). Otherwise coast toward idle.
+    if (!dragging) {
+      var target = SPIN.idle;
+      var k = 1 - Math.exp(-SPIN.drag * dt);
+      omega += (target - omega) * k;
+      if (Math.abs(omega - target) < 0.004) omega = target;
+    }
+    omega = Math.max(-SPIN.max, Math.min(SPIN.max, omega));
+    if (!reduceMotion) cakeGroup.rotation.y += omega * dt;
+
+    // Apparent wind = how hard the cake is turning, relative to its resting spin.
+    var wind = (Math.abs(omega) - SPIN.blowAt) / (SPIN.blowFull - SPIN.blowAt);
+    wind = Math.max(0, Math.min(1, wind));
+    var mic = blow.enabled ? blow.micLevel : 0;
+
+    // Flames lean against the direction of travel; mic pushes them away from the viewer.
+    var spinLean = Math.max(-1, Math.min(1, -omega / SPIN.blowFull)) * (0.35 + 0.65 * wind);
+    if (Math.abs(omega) > SPIN.idle * 1.5 || mic > 0) setLean(spinLean, mic);
     else setLean(0, 0);
-    var leanGoal = (swiping || mic > 0) ? 1 : 0;
-    leanNow += (leanGoal - leanNow) * Math.min(1, dt * 10);
-    var strength = swiping ? Math.min(1, Math.abs(blow.swipeVX)) : mic;
-    if (mic > 0) { blow.micHold += dt * 1000; } else blow.micHold = 0;
+    leanNow += (((Math.abs(spinLean) > 0.02 || mic > 0) ? 1 : 0) - leanNow) * Math.min(1, dt * 10);
+
+    if (!blow.enabled) return;
+    if (mic > 0) blow.micHold += dt * 1000; else blow.micHold = 0;
     var micReady = mic > 0 && blow.micHold >= 150;
-    if (micReady && !swiping && now - blow.lastWave > 180) {
+
+    if (wind > 0 && now - blow.lastWave > (260 - 140 * wind)) {
       blow.lastWave = now;
-      wave(strength, 0, -1);
+      wave(wind, omega > 0 ? -1 : 1, 0);
+    } else if (micReady && now - blow.lastWave > 180) {
+      blow.lastWave = now;
+      wave(mic, 0, -1);
     }
   }
+
   function checkAllOut() {
     if (blow.revealed) return;
     if (litCount() === 0) {
@@ -991,28 +1053,38 @@
     }
   }
 
-  // Swipe input on the canvas. Distance-based, so a slow deliberate swipe works as well as a flick.
+  // Drag to spin. Horizontal movement only; vertical is ignored so scrolling still works.
   (function () {
-    var lastX = null, lastT = 0, travel = 0;
-    canvas.addEventListener('pointerdown', function (e) { lastX = e.clientX; lastT = performance.now(); travel = 0; });
-    canvas.addEventListener('pointermove', function (e) {
-      if (lastX === null || !blow.enabled) return;
-      var now = performance.now(), dtm = Math.max(8, now - lastT);
-      var dx = e.clientX - lastX;
-      var vx = dx / dtm;                                   // px per ms
-      blow.swipeVX = Math.max(-1.5, Math.min(1.5, vx * 1.2));
-      blow.swipeUntil = now + 250;
-      travel += Math.abs(dx);
-      lastX = e.clientX; lastT = now;
-      // One wave per ~70px of travel, at most one per 120ms. Fired from the input so a slow frame can't swallow it.
-      if (travel >= 70 && now - blow.lastWave > 120) {
-        travel = 0;
-        blow.lastWave = now;
-        wave(Math.min(1, Math.abs(blow.swipeVX)), dx > 0 ? 1 : -1, 0);
-      }
+    var id = null, lastX = 0, lastT = 0, vel = 0, moved = 0;
+    function toOmega(dxPx, dtMs) {
+      // ~360px of travel = one full turn, so the cake tracks the thumb.
+      return (dxPx / 360) * Math.PI * 2 / (dtMs / 1000);
+    }
+    canvas.addEventListener('pointerdown', function (e) {
+      if (id !== null) return;
+      id = e.pointerId; lastX = e.clientX; lastT = performance.now(); vel = 0; moved = 0;
+      dragging = true; spinFree = true;
+      killTweens('turn');                 // a drag interrupts the auto-facing turn, nothing else
+      if (canvas.setPointerCapture) { try { canvas.setPointerCapture(id); } catch (err) {} }
     });
-    var end = function () { lastX = null; travel = 0; };
-    canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('pointermove', function (e) {
+      if (e.pointerId !== id) return;
+      var now = performance.now(), dt = Math.max(8, now - lastT), dx = e.clientX - lastX;
+      moved += Math.abs(dx);
+      vel = toOmega(dx, dt);
+      omega = Math.max(-SPIN.max, Math.min(SPIN.max, vel));
+      cakeGroup.rotation.y += (dx / 360) * Math.PI * 2;    // 1:1 with the finger while held
+      lastX = e.clientX; lastT = now;
+    });
+    function release(e) {
+      if (e.pointerId !== id) return;
+      id = null; dragging = false;
+      // Stale flick? If the finger stopped before lifting, don't launch it.
+      if (performance.now() - lastT > 90) vel = 0;
+      omega = Math.abs(vel) > SPIN.idle ? Math.max(-SPIN.max, Math.min(SPIN.max, vel)) : SPIN.idle;
+    }
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
   })();
 
   // Microphone
@@ -1096,36 +1168,13 @@
   }
 
   // ---- Reveal ----
+  // The message isn't revealed here: it's always on the back of the cake, found by
+  // spinning. Blowing the candles out just earns the confetti and the next step.
   function reveal() {
     var pal = [PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex,
                PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166, 0xFF6F91];
     confettiBurst(pal.map(function (h) { return hexCss(h); }), 120);
-    // Face the message and tilt 8° toward the camera
-    rotating = false;
-    var y0 = cakeGroup.rotation.y, twoPi = Math.PI * 2;
-    var target = Math.round(y0 / twoPi) * twoPi;
-    if (Math.abs(target - y0) > Math.PI) target += (target < y0 ? twoPi : -twoPi);
-    tween({ duration: 700, ease: EASE.lift, update: function (k) {
-      cakeGroup.rotation.y = y0 + (target - y0) * k;
-      cakeGroup.rotation.x = -0.14 * k;
-    } });
-    // Message pipes on letter by letter, ~35ms per char, whole thing capped at 1.2s
-    var m = config.m || '';
-    showMessage = true;
-    if (m) {
-      var steps = Math.min(m.length, 30), per = Math.min(35, 1200 / Math.max(1, m.length));
-      var chunk = Math.ceil(m.length / steps);
-      var i = 0;
-      var stepFn = function () {
-        i = Math.min(m.length, i + chunk);
-        updateMessage(m.slice(0, i));
-        if (i < m.length) setTimeout(stepFn, per * chunk);
-        else setTimeout(showRevealedControls, 300);
-      };
-      setTimeout(stepFn, 400);
-    } else {
-      setTimeout(showRevealedControls, 700);
-    }
+    setTimeout(showRevealedControls, 700);
   }
   function showRevealedControls() {
     setViewerState('revealed');
@@ -1141,9 +1190,9 @@
     document.body.setAttribute('data-vstate', st);
   }
   function enterGate(cfg) {
-    build(cfg, { showMessage: false, animate: false });
+    build(cfg, { showMessage: true, animate: false });
     for (var i = 0; i < flames.length; i++) flames[i].lit = 0;      // unlit inside the box
-    blow = { enabled: false, lastWave: 0, swipeVX: 0, swipeUntil: 0, micLevel: 0, micHold: 0, total: flames.length, allOutAt: 0, revealed: false };
+    blow = { enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: flames.length, revealed: false };
     boxOpenDone = false;
     // Closed box, ribbon on, cake inside
     var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
@@ -1157,8 +1206,8 @@
     box.visible = lid.visible = ribbon.visible = true;
     box.position.y = 0; lid.position.y = h - 0.04; lid.rotation.set(0, 0, 0); ribbon.position.y = h - 0.04; ribbon.scale.set(1, 1, 1);
     cakeGroup.rotation.set(0, 0.4, 0);
-    camTargetY = 2.5; camDistMul = 1.6; camY = camTargetY; camMul = camDistMul; frameCamera();
-    rotating = true;
+    omega = SPIN.idle; spinFree = false; spinEnabled = false;
+    camTargetY = 1.5; camDistMul = 1.25; camY = camTargetY; camMul = camDistMul; frameCamera();
     els.viewerHead.classList.remove('on');
     els.viewerHead.hidden = false;
     setViewerState('gate');
@@ -1184,10 +1233,11 @@
     }, done: function () {
       box.visible = false; built.position.y = 0;
       tween({ duration: 160, ease: EASE.pop, update: function (k) { var sc = 1.03 - 0.03 * k; built.scale.set(sc, sc, sc); } });
-      camTargetY = 1.35; camDistMul = 1;
+      camTargetY = 1.0; camDistMul = 1;
     } });
     // 4. candles light in a ripple, centre out, capped at 1.2s
     setTimeout(function () {
+      spinEnabled = true;
       var order = centreOutOrder();
       lightRipple(order, Math.min(20, 1200 / Math.max(1, order.length)), true);
       // 5. header, then the blow state
@@ -1392,7 +1442,7 @@
     stopMic();
     cakeGroup.rotation.set(0, cakeGroup.rotation.y, 0);
     built.position.y = 0; built.scale.set(1, 1, 1);
-    rotating = true;
+    spinEnabled = true; spinFree = false; omega = SPIN.idle;
     blow.enabled = false;
     els.viewerHead.classList.remove('on');
     els.linkpanel.classList.remove('stage1', 'stage2', 'away');
@@ -1414,6 +1464,7 @@
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
+      cakeGroup.rotation.y = Math.PI;      // message side toward the sender while they write it
     }
     resize();
   }
@@ -1445,11 +1496,13 @@
       build(next, { showMessage: showMessage });
     },
     get config() { return config; },
-    set rotate(v) { rotating = !!v; },
+    set rotate(v) { spinEnabled = !!v; },
+    set spin(v) { omega = v; },
+    get spin() { return omega; },
     link: function () { return linkFor(config); },
     encode: encodeConfig, decode: decodeConfig,
     palettes: PALETTES, group: cakeGroup,
-    debug: function () { return { blow: blow, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
+    debug: function () { return { omega: +omega.toFixed(2), dragging: dragging, blow: blow, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
     blowAll: function () { for (var i = 0; i < flames.length; i++) extinguish(flames[i], 0, -1); }
   };
 })();
