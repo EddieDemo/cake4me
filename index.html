@@ -5,16 +5,121 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Cake</title>
   <meta name="description" content="Someone sent you a cake.">
+  <meta property="og:title" content="Someone sent you a cake 🎂">
+  <meta property="og:description" content="Open it, blow out the candles, share a slice.">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <!-- Phase 0: a rotating cake on a plate. Nothing else yet. -->
+<body class="mode-builder">
+  <!-- Phase 3: the recipient's moment. Gate → open → blow → reveal. No hash = builder. Hash = viewer. -->
   <main class="stage">
     <canvas id="cake" aria-label="A birthday cake"></canvas>
-    <p class="caption">Phase 0 · a cake on a plate</p>
+    <canvas id="confetti" aria-hidden="true"></canvas>
+
+    <!-- Ceremony label (sender, on the lid) -->
+    <div class="lid-label" id="lid-label" hidden>
+      <span id="lid-for">For Hollie</span>
+      <span id="lid-from">from Eddie</span>
+    </div>
+
+    <!-- Viewer chrome (recipient) -->
+    <header class="viewer-head" id="viewer-head" hidden>
+      <h1 id="vh-title">Happy Birthday</h1>
+      <p id="vh-from"></p>
+    </header>
+
+    <!-- Builder (sender) -->
+    <section class="sheet" id="builder" aria-label="Make a cake">
+      <div class="sheet-scroll">
+        <div class="field two">
+          <label>To
+            <input id="f-to" type="text" maxlength="24" autocomplete="off" placeholder="Their name">
+          </label>
+          <label>From
+            <input id="f-from" type="text" maxlength="24" autocomplete="off" placeholder="Your name">
+          </label>
+        </div>
+
+        <label class="field">Message on the cake
+          <input id="f-m" type="text" maxlength="80" autocomplete="off" placeholder="Happy birthday!">
+          <span class="count" id="m-count">0 / 80</span>
+        </label>
+
+        <div class="field">
+          <div class="row-label">Candles <output id="n-out" for="f-n">30</output></div>
+          <input id="f-n" type="range" min="0" max="100" value="30">
+        </div>
+
+        <div class="field">
+          <div class="row-label">Cake</div>
+          <div class="tiers" id="tiers">
+            <button type="button" class="tier" data-t="1">
+              <strong>Classic</strong><span>£4.49 · 8 slices</span>
+            </button>
+            <button type="button" class="tier" data-t="2">
+              <strong>Two-tier</strong><span>£9.99 · 16 slices</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="row-label">Frosting</div>
+          <div class="swatches" id="sw-fc"></div>
+        </div>
+        <div class="field">
+          <div class="row-label">Filling <small>hidden until they cut it</small></div>
+          <div class="swatches" id="sw-ic"></div>
+        </div>
+        <div class="field">
+          <div class="row-label">Candles</div>
+          <div class="swatches" id="sw-cc"></div>
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="primary" id="get-link">Get my link</button>
+      </div>
+    </section>
+
+    <!-- Link panel (sender, after Get my link) -->
+    <section class="sheet" id="linkpanel" hidden aria-label="Your cake link">
+      <div class="sheet-scroll centered">
+        <p class="lead" id="ready-lead">Your cake is ready.</p>
+        <input id="link-out" type="text" readonly>
+        <div class="actions">
+          <button type="button" class="primary" id="share-link">Share</button>
+          <button type="button" id="copy-link">Copy link</button>
+        </div>
+        <p class="hint" id="copy-hint">&nbsp;</p>
+        <div class="actions">
+          <a id="open-link" href="#" target="_blank" rel="noopener">Open it</a>
+          <button type="button" class="link" id="edit-cake">Edit cake</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Viewer footer (recipient): gate → blow → revealed -->
+    <section class="sheet viewer-foot" id="viewer-foot" hidden>
+      <div class="sheet-scroll centered">
+        <div class="vstate" id="vs-gate">
+          <p class="lead">Someone sent you a cake.</p>
+          <button type="button" class="primary" id="open-cake">Open</button>
+          <button type="button" class="link" id="use-mic">Use microphone to blow</button>
+        </div>
+        <div class="vstate" id="vs-blow" hidden>
+          <p class="lead" id="blow-hint">Blow… or swipe to blow</p>
+          <p class="hint" id="mic-status">&nbsp;</p>
+        </div>
+        <div class="vstate" id="vs-revealed" hidden>
+          <button type="button" class="primary" id="cut-cake">Cut the cake</button>
+          <p class="hint" id="cut-hint">&nbsp;</p>
+          <div class="actions">
+            <button type="button" class="link" id="relight">Relight the candles</button>
+            <a class="link-cta" id="send-own" href="./">Send someone a cake</a>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- three.js r128, plain UMD build, vendored locally: no install, no CDN, works from disk. -->
   <script src="vendor/three.min.js"></script>
   <script src="app.js"></script>
 </body>

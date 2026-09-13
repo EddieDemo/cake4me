@@ -1,16 +1,25 @@
-/* Cake — Phase 0 styles
-   Mobile-first, one hand. The cake owns the top of the screen;
-   everything interactive will live in the bottom third later. */
+/* Cake — Phase 2a styles
+   Mobile-first, one hand. Cake on top, a sheet below, primary action in the thumb zone.
+   The builder is deliberately quiet: it's a form over a cake. Restyle freely. */
+
+@font-face {
+  font-family: "Pacifico";
+  src: url("assets/pacifico-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
-  /* Palette: "fun and bright". Placeholder tokens, swap freely. */
   --sky-top: #cfeeff;
   --sky-bottom: #ffe9c7;
   --ink: #3b2a2a;
-  --ink-soft: rgba(59, 42, 42, 0.55);
-
-  /* Layout */
-  --stage-cake-share: 58%;   /* how much of the screen the cake gets */
+  --ink-soft: rgba(59, 42, 42, 0.6);
+  --paper: rgba(255, 255, 255, 0.72);
+  --line: rgba(59, 42, 42, 0.14);
+  --accent: #3b2a2a;
+  --radius: 14px;
+  --cake-share: 52dvh;
 }
 
 * { box-sizing: border-box; }
@@ -25,6 +34,7 @@ html, body {
   font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
   color: var(--ink);
   background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+  transition: background 400ms ease;
 }
 
 .stage {
@@ -38,20 +48,250 @@ html, body {
 #cake {
   display: block;
   width: 100%;
-  height: var(--stage-cake-share);
+  height: var(--cake-share);
+  flex: 0 0 auto;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
+body.mode-viewer { --cake-share: 68dvh; }
 
-.caption {
+/* ---------- Ceremony ---------- */
+.lid-label {
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(var(--cake-share) * 0.36);
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.lid-label[hidden] { display: none; }
+.lid-label.on { opacity: 1; }
+.lid-label span:first-child {
+  font-family: "Pacifico", cursive;
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+}
+.lid-label span:last-child { font-size: 0.95rem; color: var(--ink-soft); }
+
+/* Sheets slide away and back */
+.sheet { transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 280ms cubic-bezier(0.22, 1, 0.36, 1); }
+.sheet.away { transform: translateY(100%); opacity: 0; pointer-events: none; }
+
+/* Link panel contents arrive in stages */
+#linkpanel .sheet-scroll > * { opacity: 0; transform: translateY(8px) scale(0.98); }
+#linkpanel.stage1 .sheet-scroll > *:nth-child(-n+2) { opacity: 1; transform: none; transition: opacity 280ms, transform 280ms cubic-bezier(0.22, 1, 0.36, 1); }
+#linkpanel.stage2 .sheet-scroll > * { opacity: 1; transform: none; transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+#linkpanel.stage2 .sheet-scroll > *:nth-child(3) { transition-delay: 40ms; }
+#linkpanel.stage2 .sheet-scroll > *:nth-child(n+4) { transition-delay: 120ms; }
+
+/* ---------- Confetti overlay ---------- */
+#confetti {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  display: none;
+}
+#confetti.on { display: block; }
+
+/* ---------- Viewer states ---------- */
+.vstate { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; width: 100%; }
+.vstate[hidden] { display: none; }
+.vstate .primary { max-width: 320px; }
+.link-cta { color: var(--ink-soft); text-decoration: underline; font-size: 0.95rem; }
+.viewer-head { opacity: 0; transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1); }
+.viewer-head.on { opacity: 1; }
+.viewer-head p { opacity: 0; transition: opacity 450ms 200ms; }
+.viewer-head.on p { opacity: 1; }
+#blow-hint { transition: opacity 280ms; }
+#blow-hint.dim { opacity: 0.4; }
+#vs-revealed .primary { opacity: 0; transform: translateY(8px) scale(0.98); }
+#vs-revealed.on .primary { opacity: 1; transform: none; transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* ---------- Viewer chrome ---------- */
+.viewer-head {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: max(1.1rem, env(safe-area-inset-top)) 1.25rem 0;
+  text-align: center;
+  pointer-events: none;
+}
+.viewer-head h1 {
   margin: 0;
-  padding: 1rem 1.25rem;
-  font-size: 0.95rem;
+  font-family: "Pacifico", cursive;
+  font-weight: 400;
+  font-size: clamp(1.6rem, 7vw, 2.4rem);
+  line-height: 1.15;
+}
+.viewer-head p {
+  margin: 0.15rem 0 0;
+  color: var(--ink-soft);
+  font-size: 1rem;
+}
+
+/* ---------- Sheets ---------- */
+.sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -8px 30px rgba(59, 42, 42, 0.08);
+}
+.sheet[hidden] { display: none; }
+
+.sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1.1rem 0.5rem;
+}
+.sheet-scroll.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.8rem;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.sheet-foot {
+  flex: 0 0 auto;
+  padding: 0.6rem 1.1rem max(0.9rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- Fields ---------- */
+.field { margin-bottom: 0.9rem; }
+.field.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+
+label.field, .field label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  position: relative;
+}
+.row-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+.row-label small { font-size: 0.75rem; opacity: 0.8; }
+.row-label output { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+input[type="text"] {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: none;
+}
+input[type="text"]:focus { border-color: var(--ink-soft); }
+.count {
+  position: absolute; right: 0.6rem; bottom: 0.7rem;
+  font-size: 0.72rem; color: var(--ink-soft);
+}
+
+input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.tier {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 0.7rem 0.8rem;
+  font: inherit; text-align: left;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.tier strong { font-size: 1rem; }
+.tier span { font-size: 0.8rem; color: var(--ink-soft); }
+.tier[aria-pressed="true"] { border-color: var(--accent); }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.swatch {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 1px 3px rgba(59,42,42,0.25), 0 0 0 1px var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--accent); }
+
+/* ---------- Buttons ---------- */
+button { font: inherit; }
+.primary {
+  display: block;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.primary:active { transform: scale(0.985); }
+.actions { display: flex; gap: 0.6rem; width: 100%; justify-content: center; align-items: center; }
+.actions > * { flex: 1 1 0; }
+.actions button:not(.primary), .actions a {
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+button.link { background: none; border: 0; color: var(--ink-soft); text-decoration: underline; }
+.lead { margin: 0; font-size: 1.15rem; font-weight: 600; }
+.hint { margin: 0; font-size: 0.85rem; color: var(--ink-soft); }
+#link-out {
+  width: 100%;
+  margin: 0;
+  font-size: 0.8rem;
   color: var(--ink-soft);
   text-align: center;
+  text-overflow: ellipsis;
+}
+.cta {
+  display: inline-block;
+  padding: 0.9rem 1.4rem;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* The scene checks this itself and stops rotating. Nothing else animates yet. */
+  .primary:active { transform: none; }
+  .sheet, .lid-label, #linkpanel .sheet-scroll > * { transition-duration: 120ms; }
+  .sheet.away { transform: none; }
 }
