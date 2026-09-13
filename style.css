@@ -1,0 +1,57 @@
+/* Cake — Phase 0 styles
+   Mobile-first, one hand. The cake owns the top of the screen;
+   everything interactive will live in the bottom third later. */
+
+:root {
+  /* Palette: "fun and bright". Placeholder tokens, swap freely. */
+  --sky-top: #cfeeff;
+  --sky-bottom: #ffe9c7;
+  --ink: #3b2a2a;
+  --ink-soft: rgba(59, 42, 42, 0.55);
+
+  /* Layout */
+  --stage-cake-share: 58%;   /* how much of the screen the cake gets */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+}
+
+.stage {
+  position: relative;
+  height: 100dvh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+#cake {
+  display: block;
+  width: 100%;
+  height: var(--stage-cake-share);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.caption {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The scene checks this itself and stops rotating. Nothing else animates yet. */
+}

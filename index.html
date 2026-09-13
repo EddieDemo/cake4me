@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Cake</title>
+  <meta name="description" content="Someone sent you a cake.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Phase 0: a rotating cake on a plate. Nothing else yet. -->
+  <main class="stage">
+    <canvas id="cake" aria-label="A birthday cake"></canvas>
+    <p class="caption">Phase 0 · a cake on a plate</p>
+  </main>
+
+  <!-- three.js r128, plain UMD build, vendored locally: no install, no CDN, works from disk. -->
+  <script src="vendor/three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
