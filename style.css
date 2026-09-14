@@ -473,3 +473,59 @@ body.mode-builder #linkpanel {
   box-shadow: 0 12px 36px rgba(40,25,25,0.18);
 }
 body.mode-builder #linkpanel .sheet-scroll { overflow: visible; padding: 1rem 0.9rem; }
+
+
+/* The swatch row is a horizontal scroller, and overflow-x: auto forces overflow-y to
+   clip too — that's what was cutting the selected swatch's focus ring, not z-order.
+   Pad inside the scroller and pull it back with margin. */
+.tray .swatches { padding: 5px 5px 8px; margin: -5px -5px -8px; }
+
+/* The gift-tag label is pinned in screen space. It used to be projected from the lid's
+   3D position every frame, so it inherited the box's spin and the camera easing and
+   visibly jittered. The cake no longer touches it. */
+.lid-label {
+  top: max(1.1rem, env(safe-area-inset-top));
+  left: 0; right: 0;
+  transform: none;
+  width: auto;
+  text-align: center;
+}
+
+/* "Your cake is ready" gets the same floating treatment as everything else. */
+body.mode-builder #linkpanel {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.16) 50%, rgba(255,255,255,0.34) 100%);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  border: 0; border-radius: 0; box-shadow: none;
+  padding: 2.2rem 0.8rem calc(0.9rem + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+body.mode-builder #linkpanel .sheet-scroll { overflow: visible; padding: 0; gap: 0.55rem; }
+body.mode-builder #linkpanel .sheet-scroll > * { pointer-events: auto; }
+body.mode-builder #linkpanel .lead {
+  color: var(--ink); font-weight: 600;
+  text-shadow: 0 1px 10px rgba(255,255,255,0.9), 0 1px 3px rgba(255,255,255,0.9);
+}
+body.mode-builder #link-out {
+  width: 100%; padding: 0.55rem 0.8rem; border-radius: 999px;
+  background: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.95);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(40,25,25,0.13);
+  font-size: 0.78rem; color: var(--ink-soft);
+}
+body.mode-builder #linkpanel .actions button:not(.primary),
+body.mode-builder #linkpanel .actions a {
+  background: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.95);
+  color: var(--ink); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(40,25,25,0.13); padding: 0.6rem 0.9rem; font-size: 0.9rem;
+}
+body.mode-builder #linkpanel .primary {
+  background: rgba(59,42,42,0.94); box-shadow: 0 8px 24px rgba(40,25,25,0.28);
+}
+body.mode-builder.dark-bg #linkpanel {
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 50%, rgba(0,0,0,0.34) 100%);
+}
+body.mode-builder.dark-bg #linkpanel .lead { color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,0.7); }
+body.mode-builder.dark-bg #link-out,
+body.mode-builder.dark-bg #linkpanel .actions button:not(.primary),
+body.mode-builder.dark-bg #linkpanel .actions a { background: rgba(255,255,255,0.88); }

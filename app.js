@@ -13,7 +13,7 @@
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0 };
   var PRICES = { 1: '£4.49', 2: '£9.99', 3: '£24.99' };
   var SLICES = { 1: 8, 2: 16, 3: 24 };
 
@@ -58,6 +58,19 @@
       { name: 'Blue',  hex: 0x4FC3F7 },
       { name: 'Plum',  hex: 0x8E5A9B },
       { name: 'Ink',   hex: 0x3B2A2A }
+    ],
+    // Message colour. Index 0 keeps the old behaviour: dark or light picked from the
+    // frosting's luminance. Everything after it is an explicit choice.
+    text: [
+      { name: 'Auto',  auto: true },
+      { name: 'Ink',   hex: 0x3B2A2A },
+      { name: 'White', hex: 0xFFFAF0 },
+      { name: 'Gold',  hex: 0xE9C46A },
+      { name: 'Red',   hex: 0xE03131 },
+      { name: 'Pink',  hex: 0xFF6F91 },
+      { name: 'Blue',  hex: 0x2F6FB5 },
+      { name: 'Green', hex: 0x3E7B55 },
+      { name: 'Plum',  hex: 0x8E5A9B }
     ],
     // Background gradients. Index 0 is the legacy behaviour (derived from the frosting),
     // kept so every link sent before v0.16 renders exactly as it did. Everything else is
@@ -144,13 +157,15 @@
       bg: clampInt(c.bg, 0, PALETTES.background.length - 1, 0),
       // Appended after bg. Missing on older links → index 0 (Pink), which is what the
       // default candle colour produced on those cakes anyway.
-      rc: clampInt(c.rc, 0, PALETTES.ribbon.length - 1, 0)
+      rc: clampInt(c.rc, 0, PALETTES.ribbon.length - 1, 0),
+      // Appended after rc. Missing on older links → 0 (Auto), which is what they did.
+      tc: clampInt(c.tc, 0, PALETTES.text.length - 1, 0)
     };
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -159,7 +174,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -352,7 +367,7 @@
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
     var ribbonHex = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
-    var ink = pickInk(frosting);
+    var ink = pickInk(frosting, cfg.tc);
 
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
     var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
@@ -474,7 +489,7 @@
     var mat;
     if (m && showMessage) {
       mat = new THREE.MeshStandardMaterial({
-        color: 0xffffff, roughness: 0.62, map: makeMessageTexture(m, pickInk(frosting), frosting, tier.r, bodyH)
+        color: 0xffffff, roughness: 0.62, map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tier.r, bodyH)
       });
     } else {
       mat = messageMesh.material[1];   // plain frosting
@@ -681,16 +696,18 @@
 
     g.font = size + 'px "Pacifico", cursive';
     g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    var lineH = size * 1.15;
-    var startY = H / 2 - ((fit.lines.length - 1) * lineH) / 2;
+    g.textBaseline = 'alphabetic';          // position by the baseline, not the em box
+    var lineH = fit.lineH;
+    var blockH = fit.ink.asc + fit.ink.desc + (fit.lines.length - 1) * lineH;
+    var startY = (H - blockH) / 2 + fit.ink.asc;   // centre the INK block, then step by baselines
 
     fit.lines.forEach(function (ln, i) {
       var yy = startY + i * lineH;
       // Piped look: soft shadow, a raised highlight, then the ink.
       g.fillStyle = 'rgba(0,0,0,0.22)';
       g.fillText(ln, W / 2 + size * 0.03, yy + size * 0.06);
-      g.fillStyle = ink === INK_DARK ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
+      var inkLum = (function () { var c = new THREE.Color(ink); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; })();
+      g.fillStyle = inkLum < 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
       g.fillText(ln, W / 2 - size * 0.02, yy - size * 0.03);
       g.fillStyle = ink;
       g.fillText(ln, W / 2, yy);
@@ -705,18 +722,42 @@
     return t;
   }
 
+  // Real ink extents, not the em box. Pacifico's ascenders and descenders overshoot its
+  // em box badly, which is why a 'y' tail was being clipped off the bottom of the band.
+  function inkExtents(g, lines, size) {
+    var asc = 0, desc = 0, ok = false;
+    for (var i = 0; i < lines.length; i++) {
+      var m = g.measureText(lines[i]);
+      if (typeof m.actualBoundingBoxAscent === 'number') {
+        ok = true;
+        asc = Math.max(asc, m.actualBoundingBoxAscent);
+        desc = Math.max(desc, m.actualBoundingBoxDescent);
+      }
+    }
+    if (!ok) { asc = size * 0.80; desc = size * 0.34; }   // fallback for engines without ink metrics
+    return { asc: asc, desc: desc };
+  }
+
   function wrapLines(g, text, maxW, maxH) {
     // One line, then two, then three; shrink until it fits.
     for (var n = 1; n <= 3; n++) {
       var size = Math.floor(maxH / (n * 1.15));
-      while (size > 36) {
+      while (size > 24) {
         g.font = size + 'px "Pacifico", cursive';
         var lines = splitInto(g, text, n, maxW);
-        if (lines) return { lines: lines, size: size };
-        size -= 4;
+        if (lines) {
+          // Does the actual ink fit, tallest ascender to deepest descender? Shrink until it does.
+          var ink = inkExtents(g, lines, size);
+          var lineH = size * 1.06;
+          if (ink.asc + ink.desc + (lines.length - 1) * lineH <= maxH) {
+            return { lines: lines, size: size, ink: ink, lineH: lineH };
+          }
+        }
+        size -= 3;
       }
     }
-    return { lines: [text], size: 36 };
+    g.font = '24px "Pacifico", cursive';
+    return { lines: [text], size: 24, ink: inkExtents(g, [text], 24), lineH: 26 };
   }
 
   function splitInto(g, text, n, maxW) {
@@ -772,8 +813,17 @@
     var c = new THREE.Color(hex);
     return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   }
-  function pickInk(frostingHex) {
+  function pickInk(frostingHex, tcIndex) {
+    var opt = PALETTES.text[clampIndex(tcIndex, PALETTES.text)];
+    if (!opt.auto) return hexCss(opt.hex);
     return luminance(frostingHex) > 0.42 ? INK_DARK : INK_LIGHT;
+  }
+  // Rough WCAG-ish contrast between the message and the frosting it sits on.
+  function inkContrast(inkCss, frostingHex) {
+    var a = new THREE.Color(inkCss), b = new THREE.Color(frostingHex);
+    var la = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+    var lb = 0.2126 * b.r + 0.7152 * b.g + 0.0722 * b.b;
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
   }
   var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow.
   function applyBackground(frostingHex, bgIndex) {
@@ -806,6 +856,7 @@
     camera.updateProjectionMatrix();
     // One comfortable swipe (80% of the canvas height) should cover the entire tilt range.
     TILT.pxPerRad = (h * TILT.swipeFraction) / (TILT.max - TILT.min);
+    measureUiReserve();
     frameCamera();
   }
   // Keep the whole plate in shot whatever the canvas aspect (portrait phones are narrow).
@@ -821,7 +872,7 @@
   var ZOOM = { min: 0.64, max: 2.4 };   // smaller = closer. 0.64 = halfway between v0.12 (0.45) and v0.13 (0.82).
   // Radius the camera frames to. Cake: two-tier r=2.5 plus air (bigger number = smaller cake).
   // Box: its corner diagonal, or the lid gets cropped on a narrow phone.
-  var FRAME = { cake: 3.6, box: 4.7 };   // 3.6 keeps the three-tier in shot
+  var FRAME = { cake: 3.6, box: 5.2 };   // box frame widened to match the tier-sized box
   var frameRadius = FRAME.cake;
   var camTargetY = 1.3, camY = 1.3;
   var frameTarget = 3.3;
@@ -831,16 +882,42 @@
     var dist = Math.max(9.0, frameRadius / Math.tan(hHalf)) * camZoom;
     var e = THREE.MathUtils.degToRad(camElev);
     var a = camAzimuth;
+    // Offset the look-at so the cake lands in the middle of the space the UI leaves free.
+    var vh = canvas.clientHeight || 1;
+    var pxOffset = (vh - uiReserve) / 2 - vh / 2;              // free centre, relative to screen centre
+    var worldPerPx = (2 * dist * Math.tan(vHalf)) / vh;
+    var lookY = camY + pxOffset * worldPerPx;                  // free centre is above → look lower
     camera.position.set(
       dist * Math.cos(e) * Math.sin(a),
       dist * Math.sin(e) + camY * 0,
       dist * Math.cos(e) * Math.cos(a)
     );
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, camY, 0);
+    camera.lookAt(0, lookY, 0);
     if (camRoll) camera.rotateZ(camRoll);      // roll is about the view axis, after aiming
   }
   // Ease between framings rather than cutting (the box needs a wider frame than the cake).
+  // Height of the TALLEST UI state, measured from the DOM rather than hardcoded, so the
+  // cake's pinned position survives any future UI change — and, crucially, doesn't shift
+  // as the sender moves from tray to tray.
+  var uiReserve = 0;
+  function measureUiReserve() {
+    var isViewer = document.body.classList.contains('mode-viewer');
+    var host = document.getElementById(isViewer ? 'viewer-foot' : 'builder');
+    if (!host || host.hidden) { uiReserve = 0; return; }
+    var panels = host.querySelectorAll('.tray, .vstate');
+    var tallest = 0, current = 0;
+    Array.prototype.forEach.call(panels, function (t) {
+      var wasHidden = t.hidden;
+      if (wasHidden) { t.hidden = false; t.style.visibility = 'hidden'; }
+      tallest = Math.max(tallest, t.offsetHeight);
+      if (wasHidden) { t.hidden = true; t.style.visibility = ''; }
+      else current = t.offsetHeight;
+    });
+    // Everything that isn't the tray: chip row, CTA, padding.
+    uiReserve = Math.max(0, host.offsetHeight - current) + tallest;
+  }
+
   function setFrame(which, y, immediate) {
     frameTarget = FRAME[which];
     camTargetY = y;
@@ -890,7 +967,6 @@
     camRoll = bankZ;
     frameCamera();
     updateShadow();
-    if (ceremony && ceremony.labelShown) positionLidLabel();
     for (var i = 0; i < flames.length; i++) {
       var f = flames[i];
       var lx = f.leanX * leanNow, lz = f.leanZ * leanNow;
@@ -933,6 +1009,11 @@
 
   function buildBox(height) {
     clearGroup(box); clearGroup(lid); clearGroup(ribbon);
+    // The box has to contain the WIDEST tier. A fixed half-width fits the Classic, but
+    // the Showstopper's bottom tier (r 2.7) pushes straight through it.
+    var widest = 2.2;
+    (TIERS[(config && config.t) || 1] || TIERS[1]).forEach(function (t) { widest = Math.max(widest, t.r); });
+    BOX.half = widest + 0.30;
     BOX.h = height;
     boxMode = true;
     fitShadow(BOX.half * 1.05);
@@ -1034,6 +1115,9 @@
     setFrame('cake', 1.3);
   }
 
+  // Kept for reference; the label is now pinned in screen space by CSS so the cake
+  // can't drag it around. (It used to be projected from the lid every frame, which is
+  // why it jittered as the box turned.)
   var _v3 = new THREE.Vector3();
   function positionLidLabel() {
     var el = document.getElementById('lid-label');
@@ -1706,7 +1790,7 @@
   var els = {
     builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swBg: $('sw-bg'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
     copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
@@ -1745,21 +1829,30 @@
       b.addEventListener('click', function () {
         draft[key] = i;
         syncSwatches(container, i);
-        if (key === 'fc') refreshAutoSwatch();
+        if (key === 'fc' || key === 'tc') refreshAutoSwatch();
+        updateColourNote();
         build(draft, { showMessage: true });
       });
       container.appendChild(b);
     });
   }
   // The "Match the cake" swatch previews what it would actually produce.
+  // Both "Auto" swatches preview what they'd actually produce for the current frosting.
   function refreshAutoSwatch() {
-    if (!els.swBg || !draft) return;
-    var el = els.swBg.querySelector('.swatch-auto');
-    if (!el) return;
+    if (!draft) return;
     var f = PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex;
-    var top = new THREE.Color(f).lerp(new THREE.Color(0xffffff), 0.72);
-    var bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(f), 0.15);
-    el.style.background = 'linear-gradient(180deg, #' + top.getHexString() + ', #' + bottom.getHexString() + ')';
+    if (els.swBg) {
+      var bgEl = els.swBg.querySelector('.swatch-auto');
+      if (bgEl) {
+        var top = new THREE.Color(f).lerp(new THREE.Color(0xffffff), 0.72);
+        var bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(f), 0.15);
+        bgEl.style.background = 'linear-gradient(180deg, #' + top.getHexString() + ', #' + bottom.getHexString() + ')';
+      }
+    }
+    if (els.swTc) {
+      var tcEl = els.swTc.querySelector('.swatch-auto');
+      if (tcEl) tcEl.style.background = pickInk(f, 0);
+    }
   }
   function syncSwatches(container, active) {
     Array.prototype.forEach.call(container.children, function (b, i) {
@@ -1783,6 +1876,7 @@
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
     syncSwatches(els.swRc, draft.rc);
+    syncSwatches(els.swTc, draft.tc);
     syncSwatches(els.swBg, draft.bg);
     refreshAutoSwatch();
     updateCta();
@@ -1806,14 +1900,29 @@
     Array.prototype.forEach.call($('subtabs').children, function (t) {
       t.classList.toggle('on', t.getAttribute('data-c') === which);
     });
-    ['fc', 'ic', 'cc', 'rc', 'bg'].forEach(function (k) {
+    ['fc', 'ic', 'cc', 'rc', 'tc', 'bg'].forEach(function (k) {
       var el = $('sw-' + k);
       if (el) el.hidden = (k !== which);
     });
+    colourTab = which;
+    updateColourNote();
+  }
+  var colourTab = 'fc';
+  function updateColourNote() {
     var note = $('colour-note');
-    if (note) note.innerHTML = (which === 'ic')
-      ? 'Hidden until they cut the cake'
-      : (which === 'rc' ? 'Used on the cake and the gift box' : '&nbsp;');
+    if (!note) return;
+    if (colourTab === 'ic') { note.textContent = 'Hidden until they cut the cake'; return; }
+    if (colourTab === 'rc') { note.textContent = 'Used on the cake and the gift box'; return; }
+    if (colourTab === 'tc') {
+      var frosting = PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex;
+      var ink = pickInk(frosting, draft.tc);
+      // Their cake, their call — but say so if it'll be hard to read.
+      note.textContent = inkContrast(ink, frosting) < 2.2
+        ? 'Low contrast — this may be hard to read on the cake'
+        : 'Auto picks dark or light to suit the frosting';
+      return;
+    }
+    note.innerHTML = '&nbsp;';
   }
   function updateCta() {
     var el = $('cta-price');
@@ -1835,6 +1944,7 @@
     makeSwatches(els.swIc, PALETTES.filling, 'ic');
     makeSwatches(els.swCc, PALETTES.candle, 'cc');
     makeSwatches(els.swRc, PALETTES.ribbon, 'rc');
+    makeSwatches(els.swTc, PALETTES.text, 'tc');
     makeSwatches(els.swBg, PALETTES.background, 'bg');
 
     els.to.addEventListener('input', function () { draft.to = cleanText(els.to.value, MAX_NAME); });
