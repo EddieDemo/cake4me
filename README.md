@@ -1,54 +1,35 @@
-# Cake — v0.16.1
+# Cake — v0.18 (chip-bar builder)
 
-Same code as v0.16. The only change is docs: **candlelight as the real light source** is now its own
-entry in the feature list (`docs/cake-build-plan.md`) with a full write-up in `docs/cakeAesthetics.md`
-— progressive dimming as candles go out, near-darkness for the beat, brightening again on relight,
-plus the two things that need care (non-linear intensity scaling, and keeping the side message from
-vanishing into shadow).
+The builder now matches the viewer: **no solid panel anywhere**. The cake is full-bleed and the
+controls are a row of frosted chips with one tray open at a time.
 
----
+## How it works
+- Four chips: **Message · 🕯 30 · Cake · Colours**. The candle chip shows the current count.
+- Tapping a chip opens its tray; **tapping the same chip again closes it**, so you can clear the
+  screen completely and just handle the cake.
+- The message tray opens automatically on arrival, so it's obvious there's something to fill in.
+- **Colours** is one tray with sub-tabs (Frosting · Filling · Candles · Ribbon · Background) and a
+  single horizontally-scrolling swatch row, so five palettes cost one tray's height rather than five.
+  The tab carries its own note where one helps: "Hidden until they cut the cake" on Filling,
+  "Used on the cake and the gift box" on Ribbon.
+- The CTA shows the price and **tracks the tier**: `Get my link · £4.49` → `· £24.99`.
+- The scrim is `pointer-events: none`, so the cake stays draggable in the gaps between controls.
+- The link panel floats now too, instead of being a half-screen sheet.
+- Dark backdrops get a dark scrim and more opaque chips, same as the viewer.
 
-# Cake — v0.16 (background colour)
+## Two bugs this flushed out
 
-## Background is now the sender's choice
-You were right that deriving it from the frosting washes the cake out — everything matched, so
-nothing stood out. There's a **Background** row in the builder with nine options:
+**All five colour rows rendered at once.** The base `.swatches { display: flex }` overrides the
+`hidden` attribute's default `display: none`, so hiding four of the five rows did nothing. Needs an
+explicit `.swatches[hidden] { display: none }`. Worth remembering: the `hidden` attribute loses to
+any explicit `display` rule.
 
-`Match the cake` · Cream · Warm grey · Blush · Sky · Mint · **Dusk · Midnight · Ink**
-
-The three dark ones are the interesting part: a pastel cake against Midnight pops in a way it
-simply can't against a pastel backdrop, and they're the groundwork for the lighting feature below.
-
-**Default for new cakes is Cream**, not "Match the cake".
-
-### Backwards compatibility
-`bg` is a **new field appended to the link schema**, so every link sent before today still decodes
-— with `bg` missing, it falls to index 0, "Match the cake", which is exactly the behaviour those
-cakes always had. Verified against a hand-built v0.15-format link. A typical link is now 99
-characters including the `#`.
-
-### Two knock-on adjustments
-- **The shadow fades on dark backdrops.** A dark contact shadow on a dark floor is just a smudge,
-  so its opacity now scales with the backdrop's luminance as well as the camera elevation.
-- **The sheet stops assuming a light page** (`body.dark-bg`), so the controls stay readable.
-
-### The "Match the cake" swatch previews itself
-It shows the gradient it would actually produce, and updates when you change the frosting — with a
-dashed inner ring so it reads as automatic rather than as a colour.
-
-## Lighting feature: written up, not built
-Added to `docs/cakeAesthetics.md` (new "Tier B+" section) and the build plan's post-launch list.
-
-Ambient strength from daylight to near-dark, at which point the flames become the main light source
-— `candleLight` already tracks the lit count, so in a dark scene **blowing the candles out visibly
-darkens the cake**. That's free drama we currently discard by keeping the room bright.
-
-Spotlight presets including the sweeping film-premiere searchlights. The note worth reading before
-building it: **a `SpotLight` is invisible in air** — it lights surfaces but casts no visible shaft.
-The beam needs its own additive, depth-write-off cone mesh parented to the light. That's the whole
-trick, and it's why "just add a spotlight" doesn't produce the effect you're picturing.
-
-Suggested schema fields when it's built: `li` (preset) and `ls` (strength), appended like `bg`.
+**An intermittent crash in the tween engine.** `updateTweens` iterated the tween array by index
+while a `done()` callback was free to mutate it — and the last tween of the link ceremony calls
+`finishCeremony()` → `finishTweens()`, which *reassigns* the array. The loop then read past the end
+of a replaced array and threw. It only appeared on some runs, which is exactly what makes this class
+of bug expensive later. It now iterates a snapshot, collects what finished, and fires the callbacks
+after the list has been rebuilt. Verified clean across four full end-to-end runs.
 
 ## docs/
 Business plan, build plan, feel spec, aesthetics notes, serverless mitigations.

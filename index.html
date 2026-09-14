@@ -24,60 +24,66 @@
          "Happy Birthday" and no names on screen. `to`/`from` stay in the schema;
          the plan is a gift tag on the box lid at the gate (see docs). -->
 
-    <!-- Builder (sender) -->
-    <section class="sheet" id="builder" aria-label="Make a cake">
-      <div class="sheet-scroll">
-        <div class="field two">
-          <label>To
-            <input id="f-to" type="text" maxlength="24" autocomplete="off" placeholder="Their name">
-          </label>
-          <label>From
-            <input id="f-from" type="text" maxlength="24" autocomplete="off" placeholder="Your name">
+    <!-- Builder (sender): floating chip bar + one tray at a time -->
+    <section class="builder" id="builder" aria-label="Make a cake">
+      <div class="chiprow" id="chiprow" role="tablist">
+        <button type="button" class="chip" data-tray="message" aria-selected="false">
+          <span class="ic" aria-hidden="true">✎</span>Message
+        </button>
+        <button type="button" class="chip" data-tray="candles" aria-selected="false">
+          <span class="ic" aria-hidden="true">🕯</span><span id="chip-n">30</span>
+        </button>
+        <button type="button" class="chip" data-tray="cake" aria-selected="false">
+          <span class="ic" aria-hidden="true">◍</span>Cake
+        </button>
+        <button type="button" class="chip" data-tray="colours" aria-selected="false">
+          <span class="ic" aria-hidden="true">✿</span>Colours
+        </button>
+      </div>
+
+      <div class="trays" id="trays">
+        <div class="tray" id="tray-message" hidden>
+          <div class="tray-row two">
+            <label>To<input id="f-to" type="text" maxlength="24" autocomplete="off" placeholder="Their name"></label>
+            <label>From<input id="f-from" type="text" maxlength="24" autocomplete="off" placeholder="Your name"></label>
+          </div>
+          <label class="tray-msg">On the cake
+            <input id="f-m" type="text" maxlength="80" autocomplete="off" placeholder="Happy birthday!">
+            <span class="count" id="m-count">0 / 80</span>
           </label>
         </div>
 
-        <label class="field">Message on the cake
-          <input id="f-m" type="text" maxlength="80" autocomplete="off" placeholder="Happy birthday!">
-          <span class="count" id="m-count">0 / 80</span>
-        </label>
-
-        <div class="field">
-          <div class="row-label">Candles <output id="n-out" for="f-n">30</output></div>
+        <div class="tray" id="tray-candles" hidden>
+          <div class="tray-head"><span>Candles</span><output id="n-out" for="f-n">30</output></div>
           <input id="f-n" type="range" min="0" max="100" value="30">
         </div>
 
-        <div class="field">
-          <div class="row-label">Cake</div>
+        <div class="tray" id="tray-cake" hidden>
           <div class="tiers" id="tiers">
-            <button type="button" class="tier" data-t="1">
-              <strong>Classic</strong><span>£4.49 · 8 slices</span>
-            </button>
-            <button type="button" class="tier" data-t="2">
-              <strong>Two-tier</strong><span>£9.99 · 16 slices</span>
-            </button>
+            <button type="button" class="tier" data-t="1"><strong>Classic</strong><span>£4.49 · 8 slices</span></button>
+            <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
+            <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
           </div>
         </div>
 
-        <div class="field">
-          <div class="row-label">Frosting</div>
-          <div class="swatches" id="sw-fc"></div>
-        </div>
-        <div class="field">
-          <div class="row-label">Filling <small>hidden until they cut it</small></div>
-          <div class="swatches" id="sw-ic"></div>
-        </div>
-        <div class="field">
-          <div class="row-label">Candles</div>
-          <div class="swatches" id="sw-cc"></div>
-        </div>
-        <div class="field">
-          <div class="row-label">Background</div>
-          <div class="swatches" id="sw-bg"></div>
+        <div class="tray" id="tray-colours" hidden>
+          <div class="subtabs" id="subtabs">
+            <button type="button" data-c="fc" class="on">Frosting</button>
+            <button type="button" data-c="ic">Filling</button>
+            <button type="button" data-c="cc">Candles</button>
+            <button type="button" data-c="rc">Ribbon</button>
+            <button type="button" data-c="bg">Background</button>
+          </div>
+          <div class="swatches" id="sw-fc" data-c="fc"></div>
+          <div class="swatches" id="sw-ic" data-c="ic" hidden></div>
+          <div class="swatches" id="sw-cc" data-c="cc" hidden></div>
+          <div class="swatches" id="sw-rc" data-c="rc" hidden></div>
+          <div class="swatches" id="sw-bg" data-c="bg" hidden></div>
+          <p class="tray-note" id="colour-note">&nbsp;</p>
         </div>
       </div>
-      <div class="sheet-foot">
-        <button type="button" class="primary" id="get-link">Get my link</button>
-      </div>
+
+      <button type="button" class="primary" id="get-link">Get my link · <span id="cta-price">£4.49</span></button>
     </section>
 
     <!-- Link panel (sender, after Get my link) -->

@@ -13,9 +13,9 @@
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1 };
-  var PRICES = { 1: '£4.49', 2: '£9.99' };
-  var SLICES = { 1: 8, 2: 16 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0 };
+  var PRICES = { 1: '£4.49', 2: '£9.99', 3: '£24.99' };
+  var SLICES = { 1: 8, 2: 16, 3: 24 };
 
   var PALETTES = {
     frosting: [
@@ -46,6 +46,19 @@
       { name: 'Cream',      layers: [0xFFF3C4] },
       { name: 'Rainbow',    layers: [0xE63946, 0xF4A261, 0xFFD166, 0x52B788, 0x4C5FD5, 0x9B6BFF] }
     ],
+    // Ribbons: the band round each upper tier and the bow on the gift box. These used to
+    // borrow the candle colour, so you couldn't have white candles and a red ribbon. One
+    // field covers both — they read as the same ribbon.
+    ribbon: [
+      { name: 'Pink',  hex: 0xFF6F91 },
+      { name: 'Red',   hex: 0xE03131 },
+      { name: 'Gold',  hex: 0xE9C46A },
+      { name: 'Cream', hex: 0xFFF1D6 },
+      { name: 'Sage',  hex: 0x9BBF9B },
+      { name: 'Blue',  hex: 0x4FC3F7 },
+      { name: 'Plum',  hex: 0x8E5A9B },
+      { name: 'Ink',   hex: 0x3B2A2A }
+    ],
     // Background gradients. Index 0 is the legacy behaviour (derived from the frosting),
     // kept so every link sent before v0.16 renders exactly as it did. Everything else is
     // a deliberate choice, because a backdrop that matches the cake washes it out.
@@ -66,8 +79,9 @@
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
   var TIERS = {
-    1: [ { r: 2.2, h: 1.6 } ],
-    2: [ { r: 2.5, h: 1.5 }, { r: 1.45, h: 1.3 } ]
+    1: [ { r: 2.2, h: 1.6 } ],                                                  // bottom tier first
+    2: [ { r: 2.5, h: 1.5 }, { r: 1.45, h: 1.3 } ],
+    3: [ { r: 2.7, h: 1.4 }, { r: 1.95, h: 1.2 }, { r: 1.2, h: 1.0 } ]
   };
   var CAP_H = 0.32;
   var PLATE_TOP = 0;      // cake sits on the ground; the contact shadow does the grounding
@@ -127,13 +141,16 @@
       cc: clampInt(c.cc, 0, PALETTES.candle.length - 1, 0),
       // Missing on pre-v0.16 links, which is exactly what index 0 means: derive it
       // from the frosting, as those cakes always did. New fields append, never rename.
-      bg: clampInt(c.bg, 0, PALETTES.background.length - 1, 0)
+      bg: clampInt(c.bg, 0, PALETTES.background.length - 1, 0),
+      // Appended after bg. Missing on older links → index 0 (Pink), which is what the
+      // default candle colour produced on those cakes anyway.
+      rc: clampInt(c.rc, 0, PALETTES.ribbon.length - 1, 0)
     };
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -142,7 +159,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -171,13 +188,23 @@
     return o;
   }
   function updateTweens(now) {
-    for (var i = tweens.length - 1; i >= 0; i--) {
-      var o = tweens[i];
-      if (now < o.start) continue;
+    // Iterate a snapshot. A done() callback is allowed to start new tweens, finish them
+    // all, or clear the list — finishCeremony() does exactly that — and mutating the live
+    // array mid-loop leaves the index pointing past the end of a replaced array.
+    var list = tweens.slice();
+    var finished = null;
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i];
+      if (!o || now < o.start) continue;
       var t = Math.min(1, (now - o.start) / o.duration);
       o.k = (o.ease || EASE.soft)(t);
       o.update(o.k, t);
-      if (t >= 1) { tweens.splice(i, 1); if (o.done) o.done(); }
+      if (t >= 1) (finished || (finished = [])).push(o);
+    }
+    if (!finished) return;
+    tweens = tweens.filter(function (o) { return finished.indexOf(o) === -1; });
+    for (var j = 0; j < finished.length; j++) {
+      if (finished[j].done) finished[j].done();
     }
   }
   function finishTweens() {
@@ -324,6 +351,7 @@
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
+    var ribbonHex = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
     var ink = pickInk(frosting);
 
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
@@ -395,7 +423,7 @@
       if (i > 0) {
         var ribbon = new THREE.Mesh(
           new THREE.CylinderGeometry(tier.r + 0.05, tier.r + 0.05, 0.16, CYL_SEG, 1, true),
-          new THREE.MeshStandardMaterial({ color: candleHex, roughness: 0.5, side: THREE.DoubleSide })
+          new THREE.MeshStandardMaterial({ color: ribbonHex, roughness: 0.5, side: THREE.DoubleSide })
         );
         ribbon.position.y = y + 0.14;
         tg.add(ribbon);
@@ -734,6 +762,9 @@
   //  Colour helpers
   // =====================================================================
   function hexCss(hex) { return '#' + ('000000' + hex.toString(16)).slice(-6); }
+  function darken(hex, amt) {
+    return new THREE.Color(hex).lerp(new THREE.Color(0x000000), amt).getHex();
+  }
   function lighten(hex, amt) {
     return new THREE.Color(hex).lerp(new THREE.Color(0xffffff), amt).getHex();
   }
@@ -790,7 +821,7 @@
   var ZOOM = { min: 0.64, max: 2.4 };   // smaller = closer. 0.64 = halfway between v0.12 (0.45) and v0.13 (0.82).
   // Radius the camera frames to. Cake: two-tier r=2.5 plus air (bigger number = smaller cake).
   // Box: its corner diagonal, or the lid gets cropped on a narrow phone.
-  var FRAME = { cake: 3.3, box: 4.5 };
+  var FRAME = { cake: 3.6, box: 4.7 };   // 3.6 keeps the three-tier in shot
   var frameRadius = FRAME.cake;
   var camTargetY = 1.3, camY = 1.3;
   var frameTarget = 3.3;
@@ -955,8 +986,9 @@
     // Box takes a tint of the frosting; ribbon takes the candle colour unless that's too pale to read.
     boxMat.color.setHex(lighten(frostingHex, 0.55));
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
-    var rib = candleHex;
-    if (luminance(rib) > 0.8) rib = luminance(frostingHex) > 0.8 ? 0x3b2a2a : frostingHex;
+    var rib = PALETTES.ribbon[clampIndex(config.rc, PALETTES.ribbon)].hex;
+    // Only nudge it if a pale ribbon would vanish against a pale box.
+    if (luminance(rib) > 0.82 && luminance(lighten(frostingHex, 0.55)) > 0.75) rib = darken(rib, 0.32);
     ribbonMat.color.setHex(rib);
     var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
@@ -1371,10 +1403,14 @@
     max: 420,            // pool size; new bursts recycle the oldest settled pieces
     size: 0.15,          // width of a piece
     thick: 0.012,        // real thickness: a flat quad vanishes edge-on
-    gravity: 3.2,
-    drag: 0.42,
-    flutter: 2.6,        // sideways sway amplitude while falling
-    spin: 7              // max tumble rate, rad/s
+    gravity: 5.4,
+    dragFlat: 3.1,       // drag when the piece is broadside to its own motion
+    dragEdge: 0.35,      // drag when it's slicing edge-first
+    lift: 2.3,           // sideways force from angle of attack — this is the zigzag
+    spin: 9,             // tumble rate, rad/s
+    spinDamp: 0.55,      // tumble slows as it falls
+    streamMs: 420,       // spawn spread over time, so it streams in rather than popping
+    marginY: 1.2         // extra height above the top of frame
   };
   var confettiGeo = new THREE.BoxGeometry(CONFETTI.size, CONFETTI.thick, CONFETTI.size * 1.5);
   // vertexColors (needed below) makes the shader multiply by the geometry's `color`
@@ -1422,15 +1458,29 @@
     landings.reverse();              // highest tier first
   }
 
+  // World height that is just off the top of the screen, at the cake's own depth.
+  // A fixed offset above the cake is visible on screen at low camera elevations, which
+  // is why pieces appeared to pop into existence.
+  var _ndc = new THREE.Vector3();
+  function offscreenTop() {
+    _ndc.set(0, 1, 0.5).unproject(camera);                 // top-centre of the frustum
+    var dir = _ndc.clone().sub(camera.position).normalize();
+    // Walk that ray to the vertical axis of the cake and read off its height there.
+    var t = (dir.z !== 0) ? (-camera.position.z / dir.z) : 1;
+    var y = camera.position.y + dir.y * Math.max(0.1, t);
+    return Math.max((landings.length ? landings[0].y : 2) + 2, y + CONFETTI.marginY);
+  }
+
   function confettiBurst(colors, count) {
     var pal = colors.map(function (c) { return new THREE.Color(c); });
-    var top = landings.length ? landings[0].y : 2;
-    var spread = (landings.length ? landings[landings.length - 1].r : 2.2) * 1.9;
+    var top = offscreenTop();
+    var spread = (landings.length ? landings[landings.length - 1].r : 2.2) * 2.1;
     for (var i = 0; i < count; i++) {
       var piece;
       if (confettiPieces.length < CONFETTI.max) {
         piece = { p: new THREE.Vector3(), v: new THREE.Vector3(), rot: new THREE.Euler(),
-                  rv: new THREE.Vector3(), phase: 0, resting: false, col: new THREE.Color() };
+                  rv: new THREE.Vector3(), phase: 0, resting: false, col: new THREE.Color(),
+                  sx: 1, sz: 1, delay: 0, born: 0 };
         confettiPieces.push(piece);
       } else {
         // Recycle the oldest settled piece so repeated bursts accumulate without growing.
@@ -1442,12 +1492,19 @@
       }
       var a = Math.random() * Math.PI * 2;
       var rr = spread * Math.sqrt(Math.random());
-      piece.p.set(Math.sin(a) * rr, top + 2.6 + Math.random() * 2.2, Math.cos(a) * rr);
-      piece.v.set((Math.random() - 0.5) * 1.4, -0.4 - Math.random() * 0.8, (Math.random() - 0.5) * 1.4);
+      piece.p.set(Math.sin(a) * rr, top + Math.random() * 2.4, Math.cos(a) * rr);
+      piece.v.set((Math.random() - 0.5) * 1.6, -0.3 - Math.random() * 0.7, (Math.random() - 0.5) * 1.6);
       piece.rot.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
       piece.rv.set((Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin);
       piece.phase = Math.random() * 6.28;
       piece.resting = false;
+      // Mixed stock, like a real handful: squares, long strips, a few big flakes.
+      var shape = Math.random();
+      piece.sx = shape < 0.25 ? 0.55 + Math.random() * 0.2 : 0.8 + Math.random() * 0.5;
+      piece.sz = shape < 0.25 ? 1.5 + Math.random() * 0.7 : 0.8 + Math.random() * 0.5;
+      // Held back so the burst streams in over ~400ms instead of appearing as a block.
+      piece.delay = Math.random() * CONFETTI.streamMs;
+      piece.born = performance.now();
       piece.col.copy(pal[i % pal.length]);
     }
     confetti.count = confettiPieces.length;
@@ -1460,6 +1517,9 @@
       var c = confettiPieces[i];
       _dummy.position.copy(c.p);
       _dummy.rotation.copy(c.rot);
+      _dummy.scale.set(c.sx, 1, c.sz);
+      // Not yet released: park it at zero scale rather than showing it waiting.
+      if (c.delay > 0 && performance.now() - c.born < c.delay) _dummy.scale.set(0, 0, 0);
       _dummy.updateMatrix();
       confetti.setMatrixAt(i, _dummy.matrix);
       if (confetti.setColorAt) confetti.setColorAt(i, c.col);
@@ -1478,29 +1538,66 @@
     return (yTo <= 0) ? 0 : null;
   }
 
+  // Orientation-coupled aerodynamics. The reason real confetti zigzags is that its drag
+  // depends on which way it's facing: broadside it's slowed hard and pushed sideways,
+  // edge-on it slices. Coupling drag and lift to the angle between the piece's face
+  // normal and its own velocity produces the falling-leaf path for free — you can't get
+  // it from a sine-wave sway, which is what the old version used.
+  var _n = new THREE.Vector3(), _q = new THREE.Quaternion(), _vn = new THREE.Vector3(),
+      _liftDir = new THREE.Vector3(), _e = new THREE.Euler();
+
   function updateConfetti(dt, t) {
     if (!confettiActive) return;
+    var now = performance.now();
     var moving = 0;
     for (var i = 0; i < confettiPieces.length; i++) {
       var c = confettiPieces[i];
       if (c.resting) continue;
       moving++;
+      if (c.delay > 0 && now - c.born < c.delay) continue;     // not released yet
+
+      // Face normal in world space (the piece is a flat slab in its own XZ plane).
+      _q.setFromEuler(c.rot);
+      _n.set(0, 1, 0).applyQuaternion(_q);
+
+      var speed = c.v.length();
+      if (speed > 0.0001) {
+        _vn.copy(c.v).multiplyScalar(1 / speed);
+        // |cos| between face normal and travel: 1 = broadside, 0 = edge-on.
+        var face = Math.abs(_n.dot(_vn));
+        var cd = CONFETTI.dragEdge + (CONFETTI.dragFlat - CONFETTI.dragEdge) * face;
+        // Quadratic drag, opposing motion.
+        var dmag = cd * speed * speed * dt;
+        c.v.addScaledVector(_vn, -Math.min(speed, dmag));
+
+        // Lift: perpendicular to travel, in the plane containing the face normal.
+        // Peaks at 45° angle of attack, vanishes broadside and edge-on — that's what
+        // makes it slide sideways then flip and slide back.
+        var aoa = face * (1 - face) * 4;                        // 0..1, peak at face=0.5
+        _liftDir.copy(_n).addScaledVector(_vn, -_n.dot(_vn));   // component ⟂ to velocity
+        if (_liftDir.lengthSq() > 1e-6) {
+          _liftDir.normalize();
+          var sign = _n.dot(_vn) > 0 ? -1 : 1;
+          c.v.addScaledVector(_liftDir, sign * CONFETTI.lift * aoa * speed * dt);
+        }
+      }
+
       c.v.y -= CONFETTI.gravity * dt;
-      var damp = Math.max(0, 1 - CONFETTI.drag * dt);
-      c.v.x *= damp; c.v.z *= damp; c.v.y *= (1 - CONFETTI.drag * 0.55 * dt);
-      // Flutter: paper doesn't fall straight, it sways as it turns over.
-      var sway = Math.sin(t * 3.1 + c.phase) * CONFETTI.flutter * dt;
-      c.p.x += (c.v.x + Math.cos(c.phase) * sway) * dt;
-      c.p.z += (c.v.z + Math.sin(c.phase) * sway) * dt;
       var yPrev = c.p.y;
-      c.p.y += c.v.y * dt;
+      c.p.addScaledVector(c.v, dt);
+
+      // Tumble, slowing as it goes; broadside pieces are damped harder (air resists the flip).
+      var damp = Math.max(0, 1 - CONFETTI.spinDamp * dt * (0.5 + Math.abs(_n.y)));
+      c.rv.multiplyScalar(damp);
       c.rot.x += c.rv.x * dt; c.rot.y += c.rv.y * dt; c.rot.z += c.rv.z * dt;
 
       var land = landingFor(c.p.x, c.p.z, yPrev, c.p.y);
       if (land !== null) {
         c.p.y = land + CONFETTI.thick * 0.5 + 0.002;
-        // Lying flat, with a little random tilt so it doesn't look printed on.
-        c.rot.set((Math.random() - 0.5) * 0.22, Math.random() * 6.28, (Math.random() - 0.5) * 0.22);
+        // Slide a little on impact rather than stopping dead where it hit.
+        c.p.x += c.v.x * 0.04;
+        c.p.z += c.v.z * 0.04;
+        c.rot.set((Math.random() - 0.5) * 0.24, Math.random() * 6.28, (Math.random() - 0.5) * 0.24);
         c.resting = true;
         moving--;
       }
@@ -1547,7 +1644,8 @@
     var frostingHex = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     boxMat.color.setHex(lighten(frostingHex, 0.55));
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
-    var rib = candleHex; if (luminance(rib) > 0.8) rib = luminance(frostingHex) > 0.8 ? 0x3b2a2a : frostingHex;
+    var rib = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
+    if (luminance(rib) > 0.82 && luminance(lighten(frostingHex, 0.55)) > 0.75) rib = darken(rib, 0.32);
     ribbonMat.color.setHex(rib);
     var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
@@ -1608,7 +1706,7 @@
   var els = {
     builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swBg: $('sw-bg'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swBg: $('sw-bg'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
     copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
@@ -1684,14 +1782,59 @@
     syncSwatches(els.swFc, draft.fc);
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
+    syncSwatches(els.swRc, draft.rc);
     syncSwatches(els.swBg, draft.bg);
     refreshAutoSwatch();
+    updateCta();
+  }
+
+  // ---- Chip bar: one tray at a time, or none (so the cake is fully clear) ----
+  var openTray = null;
+  function setTray(name) {
+    openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
+    ['message', 'candles', 'cake', 'colours'].forEach(function (k) {
+      var el = $('tray-' + k);
+      if (el) el.hidden = (k !== openTray);
+    });
+    Array.prototype.forEach.call($('chiprow').children, function (c) {
+      c.setAttribute('aria-selected', c.getAttribute('data-tray') === openTray ? 'true' : 'false');
+    });
+    $('trays').classList.toggle('open', !!openTray);
+    setTimeout(resize, 0);
+  }
+  function setColourTab(which) {
+    Array.prototype.forEach.call($('subtabs').children, function (t) {
+      t.classList.toggle('on', t.getAttribute('data-c') === which);
+    });
+    ['fc', 'ic', 'cc', 'rc', 'bg'].forEach(function (k) {
+      var el = $('sw-' + k);
+      if (el) el.hidden = (k !== which);
+    });
+    var note = $('colour-note');
+    if (note) note.innerHTML = (which === 'ic')
+      ? 'Hidden until they cut the cake'
+      : (which === 'rc' ? 'Used on the cake and the gift box' : '&nbsp;');
+  }
+  function updateCta() {
+    var el = $('cta-price');
+    if (el) el.textContent = PRICES[draft.t] || PRICES[1];
+    var cn = $('chip-n');
+    if (cn) cn.textContent = draft.n;
   }
 
   function wireBuilder() {
+    Array.prototype.forEach.call($('chiprow').children, function (c) {
+      c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
+    });
+    Array.prototype.forEach.call($('subtabs').children, function (t) {
+      t.addEventListener('click', function () { setColourTab(t.getAttribute('data-c')); });
+    });
+    setColourTab('fc');
+
     makeSwatches(els.swFc, PALETTES.frosting, 'fc');
     makeSwatches(els.swIc, PALETTES.filling, 'ic');
     makeSwatches(els.swCc, PALETTES.candle, 'cc');
+    makeSwatches(els.swRc, PALETTES.ribbon, 'rc');
     makeSwatches(els.swBg, PALETTES.background, 'bg');
 
     els.to.addEventListener('input', function () { draft.to = cleanText(els.to.value, MAX_NAME); });
@@ -1707,6 +1850,7 @@
     els.n.addEventListener('input', function () {
       draft.n = clampInt(els.n.value, 0, MAX_CANDLES, 0);
       els.nOut.textContent = draft.n;
+      updateCta();
       build(draft, { showMessage: true });
     });
 
@@ -1714,6 +1858,7 @@
       b.addEventListener('click', function () {
         draft.t = b.getAttribute('data-t') | 0;
         syncTiers(draft.t);
+        updateCta();
         build(draft, { showMessage: true });
       });
     });
@@ -1775,8 +1920,14 @@
     });
   }
 
+  var firstBuilderVisit = true;
   function showSheet(which) {
     els.builder.hidden = which !== 'builder';
+    if (which === 'builder' && firstBuilderVisit) {
+      firstBuilderVisit = false;
+      // Open the message tray on arrival so it's obvious there's something to fill in.
+      openTray = null; setTray('message');
+    }
     els.linkpanel.hidden = which !== 'linkpanel';
     els.viewerFoot.hidden = which !== 'viewer';
     setTimeout(resize, 0);
