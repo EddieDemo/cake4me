@@ -184,6 +184,27 @@
   scene.add(tiltGroup);
   var cakeGroup = new THREE.Group();
   tiltGroup.add(cakeGroup);
+  // Tilt and twist pivot about the object's centre of mass, not its base: it's an
+  // object you're holding, not one resting on a table. setPivot() moves the tilt
+  // group up to that height and hangs the contents back down by the same amount,
+  // so nothing shifts until you actually tilt.
+  function setPivot(y) {
+    tiltGroup.position.y = y;
+    cakeGroup.position.y = -y;
+    shadowPivot = y;
+  }
+  function centreOfMass(tierKey) {
+    // Weight each tier by its volume (r²h); candles are light enough to ignore.
+    var tiers = TIERS[tierKey] || TIERS[1];
+    var num = 0, den = 0, y = PLATE_TOP;
+    tiers.forEach(function (t) {
+      var v = t.r * t.r * t.h;
+      num += v * (y + t.h / 2);
+      den += v;
+      y += t.h;
+    });
+    return den ? num / den : 0.8;
+  }
 
   // Contact shadow instead of a plate: a soft dark disc on the ground.
   // Lives in the scene, not cakeGroup, so it never spins.
@@ -209,7 +230,21 @@
   contactShadow.position.y = 0.004;
   contactShadow.renderOrder = -1;
   scene.add(contactShadow);
+  // The hard crescent came from the tilted cake's near edge cutting through the
+  // shadow plane. depthTest:false is not the fix here — the cake is opaque and the
+  // shadow is transparent, so the shadow would draw last and paint over the cake.
+  // Instead the plane rides just below whatever the lowest point of the tilted
+  // object currently is, so there is never an intersection to draw.
+  var shadowRadius = 2.2, shadowPivot = 0.8;
+  function updateShadow() {
+    var theta = Math.sqrt(tiltX * tiltX + bankZ * bankZ);
+    var dip = shadowPivot * (1 - Math.cos(theta)) - shadowRadius * Math.sin(theta);
+    contactShadow.position.y = Math.min(0.004, dip - 0.03);
+    // A heavily tilted object wouldn't cast a full-strength footprint.
+    contactShadow.material.opacity = 1 - 0.5 * Math.min(1, theta / 0.34);
+  }
   function fitShadow(radius) {
+    shadowRadius = radius;
     // The solid core of the gradient sits at ~52% of the texture, so scale so that
     // core lands just outside the cake's footprint. Perspective does the squashing.
     var w = radius * 3.3;
@@ -387,6 +422,7 @@
     localShared.forEach(function (m) { m.__shared = false; });
 
     fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
+    if (!boxMode) setPivot(centreOfMass(cfg.t));
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = Math.min(1.6, 0.25 + flames.length * 0.03);
 
@@ -724,7 +760,7 @@
   var CAM_ELEV_DEG = 36;
   // Radius the camera frames to. Cake: two-tier r=2.5 plus air (bigger number = smaller cake).
   // Box: its corner diagonal, or the lid gets cropped on a narrow phone.
-  var FRAME = { cake: 3.3, box: 4.7 };
+  var FRAME = { cake: 3.3, box: 4.5 };
   var frameRadius = FRAME.cake;
   var camTargetY = 1.3, camY = 1.3;
   var frameTarget = 3.3;
@@ -786,7 +822,7 @@
   //  Ceremony: box rises, lid lowers, ribbon tightens, label, share.
   //  Objects live in cakeGroup so they turn with the cake.
   // =====================================================================
-  var BOX = { half: 2.95, wall: 0.07, h: 0 };         // hugs the cake; h set per tier
+  var BOX = { half: 2.62, wall: 0.06, h: 0 };         // hugs the cake; h set per tier
   var box = new THREE.Group(), lid = new THREE.Group(), ribbon = new THREE.Group();
   box.visible = lid.visible = ribbon.visible = false;
   cakeGroup.add(box); cakeGroup.add(lid); cakeGroup.add(ribbon);
@@ -795,10 +831,14 @@
   var ribbonMat = new THREE.MeshStandardMaterial({ color: 0xFF6F91, roughness: 0.45 });
   boxMat.__shared = boxEdgeMat.__shared = ribbonMat.__shared = true;
   var ceremony = null;      // { active, finished }
+  var boxMode = false;      // true while the box is the thing on screen (its own pivot/framing)
 
   function buildBox(height) {
     clearGroup(box); clearGroup(lid); clearGroup(ribbon);
     BOX.h = height;
+    boxMode = true;
+    setPivot(height / 2);        // a closed box's centre of mass is its middle
+    fitShadow(BOX.half * 1.05);
     var s2 = BOX.half * 2;
     // Base: floor + four walls
     var floor = new THREE.Mesh(new THREE.BoxGeometry(s2, BOX.wall, s2), boxEdgeMat);
@@ -852,7 +892,7 @@
     var rib = candleHex;
     if (luminance(rib) > 0.8) rib = luminance(frostingHex) > 0.8 ? 0x3b2a2a : frostingHex;
     ribbonMat.color.setHex(rib);
-    var h = Math.max(3.4, cakeHeight() + 0.25);
+    var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
     ceremony = { active: true, finished: false, onReady: onReady };
 
@@ -890,6 +930,8 @@
   function endCeremony() {
     killTweens();
     ceremony = null;
+    boxMode = false;
+    if (config) setPivot(centreOfMass(config.t));
     box.visible = lid.visible = ribbon.visible = false;
     showLidLabel(false);
     setFrame('cake', 1.3);
@@ -994,18 +1036,20 @@
   // There is no separate "blow" gesture.
   var SPIN = {
     idle: (Math.PI * 2) / ROTATION_SECONDS_PER_TURN,   // ambient, rad/s (~0.26)
-    max: 8.5,                                          // hard cap, rad/s (~1.35 turns/sec)
+    max: 7.0,                                          // hard cap, rad/s
     drag: 2.1,                                         // coast decay, per second
-    blowAt: 2.2,                                       // wind starts to bite, rad/s
-    blowFull: 6.5,                                     // a wave every ~120ms up here
-    pxPerTurn: 620,                                    // thumb travel for one full turn (higher = heavier)
-    flingGain: 0.55,                                   // how much of the release velocity is kept
-    bank: 0.05                                         // max Z lean into the turn, radians
+    blowAt: 1.9,                                       // wind starts to bite, rad/s
+    blowFull: 5.5,                                     // a wave every ~120ms up here
+    pxPerTurn: 1600,                                   // thumb travel for one full turn (higher = heavier)
+    flingGain: 0.35,                                   // how much of the smoothed release velocity is kept
+    velSmoothMs: 80                                    // window the release velocity is averaged over
   };
-  var TILT = { min: -0.34, max: 0.30, pxPerRad: 520, spring: 2.2 };   // X limits: can't flip
+  // Tilt (X) and twist (Z) are held, not sprung: they stay where the user leaves them.
+  var TILT = { min: -0.34, max: 0.30, pxPerRad: 1100 };
+  var TWIST = { min: -0.44, max: 0.44 };               // two-finger rotate, ±25°
   var omega = SPIN.idle;        // current angular velocity, rad/s
-  var tiltX = 0;                // held tilt, radians, clamped to TILT
-  var bankZ = 0;                // automatic lean into the turn
+  var tiltX = 0;                // held tilt (X), radians, clamped to TILT
+  var bankZ = 0;                // held twist (Z), radians, clamped to TWIST — two-finger gesture
   var dragging = false;
   var spinFree = false;         // true once the user has taken hold of the cake
 
@@ -1038,18 +1082,14 @@
       var k = 1 - Math.exp(-SPIN.drag * dt);
       omega += (target - omega) * k;
       if (Math.abs(omega - target) < 0.004) omega = target;
-      // Tilt springs back to level once you let go.
-      tiltX += (0 - tiltX) * (1 - Math.exp(-TILT.spring * dt));
-      if (Math.abs(tiltX) < 0.002) tiltX = 0;
     }
     omega = Math.max(-SPIN.max, Math.min(SPIN.max, omega));
     if (!reduceMotion) cakeGroup.rotation.y += omega * dt;
 
-    // Bank: the cake leans into the turn. Automatic, small, eases.
-    var bankTarget = -Math.max(-1, Math.min(1, omega / SPIN.blowFull)) * SPIN.bank;
-    bankZ += (bankTarget - bankZ) * Math.min(1, dt * 4);
+    // Tilt and twist are held, not sprung — they stay where they were left.
     tiltGroup.rotation.x = tiltX;
     tiltGroup.rotation.z = bankZ;
+    updateShadow();
 
     // Apparent wind = how hard the cake is turning, relative to its resting spin.
     var wind = (Math.abs(omega) - SPIN.blowAt) / (SPIN.blowFull - SPIN.blowAt);
@@ -1084,40 +1124,92 @@
     }
   }
 
-  // Drag: horizontal spins the turntable, vertical tilts it. Tilt is clamped so the
-  // cake can never flip, and springs back to level when released.
+  // Drag: horizontal spins the turntable, vertical tilts it, two fingers twist it.
+  // Tilt and twist are clamped (it can never flip) and are HELD — they stay where
+  // you leave them. Only the spin decays, back to the ambient turn.
   (function () {
-    var id = null, lastX = 0, lastY = 0, lastT = 0, vel = 0;
-    function toOmega(dxPx, dtMs) {
-      return (dxPx / SPIN.pxPerTurn) * Math.PI * 2 / (dtMs / 1000);
-    }
-    canvas.addEventListener('pointerdown', function (e) {
-      if (id !== null) return;
-      id = e.pointerId; lastX = e.clientX; lastY = e.clientY; lastT = performance.now(); vel = 0;
-      dragging = true; spinFree = true;
-      killTweens('turn');                 // a drag interrupts the auto-facing turn, nothing else
-      if (canvas.setPointerCapture) { try { canvas.setPointerCapture(id); } catch (err) {} }
-    });
-    canvas.addEventListener('pointermove', function (e) {
-      if (e.pointerId !== id) return;
-      var now = performance.now(), dt = Math.max(8, now - lastT);
-      var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    var pts = {};              // active pointers by id
+    var primary = null;
+    var lastT = 0;
+    var samples = [];          // recent {t, w} for a smoothed release velocity
+    var pinchPrev = null;      // previous two-finger angle
 
-      vel = toOmega(dx, dt);
-      omega = Math.max(-SPIN.max, Math.min(SPIN.max, vel));
-      cakeGroup.rotation.y += (dx / SPIN.pxPerTurn) * Math.PI * 2;   // tracks the thumb
+    function count() { var n = 0; for (var k in pts) n++; return n; }
+    function twoAngle() {
+      var ids = Object.keys(pts);
+      if (ids.length < 2) return null;
+      var a = pts[ids[0]], b = pts[ids[1]];
+      return Math.atan2(b.y - a.y, b.x - a.x);
+    }
+    function pushSample(w, now) {
+      samples.push({ t: now, w: w });
+      while (samples.length && now - samples[0].t > SPIN.velSmoothMs) samples.shift();
+    }
+    function smoothedVel(now) {
+      // Mean of the last velSmoothMs of angular velocity; a single fast frame can't spike it.
+      var n = 0, sum = 0;
+      for (var i = 0; i < samples.length; i++) {
+        if (now - samples[i].t > SPIN.velSmoothMs) continue;
+        sum += samples[i].w; n++;
+      }
+      return n ? sum / n : 0;
+    }
+
+    canvas.addEventListener('pointerdown', function (e) {
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (primary === null) {
+        primary = e.pointerId;
+        lastT = performance.now();
+        samples.length = 0;
+        dragging = true; spinFree = true;
+        killTweens('turn');
+        if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
+      }
+      if (count() === 2) pinchPrev = twoAngle();
+    });
+
+    canvas.addEventListener('pointermove', function (e) {
+      if (!pts[e.pointerId]) return;
+      var prev = pts[e.pointerId];
+      var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+
+      // Two fingers: rotate the gesture, twist the cake. Z only, nothing else moves.
+      if (count() >= 2) {
+        var ang = twoAngle();
+        if (ang !== null && pinchPrev !== null) {
+          var d = ang - pinchPrev;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          bankZ = Math.max(TWIST.min, Math.min(TWIST.max, bankZ - d));
+        }
+        pinchPrev = ang;
+        return;
+      }
+
+      if (e.pointerId !== primary) return;
+      var now = performance.now(), dt = Math.max(8, now - lastT);
+      var dTheta = (dx / SPIN.pxPerTurn) * Math.PI * 2;
+
+      cakeGroup.rotation.y += dTheta;                 // tracks the thumb, gently
+      var w = dTheta / (dt / 1000);
+      pushSample(w, now);
+      omega = Math.max(-SPIN.max, Math.min(SPIN.max, w));
 
       // Drag down to look further over the top, up to see more of the side.
       tiltX = Math.max(TILT.min, Math.min(TILT.max, tiltX + dy / TILT.pxPerRad));
-
-      lastX = e.clientX; lastY = e.clientY; lastT = now;
+      lastT = now;
     });
+
     function release(e) {
-      if (e.pointerId !== id) return;
-      id = null; dragging = false;
-      if (performance.now() - lastT > 90) vel = 0;    // finger stopped before lifting: no fling
-      var launch = vel * SPIN.flingGain;
-      omega = Math.abs(launch) > SPIN.idle ? Math.max(-SPIN.max, Math.min(SPIN.max, launch)) : SPIN.idle;
+      delete pts[e.pointerId];
+      if (count() < 2) pinchPrev = null;
+      if (e.pointerId !== primary) return;
+      primary = null; dragging = false;
+      var now = performance.now();
+      var v = (now - lastT > 90) ? 0 : smoothedVel(now) * SPIN.flingGain;
+      omega = Math.abs(v) > SPIN.idle ? Math.max(-SPIN.max, Math.min(SPIN.max, v)) : SPIN.idle;
+      samples.length = 0;
     }
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
@@ -1237,13 +1329,14 @@
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
     var rib = candleHex; if (luminance(rib) > 0.8) rib = luminance(frostingHex) > 0.8 ? 0x3b2a2a : frostingHex;
     ribbonMat.color.setHex(rib);
-    var h = Math.max(3.4, cakeHeight() + 0.25);
+    var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
     box.visible = lid.visible = ribbon.visible = true;
     box.position.y = 0; lid.position.y = h - 0.04; lid.rotation.set(0, 0, 0); ribbon.position.y = h - 0.04; ribbon.scale.set(1, 1, 1);
     cakeGroup.rotation.set(0, 0.4, 0);
-    omega = SPIN.idle; tiltX = 0; bankZ = 0; spinFree = false; spinEnabled = false;
+    omega = SPIN.idle; tiltX = 0; bankZ = 0; spinFree = false;
     tiltGroup.rotation.set(0, 0, 0);
+    spinEnabled = true;          // the box is handled exactly like the cake
     setFrame('box', 1.7, true);
     els.viewerHead.classList.remove('on');
     els.viewerHead.hidden = false;
@@ -1269,6 +1362,7 @@
       built.position.y = 0.5 * Math.sin(Math.PI * k) * 0.6;
     }, done: function () {
       box.visible = false; built.position.y = 0;
+      boxMode = false; setPivot(centreOfMass(config.t));   // pivot returns to the cake's own centre
       tween({ duration: 160, ease: EASE.pop, update: function (k) { var sc = 1.03 - 0.03 * k; built.scale.set(sc, sc, sc); } });
       setFrame('cake', 1.3);
     } });
@@ -1539,7 +1633,7 @@
     get spin() { return omega; },
     link: function () { return linkFor(config); },
     encode: encodeConfig, decode: decodeConfig,
-    palettes: PALETTES, group: cakeGroup, tilt: tiltGroup, SPIN: SPIN, TILT: TILT,
+    palettes: PALETTES, group: cakeGroup, tilt: tiltGroup, SPIN: SPIN, TILT: TILT, TWIST: TWIST,
     debug: function () { return { omega: +omega.toFixed(2), tilt: +tiltX.toFixed(3), bank: +bankZ.toFixed(3), dragging: dragging, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
     blowAll: function () { for (var i = 0; i < flames.length; i++) extinguish(flames[i], 0, -1); }
   };
