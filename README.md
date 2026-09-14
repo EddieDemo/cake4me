@@ -1,21 +1,41 @@
-# Cake — v0.7 (message on the back)
+# Cake — v0.8 (handling, part two)
 
-One change, but it changes the shape of the recipient's moment.
+## What changed
 
-**The message now lives permanently on the reverse side of the cake.** It's baked into the texture at theta = π, so it's always there — the recipient just can't see it until they turn the cake round. Nothing "reveals" it.
+**1. Docs travel with the code.** `docs/` now holds the current version of every planning
+document (business plan, build plan, feel spec, aesthetics notes). See `docs/README.md`.
 
-- The hint now reads **"Spin it — there's a message on the back"**, which teaches the gesture and gives a reason to use it in the same sentence.
-- Spinning is also what blows the candles out, so one gesture does everything. Find the message, and if you spin hard you take the candles with you.
-- **Blowing the candles out no longer reveals anything.** It earns the confetti and moves you on to "Cut the cake". You can read the message before, during or after.
-- No more letter-by-letter piping and no auto-turn at the end. The cake is never taken out of your hands.
-- The **builder starts facing the message** so the sender can see what they're typing. Same cake, different starting rotation.
+**2. Everything is ~10% smaller.** The camera frames to a radius rather than a fixed distance,
+and there are now two framings: `FRAME.cake` (3.3) and `FRAME.box` (4.7). The box needed its own,
+wider one — it was being cropped at the sides on a phone because a square box's corner diagonal
+is much bigger than a round cake's radius. The camera eases between them when the box opens.
+Bigger number = smaller object. The look-at also sits higher (1.3), which drops the cake down the
+screen and stops the "Happy Birthday" header colliding with the candles.
 
-## Consequence worth knowing
-A recipient can now finish the whole thing without ever seeing the message, if they only ever spin gently and never go round the back. Two cheap safeguards if that turns out to happen (neither is in yet):
-1. Open the box with the cake already part-turned, so a sliver of the message is visible and begs to be chased.
-2. After a few seconds of no interaction, nudge the cake a few degrees so the message edge peeks into view.
+**3. Spin is slower and heavier.**
+- `pxPerTurn` 620 (was 360): the thumb has to travel further for one turn.
+- `flingGain` 0.55: only just over half the release velocity is kept, so a flick doesn't launch it.
+- `max` 8.5 rad/s (was 22), about 1.35 turns a second.
+- `blowAt` 2.2 and `blowFull` 6.5 rescaled to match, so blowing the candles out takes about the
+  same effort as before relative to the new ceiling.
 
-Worth testing on real people before adding either.
+**4. Tilt on the vertical axis, bank on the third.**
+- Drag **down** to look further over the top of the cake, **up** to see more of the side.
+- Clamped to −0.34…+0.30 radians (about −19°…+17°). It cannot flip, and it springs back to level
+  when you let go (`TILT.spring`; set it to 0 if you'd rather a tilt stayed put).
+- The third axis (roll) is **not** on the thumb: one finger only has two degrees of freedom, and a
+  cake rolling sideways reads as broken. Instead the cake **banks into the turn** automatically,
+  proportional to spin speed, capped at `SPIN.bank` (0.05 rad). If you want explicit roll later,
+  two-finger twist is the right gesture for it.
 
-## Everything else
-Unchanged from v0.6: no plate, 36° camera, spin with momentum, mic as the bonus input, relight, confetti.
+Structurally, tilt lives on a new parent group (`tiltGroup`) wrapping `cakeGroup`, so tilt and
+spin compose as a proper turntable instead of fighting each other through one set of Euler angles.
+
+## Tuning
+Everything is in two objects near the top of the spin section:
+`SPIN = { idle, max, drag, blowAt, blowFull, pxPerTurn, flingGain, bank }`
+`TILT = { min, max, pxPerRad, spring }`
+
+## Console
+`cake.debug()` → omega, tilt, bank, lit, state · `cake.SPIN` / `cake.TILT` → live tuning objects ·
+`cake.tilt` → the tilt group · `cake.group` → the spin group
