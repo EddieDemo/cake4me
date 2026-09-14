@@ -13,7 +13,7 @@
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1 };
   var PRICES = { 1: '£4.49', 2: '£9.99' };
   var SLICES = { 1: 8, 2: 16 };
 
@@ -45,6 +45,20 @@
       { name: 'Caramel',    layers: [0xC77B3B] },
       { name: 'Cream',      layers: [0xFFF3C4] },
       { name: 'Rainbow',    layers: [0xE63946, 0xF4A261, 0xFFD166, 0x52B788, 0x4C5FD5, 0x9B6BFF] }
+    ],
+    // Background gradients. Index 0 is the legacy behaviour (derived from the frosting),
+    // kept so every link sent before v0.16 renders exactly as it did. Everything else is
+    // a deliberate choice, because a backdrop that matches the cake washes it out.
+    background: [
+      { name: 'Match the cake', auto: true },
+      { name: 'Cream',     layers: [0xFFF6E9, 0xFFE7CE] },
+      { name: 'Warm grey', layers: [0xF2EFEA, 0xDCD6CE] },
+      { name: 'Blush',     layers: [0xFFEDF2, 0xF7D9E3] },
+      { name: 'Sky',       layers: [0xDFF1FF, 0xBFDFF5] },
+      { name: 'Mint',      layers: [0xE4F6EE, 0xC2E6D6] },
+      { name: 'Dusk',      layers: [0x6E6597, 0x3B3560] },
+      { name: 'Midnight',  layers: [0x24304A, 0x11162A] },
+      { name: 'Ink',       layers: [0x2A2430, 0x141018] }
     ]
   };
 
@@ -58,7 +72,25 @@
   var CAP_H = 0.32;
   var PLATE_TOP = 0;      // cake sits on the ground; the contact shadow does the grounding
   var ROTATION_SECONDS_PER_TURN = 24;
-  var MAX_PIXEL_RATIO = 2;
+  // Rendering fidelity.
+  //
+  // Capping at 2 was leaving detail on the table: iPhone Pro screens report
+  // devicePixelRatio 3, so we were rendering at two-thirds of the panel's real
+  // resolution. But going straight to 3 is 2.25× the pixels, which some phones
+  // can't hold at 60fps with 100 candles and 400 confetti pieces on screen.
+  //
+  // So: start at 2, measure, and climb toward the device's real ratio only if
+  // there's frame-time headroom — dropping back if there isn't.
+  var PIXEL = {
+    floor: 1,
+    ceil: 4,                     // 4K/5K desktop panels and future phones
+    start: 2,
+    goodMs: 12.5,                // climb below this average frame time
+    badMs: 20,                   // drop above it
+    step: 0.5,
+    checkMs: 1200                // how often to reassess
+  };
+  var CYL_SEG = 96;              // cylinder segments: silhouette stays smooth when zoomed in
 
   var reduceMotion = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -92,13 +124,16 @@
       t: TIERS[c.t] ? (c.t | 0) : 1,
       fc: clampInt(c.fc, 0, PALETTES.frosting.length - 1, 0),
       ic: clampInt(c.ic, 0, PALETTES.filling.length - 1, 0),
-      cc: clampInt(c.cc, 0, PALETTES.candle.length - 1, 0)
+      cc: clampInt(c.cc, 0, PALETTES.candle.length - 1, 0),
+      // Missing on pre-v0.16 links, which is exactly what index 0 means: derive it
+      // from the frosting, as those cakes always did. New fields append, never rename.
+      bg: clampInt(c.bg, 0, PALETTES.background.length - 1, 0)
     };
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -106,7 +141,8 @@
       var p = unb64url(code).split('|');
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
-      return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5], fc: p[6], ic: p[7], cc: p[8] });
+      return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -158,7 +194,9 @@
   // =====================================================================
   var canvas = document.getElementById('cake');
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+  var deviceDPR = window.devicePixelRatio || 1;
+  var pixelRatio = Math.min(deviceDPR, PIXEL.start);
+  renderer.setPixelRatio(pixelRatio);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setClearColor(0x000000, 0);
 
@@ -210,7 +248,7 @@
   var shadowRadius = 2.2;
   function updateShadow() {
     var t = Math.max(0, Math.min(1, (camElev - CAM_ELEV_MIN) / 18));
-    contactShadow.material.opacity = 0.12 + 0.88 * t;
+    contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / 0.55));
   }
   function fitShadow(radius) {
     shadowRadius = radius;
@@ -313,21 +351,21 @@
           color: 0xffffff, roughness: 0.62, map: makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH)
         });
       }
-      var bodyGeo = new THREE.CylinderGeometry(tier.r, tier.r, bodyH, 72, 1, false, open, Math.PI * 2 - open);
+      var bodyGeo = new THREE.CylinderGeometry(tier.r, tier.r, bodyH, CYL_SEG, 1, false, open, Math.PI * 2 - open);
       var body = new THREE.Mesh(bodyGeo, [sideMat, frostingMat, frostingMat]);
       body.position.y = y + bodyH / 2;
       tg.add(body);
       if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = bodyH; }
 
       // Frosting cap, a touch wider than the body
-      var capGeo = new THREE.CylinderGeometry(tier.r + 0.08, tier.r + 0.02, CAP_H, 72, 1, false, open, Math.PI * 2 - open);
+      var capGeo = new THREE.CylinderGeometry(tier.r + 0.08, tier.r + 0.02, CAP_H, CYL_SEG, 1, false, open, Math.PI * 2 - open);
       var cap = new THREE.Mesh(capGeo, capMat);
       cap.position.y = y + bodyH + CAP_H / 2;
       tg.add(cap);
 
       // Drip band where cap meets body
       if (!cfg.cutaway) {
-        var drip = new THREE.Mesh(new THREE.TorusGeometry(tier.r + 0.02, 0.07, 10, 96), capMat);
+        var drip = new THREE.Mesh(new THREE.TorusGeometry(tier.r + 0.02, 0.07, 12, 128), capMat);
         drip.rotation.x = Math.PI / 2;
         drip.position.y = y + bodyH;
         tg.add(drip);
@@ -346,7 +384,7 @@
         });
         // Inner core so the cake isn't hollow when you look in
         var core = new THREE.Mesh(
-          new THREE.CylinderGeometry(tier.r - 0.01, tier.r - 0.01, tier.h - 0.02, 72, 1, true, open, Math.PI * 2 - open),
+          new THREE.CylinderGeometry(tier.r - 0.01, tier.r - 0.01, tier.h - 0.02, CYL_SEG, 1, true, open, Math.PI * 2 - open),
           new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 1, side: THREE.BackSide })
         );
         core.position.y = y + tier.h / 2;
@@ -356,7 +394,7 @@
       // Ribbon at the base of upper tiers, in the candle colour
       if (i > 0) {
         var ribbon = new THREE.Mesh(
-          new THREE.CylinderGeometry(tier.r + 0.05, tier.r + 0.05, 0.16, 72, 1, true),
+          new THREE.CylinderGeometry(tier.r + 0.05, tier.r + 0.05, 0.16, CYL_SEG, 1, true),
           new THREE.MeshStandardMaterial({ color: candleHex, roughness: 0.5, side: THREE.DoubleSide })
         );
         ribbon.position.y = y + 0.14;
@@ -391,10 +429,11 @@
     localShared.forEach(function (m) { m.__shared = false; });
 
     fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
+    rebuildLandings(cfg);
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = Math.min(1.6, 0.25 + flames.length * 0.03);
 
-    applyBackground(frosting);
+    applyBackground(frosting, cfg.bg);
   }
 
   // Cheap path for typing: swap only the message texture.
@@ -595,7 +634,10 @@
   function makeMessageTexture(text, ink, frostingHex, radius, bodyH) {
     text = String(text).slice(0, MAX_MSG);
     var circumference = 2 * Math.PI * radius;
-    var W = 2048;
+    // The message is the thing people zoom into, so size its canvas off the real
+    // device ratio rather than a fixed number. The texture is short (a thin band
+    // round the cylinder), so even 4096 wide costs little memory.
+    var W = deviceDPR >= 2 ? 4096 : 2048;
     var H = Math.max(96, Math.round(W * (bodyH / circumference)));   // square pixels on the cylinder
     var c = document.createElement('canvas');
     c.width = W; c.height = H;
@@ -702,12 +744,23 @@
   function pickInk(frostingHex) {
     return luminance(frostingHex) > 0.42 ? INK_DARK : INK_LIGHT;
   }
-  function applyBackground(frostingHex) {
-    var top = new THREE.Color(frostingHex).lerp(new THREE.Color(0xffffff), 0.72);
-    var bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(frostingHex), 0.15);
+  var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow.
+  function applyBackground(frostingHex, bgIndex) {
+    var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];
+    var top, bottom;
+    if (opt.auto) {
+      top = new THREE.Color(frostingHex).lerp(new THREE.Color(0xffffff), 0.72);
+      bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(frostingHex), 0.15);
+    } else {
+      top = new THREE.Color(opt.layers[0]);
+      bottom = new THREE.Color(opt.layers[1]);
+    }
     var root = document.documentElement.style;
     root.setProperty('--sky-top', '#' + top.getHexString());
     root.setProperty('--sky-bottom', '#' + bottom.getHexString());
+    bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
+    // A dark shadow on a dark backdrop is just a smudge; fade it out as the floor darkens.
+    document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
   }
 
 
@@ -771,10 +824,29 @@
   var spinEnabled = true;     // off only while the cake is inside the closed box
   var running = false;
 
+  // Frame-time sampling for the adaptive pixel ratio.
+  var fpsAccum = 0, fpsCount = 0, fpsSince = 0;
+  function tunePixelRatio(now, dtMs) {
+    fpsAccum += dtMs; fpsCount++;
+    if (now - fpsSince < PIXEL.checkMs) return;
+    var avg = fpsAccum / Math.max(1, fpsCount);
+    fpsAccum = 0; fpsCount = 0; fpsSince = now;
+    var target = pixelRatio;
+    var ceiling = Math.min(deviceDPR, PIXEL.ceil);
+    if (avg > PIXEL.badMs && pixelRatio > PIXEL.floor) target = Math.max(PIXEL.floor, pixelRatio - PIXEL.step);
+    else if (avg < PIXEL.goodMs && pixelRatio < ceiling) target = Math.min(ceiling, pixelRatio + PIXEL.step);
+    if (target !== pixelRatio) {
+      pixelRatio = target;
+      renderer.setPixelRatio(pixelRatio);
+      resize();
+    }
+  }
+
   function frame() {
     var dt = Math.min(clock.getDelta(), 0.05);
     var t = clock.elapsedTime;
     var now = performance.now();
+    tunePixelRatio(now, dt * 1000);
     updateTweens(now);
     updateSpawn(now);
     if (Math.abs(camY - camTargetY) > 0.001 || Math.abs(frameRadius - frameTarget) > 0.001) {
@@ -807,6 +879,7 @@
       candleLight.intensity = Math.min(1.6, 0.25 + litCount() * 0.03) * (0.92 + 0.08 * Math.sin(t * 7));
     }
     updateSmoke(dt);
+    updateConfetti(dt, t);
     updateRipple(now);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
@@ -1035,7 +1108,7 @@
     friction: 1.4,                                     // rad/s² — constant deceleration, like a real turntable
     blowAt: 1.9,                                       // wind starts to bite, rad/s
     blowFull: 5.5,                                     // a wave every ~120ms up here
-    pxPerTurn: 1600,                                   // thumb travel for one full turn (higher = heavier)
+    pxPerTurn: 820,                                    // thumb travel for one full turn (higher = heavier)
     flingGain: 0.5,                                    // how much of the smoothed release velocity is kept
     velSmoothMs: 80                                    // window the release velocity is averaged over
   };
@@ -1053,7 +1126,8 @@
     swipeFraction: 0.8                  // of the canvas height = the whole range
   };
   var TWIST = { min: -0.44, max: 0.44 };               // two-finger rotate → camera roll, ±25°
-  var omega = SPIN.idle;        // current angular velocity, rad/s
+  var omega = SPIN.idle;        // free-spin angular velocity, rad/s (momentum)
+  var dragW = 0;                // the thumb's own angular velocity right now, rad/s
   var tiltX = 0;                // held tilt (X), radians, clamped to TILT
   var bankZ = 0;                // held twist (Z), radians, clamped to TWIST — two-finger gesture
   var dragging = false;
@@ -1083,17 +1157,19 @@
 
   function updateSpin(now, dt) {
     // Drag sets omega directly (see the pointer handlers). Otherwise coast toward idle.
-    if (!dragging) {
-      // Constant deceleration toward the ambient orbit, not exponential decay.
-      // Exponential sheds big speeds almost instantly, which is what made a hard
-      // flick feel like it was being clamped. With friction, twice the speed coasts
-      // for twice as long, which is how a real turntable behaves.
-      var target = SPIN.idle;
-      var diff = omega - target;
-      var step = SPIN.friction * dt;
-      if (Math.abs(diff) <= step) omega = target;
-      else omega -= Math.sign(diff) * step;
-    }
+    // Constant deceleration toward the ambient orbit, not exponential decay.
+    // Exponential sheds big speeds almost instantly, which is what made a hard
+    // flick feel like it was being clamped. With friction, twice the speed coasts
+    // for twice as long, which is how a real turntable behaves.
+    //
+    // This runs while dragging too: the cake keeps its momentum under your thumb,
+    // the way brushing a spinning turntable does. Hold it still long enough and
+    // friction bleeds the speed away, so a press-and-hold still settles it.
+    var target = SPIN.idle;
+    var diff = omega - target;
+    var step = SPIN.friction * dt;
+    if (Math.abs(diff) <= step) omega = target;
+    else omega -= Math.sign(diff) * step;
     if (!isFinite(omega)) omega = SPIN.idle;           // only guard left: never let NaN in
     // The camera orbits; the cake never moves. Negative so a rightward drag still
     // makes the cake appear to turn to the right.
@@ -1105,13 +1181,15 @@
     }
 
     // Apparent wind = how hard the cake is turning, relative to its resting spin.
-    var wind = (Math.abs(omega) - SPIN.blowAt) / (SPIN.blowFull - SPIN.blowAt);
+    var apparent = Math.abs(omega) + (dragging ? Math.abs(dragW) : 0);
+    var wind = (apparent - SPIN.blowAt) / (SPIN.blowFull - SPIN.blowAt);
     wind = Math.max(0, Math.min(1, wind));
     var mic = blow.enabled ? blow.micLevel : 0;
 
     // Flames lean against the direction of travel; mic pushes them away from the viewer.
-    var spinLean = Math.max(-1, Math.min(1, -omega / SPIN.blowFull)) * (0.35 + 0.65 * wind);
-    if (Math.abs(omega) > SPIN.idle * 1.5 || mic > 0) setLean(spinLean, mic);
+    var signed = omega + (dragging ? dragW : 0);
+    var spinLean = Math.max(-1, Math.min(1, -signed / SPIN.blowFull)) * (0.35 + 0.65 * wind);
+    if (Math.abs(signed) > SPIN.idle * 1.5 || mic > 0) setLean(spinLean, mic);
     else setLean(0, 0);
     leanNow += (((Math.abs(spinLean) > 0.02 || mic > 0) ? 1 : 0) - leanNow) * Math.min(1, dt * 10);
 
@@ -1121,7 +1199,7 @@
 
     if (wind > 0 && now - blow.lastWave > (260 - 140 * wind)) {
       blow.lastWave = now;
-      wave(wind, omega > 0 ? -1 : 1, 0);
+      wave(wind, signed > 0 ? -1 : 1, 0);
     } else if (micReady && now - blow.lastWave > 180) {
       blow.lastWave = now;
       wave(mic, 0, -1);
@@ -1181,7 +1259,7 @@
         primary = e.pointerId;
         lastT = performance.now();
         samples.length = 0;
-        dragging = true; spinFree = true;
+        dragging = true; spinFree = true; dragW = 0;
         killTweens('turn');
         if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
       }
@@ -1220,7 +1298,7 @@
       camAzimuth -= dTheta;                           // tracks the thumb, gently
       var w = dTheta / (dt / 1000);
       pushSample(w, now);
-      omega = isFinite(w) ? w : omega;
+      dragW = isFinite(w) ? w : 0;
 
       // Drag down to look further over the top, up to see more of the side.
       tiltX = Math.max(TILT.min, Math.min(TILT.max, tiltX + dy / TILT.pxPerRad));
@@ -1233,8 +1311,12 @@
       if (e.pointerId !== primary) return;
       primary = null; dragging = false;
       var now = performance.now();
+      // ADD the fling to whatever the cake was already doing, so repeated flicks
+      // build speed and a flick against the spin brakes it. Replacing it here is
+      // what made multiple swipes feel capped.
       var v = (now - lastT > 90) ? 0 : smoothedVel(now) * SPIN.flingGain;
-      omega = (isFinite(v) && Math.abs(v) > SPIN.idle) ? v : SPIN.idle;
+      if (isFinite(v)) omega += v;
+      dragW = 0;
       samples.length = 0;
     }
     canvas.addEventListener('pointerup', release);
@@ -1279,46 +1361,158 @@
     analyser = null; blow.micLevel = 0;
   }
 
-  // ---- Confetti (2D overlay) ----
-  var confettiCanvas = document.getElementById('confetti');
+  // ---- Confetti (3D, in the scene) ----
+  // A 2D overlay is glued to the screen, which is obvious the moment the camera orbits
+  // during a burst — and the whole point of this moment is that people film it. So the
+  // paper lives in the world: it falls, tumbles, lands on the floor and on the cake, and
+  // stays there. Once everything has settled the update loop stops entirely, leaving one
+  // static draw call.
+  var CONFETTI = {
+    max: 420,            // pool size; new bursts recycle the oldest settled pieces
+    size: 0.15,          // width of a piece
+    thick: 0.012,        // real thickness: a flat quad vanishes edge-on
+    gravity: 3.2,
+    drag: 0.42,
+    flutter: 2.6,        // sideways sway amplitude while falling
+    spin: 7              // max tumble rate, rad/s
+  };
+  var confettiGeo = new THREE.BoxGeometry(CONFETTI.size, CONFETTI.thick, CONFETTI.size * 1.5);
+  // vertexColors (needed below) makes the shader multiply by the geometry's `color`
+  // attribute as well as instanceColor. BoxGeometry has no `color`, so it defaults to
+  // zero and everything renders black. Give it a white one.
+  (function () {
+    var n = confettiGeo.attributes.position.count;
+    var arr = new Float32Array(n * 3);
+    for (var i = 0; i < arr.length; i++) arr[i] = 1;
+    confettiGeo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  })();
+  confettiGeo.__shared = true;
+  // vertexColors MUST be true: in r128 the instancing-colour shader chunk writes
+  // instanceColor into vColor, but the fragment shader only multiplies it into the
+  // diffuse when USE_COLOR is defined — which comes from vertexColors, not from
+  // instanceColor existing. Without it every piece renders white.
+  var confettiMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, vertexColors: true });
+  confettiMat.__shared = true;
+  var confetti = new THREE.InstancedMesh(confettiGeo, confettiMat, CONFETTI.max);
+  confetti.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // Allocate the colour buffer at full size up front. Letting setColorAt create it
+  // lazily sizes it to whatever `count` happens to be at the first burst, and the
+  // second burst then writes off the end of the array in silence.
+  confetti.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CONFETTI.max * 3), 3);
+  confetti.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  confetti.count = 0;
+  confetti.frustumCulled = false;
+  scene.add(confetti);
+  var confettiPieces = [];           // { p, v, rot, rv, phase, resting }
+  var confettiActive = 0;            // how many are still moving
+  var _dummy = new THREE.Object3D();
+  var _col = new THREE.Color();
+
+  // Landing surfaces, outer first: [{ y, r, rInner }]. Rebuilt with the cake.
+  var landings = [];
+  function rebuildLandings(cfg) {
+    landings = [];
+    var tiers = TIERS[cfg.t] || TIERS[1];
+    var y = PLATE_TOP;
+    tiers.forEach(function (t, i) {
+      y += t.h;
+      var inner = (i < tiers.length - 1) ? tiers[i + 1].r : 0;
+      landings.push({ y: y, r: t.r + 0.06, rInner: inner });
+    });
+    landings.reverse();              // highest tier first
+  }
+
   function confettiBurst(colors, count) {
-    if (!confettiCanvas) return;
-    if (reduceMotion && count > 40) count = 40;
-    confettiCanvas.classList.add('on');                 // must be displayed before measuring
-    var W = confettiCanvas.clientWidth, H = confettiCanvas.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (!W || !H) { confettiCanvas.classList.remove('on'); return; }
-    confettiCanvas.width = W * dpr; confettiCanvas.height = H * dpr;
-    var g = confettiCanvas.getContext('2d'); g.scale(dpr, dpr);
-    var ps = [];
+    var pal = colors.map(function (c) { return new THREE.Color(c); });
+    var top = landings.length ? landings[0].y : 2;
+    var spread = (landings.length ? landings[landings.length - 1].r : 2.2) * 1.9;
     for (var i = 0; i < count; i++) {
-      var side = i % 5 === 0 ? (i % 10 === 0 ? -1 : 1) : 0;
-      ps.push({
-        x: side ? (side < 0 ? -10 : W + 10) : Math.random() * W,
-        y: side ? H * 0.45 + Math.random() * 60 : -20 - Math.random() * 80,
-        vx: side ? -side * (3 + Math.random() * 4) : (Math.random() - 0.5) * 2,
-        vy: side ? -(3 + Math.random() * 3) : Math.random() * 1.5,
-        w: 6, h: 10, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3, tilt: Math.random() * Math.PI, vt: 0.08 + Math.random() * 0.1,
-        c: colors[i % colors.length]
-      });
-    }
-    var start = performance.now(), last = start;
-    (function step(now) {
-      var dt = Math.min(2, (now - last) / 16.67); last = now;
-      g.clearRect(0, 0, W, H);
-      var alive = 0;
-      for (var i = 0; i < ps.length; i++) {
-        var p = ps[i];
-        p.vy += 0.35 * dt; p.vx *= Math.pow(0.98, dt); p.vy *= Math.pow(0.985, dt);
-        p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt; p.tilt += p.vt * dt;
-        if (p.y < H + 20) alive++;
-        g.save(); g.translate(p.x, p.y); g.rotate(p.r);
-        g.fillStyle = p.c; g.globalAlpha = 0.95;
-        g.fillRect(-p.w / 2, -p.h / 2 * Math.abs(Math.cos(p.tilt)), p.w, p.h * Math.abs(Math.cos(p.tilt)) + 1);
-        g.restore();
+      var piece;
+      if (confettiPieces.length < CONFETTI.max) {
+        piece = { p: new THREE.Vector3(), v: new THREE.Vector3(), rot: new THREE.Euler(),
+                  rv: new THREE.Vector3(), phase: 0, resting: false, col: new THREE.Color() };
+        confettiPieces.push(piece);
+      } else {
+        // Recycle the oldest settled piece so repeated bursts accumulate without growing.
+        piece = null;
+        for (var k = 0; k < confettiPieces.length; k++) {
+          if (confettiPieces[k].resting) { piece = confettiPieces.splice(k, 1)[0]; confettiPieces.push(piece); break; }
+        }
+        if (!piece) continue;
       }
-      if (alive && now - start < 4000) requestAnimationFrame(step);
-      else { g.clearRect(0, 0, W, H); confettiCanvas.classList.remove('on'); }
-    })(start);
+      var a = Math.random() * Math.PI * 2;
+      var rr = spread * Math.sqrt(Math.random());
+      piece.p.set(Math.sin(a) * rr, top + 2.6 + Math.random() * 2.2, Math.cos(a) * rr);
+      piece.v.set((Math.random() - 0.5) * 1.4, -0.4 - Math.random() * 0.8, (Math.random() - 0.5) * 1.4);
+      piece.rot.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+      piece.rv.set((Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin);
+      piece.phase = Math.random() * 6.28;
+      piece.resting = false;
+      piece.col.copy(pal[i % pal.length]);
+    }
+    confetti.count = confettiPieces.length;
+    confettiActive = 1;              // wake the update loop
+    writeConfetti();
+  }
+
+  function writeConfetti() {
+    for (var i = 0; i < confettiPieces.length; i++) {
+      var c = confettiPieces[i];
+      _dummy.position.copy(c.p);
+      _dummy.rotation.copy(c.rot);
+      _dummy.updateMatrix();
+      confetti.setMatrixAt(i, _dummy.matrix);
+      if (confetti.setColorAt) confetti.setColorAt(i, c.col);
+    }
+    confetti.instanceMatrix.needsUpdate = true;
+    if (confetti.instanceColor) confetti.instanceColor.needsUpdate = true;
+  }
+
+  function landingFor(x, z, yFrom, yTo) {
+    // Which surface, if any, this piece passed through on its way down.
+    var d2 = x * x + z * z;
+    for (var i = 0; i < landings.length; i++) {
+      var L = landings[i];
+      if (yFrom > L.y && yTo <= L.y && d2 <= L.r * L.r && d2 >= L.rInner * L.rInner) return L.y;
+    }
+    return (yTo <= 0) ? 0 : null;
+  }
+
+  function updateConfetti(dt, t) {
+    if (!confettiActive) return;
+    var moving = 0;
+    for (var i = 0; i < confettiPieces.length; i++) {
+      var c = confettiPieces[i];
+      if (c.resting) continue;
+      moving++;
+      c.v.y -= CONFETTI.gravity * dt;
+      var damp = Math.max(0, 1 - CONFETTI.drag * dt);
+      c.v.x *= damp; c.v.z *= damp; c.v.y *= (1 - CONFETTI.drag * 0.55 * dt);
+      // Flutter: paper doesn't fall straight, it sways as it turns over.
+      var sway = Math.sin(t * 3.1 + c.phase) * CONFETTI.flutter * dt;
+      c.p.x += (c.v.x + Math.cos(c.phase) * sway) * dt;
+      c.p.z += (c.v.z + Math.sin(c.phase) * sway) * dt;
+      var yPrev = c.p.y;
+      c.p.y += c.v.y * dt;
+      c.rot.x += c.rv.x * dt; c.rot.y += c.rv.y * dt; c.rot.z += c.rv.z * dt;
+
+      var land = landingFor(c.p.x, c.p.z, yPrev, c.p.y);
+      if (land !== null) {
+        c.p.y = land + CONFETTI.thick * 0.5 + 0.002;
+        // Lying flat, with a little random tilt so it doesn't look printed on.
+        c.rot.set((Math.random() - 0.5) * 0.22, Math.random() * 6.28, (Math.random() - 0.5) * 0.22);
+        c.resting = true;
+        moving--;
+      }
+    }
+    writeConfetti();
+    if (moving === 0) confettiActive = 0;    // everything has settled: stop updating
+  }
+
+  function clearConfetti() {
+    confettiPieces.length = 0;
+    confetti.count = 0;
+    confettiActive = 0;
   }
 
   // ---- Reveal ----
@@ -1327,7 +1521,7 @@
   function reveal() {
     var pal = [PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex,
                PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166, 0xFF6F91];
-    confettiBurst(pal.map(function (h) { return hexCss(h); }), 120);
+    confettiBurst(pal.map(function (h) { return hexCss(h); }), 160);
     setTimeout(showRevealedControls, 700);
   }
   function showRevealedControls() {
@@ -1364,8 +1558,6 @@
     camElev = CAM_ELEV_BASE; camRoll = 0; camZoom = 1; frameCamera();
     spinEnabled = true;          // the box is handled exactly like the cake
     setFrame('box', 1.7, true);
-    els.viewerHead.classList.remove('on');
-    els.viewerHead.hidden = false;
     setViewerState('gate');
     document.getElementById('use-mic').hidden = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     document.getElementById('mic-status').innerHTML = '&nbsp;';
@@ -1398,7 +1590,6 @@
       var order = centreOutOrder();
       lightRipple(order, Math.min(20, 1200 / Math.max(1, order.length)), true);
       // 5. header, then the blow state
-      els.viewerHead.classList.add('on');
       setTimeout(function () { setViewerState('blow'); blow.enabled = true; }, 500);
     }, 1200);
   }
@@ -1415,12 +1606,11 @@
   // =====================================================================
   var $ = function (id) { return document.getElementById(id); };
   var els = {
-    builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'), viewerHead: $('viewer-head'),
+    builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swBg: $('sw-bg'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
-    copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake'),
-    vhTitle: $('vh-title'), vhFrom: $('vh-from')
+    copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
 
   var draft = null;          // builder state
@@ -1436,8 +1626,13 @@
       b.className = 'swatch';
       b.title = item.name;
       b.setAttribute('aria-label', item.name);
-      if (item.layers) {
-        if (item.layers.length > 1) {
+      if (item.auto) {
+        b.classList.add('swatch-auto');       // filled in by refreshAutoSwatch()
+      } else if (item.layers) {
+        if (key === 'bg') {
+          // Backgrounds are two-stop gradients, shown as they'll actually appear.
+          b.style.background = 'linear-gradient(180deg, ' + hexCssStr(item.layers[0]) + ', ' + hexCssStr(item.layers[1]) + ')';
+        } else if (item.layers.length > 1) {
           var stops = item.layers.map(function (h, k) {
             var a = (k / item.layers.length) * 100, z = ((k + 1) / item.layers.length) * 100;
             return hexCssStr(h) + ' ' + a + '% ' + z + '%';
@@ -1452,10 +1647,21 @@
       b.addEventListener('click', function () {
         draft[key] = i;
         syncSwatches(container, i);
+        if (key === 'fc') refreshAutoSwatch();
         build(draft, { showMessage: true });
       });
       container.appendChild(b);
     });
+  }
+  // The "Match the cake" swatch previews what it would actually produce.
+  function refreshAutoSwatch() {
+    if (!els.swBg || !draft) return;
+    var el = els.swBg.querySelector('.swatch-auto');
+    if (!el) return;
+    var f = PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex;
+    var top = new THREE.Color(f).lerp(new THREE.Color(0xffffff), 0.72);
+    var bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(f), 0.15);
+    el.style.background = 'linear-gradient(180deg, #' + top.getHexString() + ', #' + bottom.getHexString() + ')';
   }
   function syncSwatches(container, active) {
     Array.prototype.forEach.call(container.children, function (b, i) {
@@ -1478,12 +1684,15 @@
     syncSwatches(els.swFc, draft.fc);
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
+    syncSwatches(els.swBg, draft.bg);
+    refreshAutoSwatch();
   }
 
   function wireBuilder() {
     makeSwatches(els.swFc, PALETTES.frosting, 'fc');
     makeSwatches(els.swIc, PALETTES.filling, 'ic');
     makeSwatches(els.swCc, PALETTES.candle, 'cc');
+    makeSwatches(els.swBg, PALETTES.background, 'bg');
 
     els.to.addEventListener('input', function () { draft.to = cleanText(els.to.value, MAX_NAME); });
     els.from.addEventListener('input', function () { draft.from = cleanText(els.from.value, MAX_NAME); });
@@ -1570,7 +1779,6 @@
     els.builder.hidden = which !== 'builder';
     els.linkpanel.hidden = which !== 'linkpanel';
     els.viewerFoot.hidden = which !== 'viewer';
-    els.viewerHead.hidden = which !== 'viewer';
     setTimeout(resize, 0);
   }
   function wireViewer() {
@@ -1597,11 +1805,11 @@
   function route() {
     endCeremony();
     stopMic();
+    clearConfetti();
     built.position.y = 0; built.scale.set(1, 1, 1);
     spinEnabled = true; spinFree = false; omega = SPIN.idle; tiltX = 0; bankZ = 0;
     camElev = CAM_ELEV_BASE; camRoll = 0; camZoom = 1; frameCamera();
     blow.enabled = false;
-    els.viewerHead.classList.remove('on');
     els.linkpanel.classList.remove('stage1', 'stage2', 'away');
     els.builder.classList.remove('away');
     var fromLink = readHash();
@@ -1609,8 +1817,6 @@
       // Viewer
       document.body.classList.remove('mode-builder');
       document.body.classList.add('mode-viewer');
-      els.vhTitle.textContent = fromLink.to ? 'Happy Birthday, ' + fromLink.to : 'Happy Birthday';
-      els.vhFrom.textContent = fromLink.from ? 'from ' + fromLink.from : '';
       showSheet('viewer');
       enterGate(fromLink);
     } else {
@@ -1661,6 +1867,9 @@
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
+    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil) }; },
+    PIXEL: PIXEL,
+    confetti: function () { return { count: confetti.count, active: confettiActive, resting: confettiPieces.filter(function (c) { return c.resting; }).length }; },
     debug: function () { return { azimuth: +camAzimuth.toFixed(2), omega: +omega.toFixed(2), elev: +camElev.toFixed(1), roll: +camRoll.toFixed(3), twist: +bankZ.toFixed(3), zoom: +camZoom.toFixed(2), dragging: dragging, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
     blowAll: function () { for (var i = 0; i < flames.length; i++) extinguish(flames[i], 0, -1); }
   };

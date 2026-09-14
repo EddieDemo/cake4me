@@ -80,6 +80,8 @@ Goal: anticipation, then a moment they want to film.
 
 **Load (0–1s).** Instantly: background gradient + flat CSS cake silhouette + "Someone sent you a cake" in the tier's typeface. No spinner. When three.js is ready, the silhouette crossfades to the real scene, `soft` 450ms. If load takes over 1.5s, candles on the silhouette light one by one as a progress indicator.
 
+**Gift tag on the lid (planned, not built).** From v0.14 the recipient sees no names anywhere on screen — the occasion-agnostic cake has no "Happy Birthday" header and no "from" line. `to` and `from` are still in the link schema and the builder; the intent is to put them where a real gift tag goes: on the box lid at the gate, visible before it's opened, in the same style as the sender's link-ready ceremony already uses. Decide the wording ("For Hollie" / "from Eddie") and whether the tag is a separate object or texture when it's built.
+
 **Gate.** A closed box on the plate, ribbon on top. One button: **Open**. This tap unlocks audio and is the only place the mic is ever offered (small secondary link under the button: "Use microphone to blow", never a modal, never on load).
 
 **Open sequence (~1.6s).**
@@ -104,6 +106,8 @@ Goal: anticipation, then a moment they want to film.
 2. The message turns to the front, `lift` 700ms — **no tilt** (dropped 13 Sept; the reveal gets redesigned later). If the recipient has already spun the cake themselves, it is left alone: the cake is theirs to hold.
 3. ~~Message pipes itself onto the frosting letter by letter~~ — dropped; the message is always on the cake's reverse side.
 4. "Cut the cake" button pops in below, `pop` 280ms, 300ms after the last letter.
+
+**Confetti is 3D from v0.14.** A 2D overlay is glued to the screen, which is obvious the moment the camera orbits mid-burst — the exact moment people are filming. The paper now lives in the world: it falls with flutter, tumbles, and comes to rest on the floor and on the cake's tier tops, where it stays for the rest of the session (including through the cut). Bursts accumulate rather than replace. One `InstancedMesh`, and the update loop stops dead once everything has settled, so the resting state costs a single draw call.
 5. "Relight the candles" appears as a small text link. Relight = reverse ripple, no sound. Lets them film it again.
 
 ---

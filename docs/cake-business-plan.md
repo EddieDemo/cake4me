@@ -64,7 +64,7 @@ Ship with birthday plus two more (Christmas by November, anniversary). Add one p
 Effort is the second costly signal (3.5), so the sender should be able to *make* the cake, not just pick it. But free-form painting produces ugly cakes with our name on them, and paint strokes can't live in a URL. So decoration is a designed system, not a canvas: zones coloured from curated palettes; decorations (sprinkles, piped rosettes, strawberries, chocolate curls) placed from a set we've drawn, snapping to sensible positions; every combination looks good by construction. Think Nike By You, not MS Paint. Each choice is one or two small numbers in the link.
 
 - **v1 (launch):** frosting colour, filling colour, candle colour. Three dropdowns, three numbers.
-- **v2:** the decorator proper, launched with its own video once people have cakes to compare against.
+- **v2:** the decorator proper, launched with its own video once people have cakes to compare against. The choice set to build toward: **candle style** (plain / striped / spiral / tapered / number candles / sparklers), **confetti colour** (or themed sets), **background colour** (currently derived from the frosting — letting the sender set it changes the whole feel of a cake for no rendering cost), alongside the decorations themselves.
 - **Later tier:** square "Tray Bake" cut into a 12-square grid (different slicing animation and count), not a shape toggle.
 - **Always:** the recipient is told. A line such as "Hollie decorated this cake herself", or the effort is invisible and the signal is wasted.
 

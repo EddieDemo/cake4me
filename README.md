@@ -1,37 +1,54 @@
-# Cake — v0.13
+# Cake — v0.16.1
 
-## 1. Zoom range
-`ZOOM` is **0.64 – 2.4** (v0.12 was 0.45 – 1.7). Smaller is closer.
+Same code as v0.16. The only change is docs: **candlelight as the real light source** is now its own
+entry in the feature list (`docs/cake-build-plan.md`) with a full write-up in `docs/cakeAesthetics.md`
+— progressive dimming as candles go out, near-darkness for the beat, brightening again on relight,
+plus the two things that need care (non-linear intensity scaling, and keeping the side message from
+vanishing into shadow).
 
-0.64 sits halfway between the old too-close 0.45 and the 0.82 first tried here: the cake overfills
-the frame enough to read the frosting and the message clearly, without being inside it. 2.4 pulls
-back noticeably further than before.
+---
 
-## 2. Two-finger rotate was inverted
-Left thumb up, right thumb down is a clockwise twist of the hand, and it was turning the cake
-anticlockwise. Sign flipped. The cause is worth remembering for anything else on this axis:
-**rolling the camera one way makes the scene appear to roll the other**, so the intuitive mapping
-is the opposite of the one that looks right in the code.
+# Cake — v0.16 (background colour)
 
-## 3. The coast wasn't clamped — the decay was eating it
-There was no speed limit. What made a hard flick feel capped was **exponential decay**
-(`SPIN.drag` 2.1/s): it sheds the biggest speeds fastest, so a 15 rad/s flick was down to 1.8
-within a second. You never saw the speed you'd put in.
+## Background is now the sender's choice
+You were right that deriving it from the frosting washes the cake out — everything matched, so
+nothing stood out. There's a **Background** row in the builder with nine options:
 
-That's now **constant friction** (`SPIN.friction`, 1.4 rad/s²), which is how a real turntable
-behaves: it loses the same 1.4 rad/s every second regardless of how fast it's going. So twice
-the flick spins for twice as long. A 10 rad/s flick coasts for about seven seconds before
-settling back to the ambient orbit; a gentle nudge still settles in under a second.
+`Match the cake` · Cream · Warm grey · Blush · Sky · Mint · **Dusk · Midnight · Ink**
 
-`flingGain` also went 0.35 → 0.5, so more of the gesture survives the release. Tracking while
-your thumb is down is unchanged (`pxPerTurn` still 1600), so the cake is no twitchier to drag.
+The three dark ones are the interesting part: a pastel cake against Midnight pops in a way it
+simply can't against a pastel backdrop, and they're the groundwork for the lighting feature below.
 
-One number to tune if it's still not right: **`SPIN.friction`**. Lower spins longer.
+**Default for new cakes is Cream**, not "Match the cake".
 
-## Console
-`cake.debug()` now reports `twist` (the raw held value) alongside `roll` (what the camera is
-actually doing). They're the same number a frame apart — useful when a gesture appears to do
-nothing and you want to know whether the input or the output is at fault.
+### Backwards compatibility
+`bg` is a **new field appended to the link schema**, so every link sent before today still decodes
+— with `bg` missing, it falls to index 0, "Match the cake", which is exactly the behaviour those
+cakes always had. Verified against a hand-built v0.15-format link. A typical link is now 99
+characters including the `#`.
+
+### Two knock-on adjustments
+- **The shadow fades on dark backdrops.** A dark contact shadow on a dark floor is just a smudge,
+  so its opacity now scales with the backdrop's luminance as well as the camera elevation.
+- **The sheet stops assuming a light page** (`body.dark-bg`), so the controls stay readable.
+
+### The "Match the cake" swatch previews itself
+It shows the gradient it would actually produce, and updates when you change the frosting — with a
+dashed inner ring so it reads as automatic rather than as a colour.
+
+## Lighting feature: written up, not built
+Added to `docs/cakeAesthetics.md` (new "Tier B+" section) and the build plan's post-launch list.
+
+Ambient strength from daylight to near-dark, at which point the flames become the main light source
+— `candleLight` already tracks the lit count, so in a dark scene **blowing the candles out visibly
+darkens the cake**. That's free drama we currently discard by keeping the room bright.
+
+Spotlight presets including the sweeping film-premiere searchlights. The note worth reading before
+building it: **a `SpotLight` is invisible in air** — it lights surfaces but casts no visible shaft.
+The beam needs its own additive, depth-write-off cone mesh parented to the light. That's the whole
+trick, and it's why "just add a spotlight" doesn't produce the effect you're picturing.
+
+Suggested schema fields when it's built: `li` (preset) and `ls` (strength), appended like `bg`.
 
 ## docs/
 Business plan, build plan, feel spec, aesthetics notes, serverless mitigations.

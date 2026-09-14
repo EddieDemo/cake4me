@@ -234,7 +234,15 @@ Keep it soft. Anyone technical can bypass this at $5 and that's fine.
 1. Christmas cake skin (mid-November)
 2. Showstopper (3 tiers, sparklers, 24 slices, £24.99) and The Absurd (5 tiers, fireworks, 48 slices, £99), each launched with its own video
 3. The decorator: curated decorations placed from a set, zone colours, "decorated by Hollie" line; then premium decorations
-4. Number candles, more skins per occasion, full sound palette
+4. **Personalisation set** (the sender's palette of choices; candle colour already shipped in v0.2):
+   - **Candle style** — plain, striped, spiral, tapered, birthday-number candles ("4" + "7"), sparklers for the upper tiers. One or two ints in the link; geometry/texture swap per style.
+   - **Confetti colour** — currently derived from the cake's own palette. Let the sender pick, or offer themed sets (gold, pastel, monochrome, single-colour).
+   - ~~**Background colour**~~ — **shipped in v0.16**: 9 options including three dark backdrops, plus "Match the cake" (index 0) which preserves the old derived-from-frosting behaviour for links sent before it existed.
+   - **Lighting strength** — an ambient slider from daylight to near-dark.
+   - **Candlelight as the real light source** — at low ambient the flames light the cake. The point light already tracks the lit count, so the scene dims progressively as candles go out, the last one leaves the cake nearly dark (which finally gives the 500ms beat something to be), and relighting brightens it back up. Nearly free; needs a dark background to mean anything, and the message on the side may need a lift so it doesn't vanish into shadow.
+   - **Spotlights** — presets from single hard key to warm three-point to slowly sweeping film-premiere searchlights. Note before building: a `SpotLight` is invisible in air, so the visible beam needs its own additive cone mesh.
+   - Full write-up of all three in `cakeAesthetics.md` (Tier B+).
+   - More skins per occasion, full sound palette
 5. Bundles (3 and 10 Classics), office occasions, Tray Bake square tier (12-square grid slicing)
 6. Anything needing a server: photos on the frosting, voice notes, scheduled delivery, signed links
 

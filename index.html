@@ -13,7 +13,6 @@
   <!-- v0.9: the cake (and the box) are objects you hold — spin, tilt, twist. No hash = builder. Hash = viewer. -->
   <main class="stage">
     <canvas id="cake" aria-label="A birthday cake"></canvas>
-    <canvas id="confetti" aria-hidden="true"></canvas>
 
     <!-- Ceremony label (sender, on the lid) -->
     <div class="lid-label" id="lid-label" hidden>
@@ -21,11 +20,9 @@
       <span id="lid-from">from Eddie</span>
     </div>
 
-    <!-- Viewer chrome (recipient) -->
-    <header class="viewer-head" id="viewer-head" hidden>
-      <h1 id="vh-title">Happy Birthday</h1>
-      <p id="vh-from"></p>
-    </header>
+    <!-- Viewer chrome removed in v0.14: the cake is occasion-agnostic, so no
+         "Happy Birthday" and no names on screen. `to`/`from` stay in the schema;
+         the plan is a gift tag on the box lid at the gate (see docs). -->
 
     <!-- Builder (sender) -->
     <section class="sheet" id="builder" aria-label="Make a cake">
@@ -72,6 +69,10 @@
         <div class="field">
           <div class="row-label">Candles</div>
           <div class="swatches" id="sw-cc"></div>
+        </div>
+        <div class="field">
+          <div class="row-label">Background</div>
+          <div class="swatches" id="sw-bg"></div>
         </div>
       </div>
       <div class="sheet-foot">
