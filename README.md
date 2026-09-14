@@ -1,51 +1,57 @@
-# Cake — v0.19
+# Cake — v0.20 (confetti that actually tumbles)
 
-## 1. Message colour
-New `tc` field with a **Text** sub-tab under Colours. Index 0 is `Auto`, which keeps the old
-behaviour of picking dark or light from the frosting's luminance; the Auto swatch previews the
-colour it would actually choose.
+You were right that it looked wrong, and the honest diagnosis is that the previous version already
+had orientation-coupled drag and lift — the physics was nominally there, it just wasn't reading.
+Three reasons, all now fixed.
 
-Low-contrast combinations aren't blocked — it's their cake — but the note under the row says so:
-"Low contrast — this may be hard to read on the cake". Contrast is a WCAG-style ratio against the
-frosting, under 2.2 triggers it.
+## 1. The air never drove the rotation
+Orientation affected the forces, but the forces never affected orientation, so rotation and
+translation ran alongside each other and never talked. That's exactly what "everything falls the
+same way" looks like.
 
-## 2. Descenders and ascenders no longer clip
-The text was being fitted and centred on the **em box** with `textBaseline: 'middle'`, and
-Pacifico's ascenders and descenders overshoot its em box considerably — so a `y` tail ran off the
-bottom of the band.
+There's now **aerodynamic torque**: the centre of pressure on a flat plate sits ahead of its centre
+of mass, so airflow twists the piece toward edge-on, it overshoots, flips, and the cycle repeats.
+Torque axis is `normal × velocity`, magnitude scaled by speed and angle of attack. That feedback
+loop is what produces the rock-flip-rock of real paper.
 
-It now measures real ink extents (`actualBoundingBoxAscent` / `Descent`), fits the block of ink to
-the band, and positions by the **baseline**. There's a fallback for engines without ink metrics.
-It also shrinks the text a little further on the Showstopper, whose bottom band is shorter than
-the Classic's — which is correct, and is what was clipping worst.
+## 2. The tumble was being damped to nothing
+`spinDamp` was 0.55, so within a second or two pieces had stopped turning. It's now 0.16 — light,
+because paper keeps tumbling until it lands. Measured across a burst: median spin holds around
+3.7–4.8 rad/s the whole way down instead of decaying to zero.
 
-## 3. The cake is pinned, and doesn't move between trays
-`measureUiReserve()` measures every tray's height straight from the DOM — briefly un-hiding each
-to measure it — takes the **tallest**, adds the chip row and CTA, and offsets the camera's look-at
-so the cake lands in the centre of the remaining free space.
+## 3. Drag was too high for lift to do anything
+`dragFlat` was 3.1, high enough that pieces hit terminal velocity within a few frames. Lift scales
+with speed, so there was nothing left to push them sideways. Now 1.15, and lift raised to 3.4.
 
-Nothing is hardcoded, so this survives the UI changing. Verified: the camera's Y is identical with
-the Cake tray open and with the (taller) Message tray open. Recomputed on resize and orientation
-change.
+## Also added
+- **Quaternion orientation with a free angular-velocity vector**, rather than Euler increments, so
+  the spin axis itself precesses and tumbling looks irregular instead of turning about one fixed
+  axis forever.
+- **Three fall archetypes**, mixed per burst: `flutter` (rocks side to side, strong torque
+  response — the classic falling leaf, 46%), `tumble` (continuous end-over-end with a steady
+  sideways drift, 34%), `autorotate` (spins about its own face normal and descends in a slow
+  helix, like a sycamore seed, 20%). Real confetti shows all three at once and that variety is
+  most of what sells it.
+- **Per-piece mass variation** (0.75–1.35), so terminal velocities differ. Without it the burst
+  descends as one uniform curtain. Measured speed spread grows from 1.3 to 3.8 during a fall.
+- **One shared, slowly-varying air current**, so the cloud drifts and swirls together rather than
+  being 200 independent particles. Drag and lift are computed against velocity *relative to the
+  air*, not absolute velocity.
 
-## 4. Focus ring clipping — not a render-order problem
-The swatch row is a horizontal scroller, and `overflow-x: auto` forces `overflow-y` to clip as
-well. The selected swatch's ring was simply being cut off by the scroll container. Fixed with
-padding inside the scroller and compensating negative margin.
+## Two guards this needed
+A torque feedback loop plus lift is not unconditionally stable, and both failure modes would land
+on a real phone:
 
-## 5. The "your cake is ready" screen
-- **The cake no longer bursts out of the box.** `BOX.half` was a constant 2.62 while the
-  Showstopper's bottom tier is 2.7, so it pushed straight through the side. The box is now sized
-  from the widest tier of the actual cake, with the box camera framing widened to match. It only
-  ever affected the Showstopper, as you guessed.
-- **The gift tag stopped jittering.** It was being projected from the lid's 3D position every
-  frame, so it inherited the box's rotation and the camera easing. It's now pinned top-centre in
-  screen space and the scene can't touch it.
-- **Floating UI**, matching everywhere else: no card, link as a pill, actions as chips.
+- **A piece could hover forever.** One in 160 did, in testing — which would leave the whole update
+  loop running indefinitely and drain battery, since it only stops when everything has settled.
+  Gravity now ramps up from 7s and horizontal motion is bled off at 12s, so everything lands.
+  Verified: all 160 pieces settle on all three tiers.
+- **Angular velocity is unbounded**, since torque only ever adds. Capped at 13 rad/s.
 
-## Compatibility
-`tc` appends after `rc`. A 9-field link from before either field existed still decodes, coming
-back with `bg: 0`, `rc: 0`, `tc: 0` — exactly what those cakes rendered. Links are 98 characters.
+## Tuning
+`CONFETTI { gravity, dragFlat, dragEdge, lift, torque, spinDamp, spin, maxSpin, wind, settleMs,
+forceMs, streamMs, marginY }` · `FALL[]` for the archetype mix.
+Console: `cake.confetti()` for counts, `cake.confettiRaw()` for per-piece state.
 
 ## docs/
 Business plan, build plan, feel spec, aesthetics notes, serverless mitigations.

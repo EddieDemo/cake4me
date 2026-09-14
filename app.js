@@ -1488,14 +1488,37 @@
     size: 0.15,          // width of a piece
     thick: 0.012,        // real thickness: a flat quad vanishes edge-on
     gravity: 5.4,
-    dragFlat: 3.1,       // drag when the piece is broadside to its own motion
-    dragEdge: 0.35,      // drag when it's slicing edge-first
-    lift: 2.3,           // sideways force from angle of attack — this is the zigzag
-    spin: 9,             // tumble rate, rad/s
-    spinDamp: 0.55,      // tumble slows as it falls
+    dragFlat: 1.15,      // broadside drag. Was 3.1 — high enough that pieces hit terminal
+                         // velocity in a few frames, and since lift scales with speed there
+                         // was nothing left to push them sideways.
+    dragEdge: 0.16,      // edge-on: it slices
+    lift: 3.4,           // sideways force from angle of attack
+    torque: 5.2,         // AERODYNAMIC TORQUE — the air drives the flipping, not just resists it
+    spinDamp: 0.16,      // light. Paper keeps tumbling until it lands.
+    spin: 7,             // initial tumble, rad/s
+    wind: 0.5,           // amplitude of the shared, slowly-varying air current
+    maxSpin: 13,         // rad/s — torque feedback is unbounded, so cap it
+    settleMs: 7000,      // after this, gravity ramps up so nothing can hover forever
+    forceMs: 12000,      // hard stop: drop it straight down
     streamMs: 420,       // spawn spread over time, so it streams in rather than popping
     marginY: 1.2         // extra height above the top of frame
   };
+
+  // Fall archetypes. Real confetti shows all of these at once, and that variety is most
+  // of what makes it read as paper rather than particles.
+  //   flutter   — rocks side to side, strong torque response, the classic falling leaf
+  //   tumble    — turns end over end continuously and drifts steadily one way
+  //   autorotate— spins about its own axis and descends in a slow helix (sycamore seed)
+  var FALL = [
+    { name: 'flutter',    w: 0.46, torque: 1.35, spinDamp: 1.0,  drag: 1.0,  seed: 0.6 },
+    { name: 'tumble',     w: 0.34, torque: 0.55, spinDamp: 0.55, drag: 0.85, seed: 1.7 },
+    { name: 'autorotate', w: 0.20, torque: 0.30, spinDamp: 0.25, drag: 1.25, seed: 2.4 }
+  ];
+  function pickFall() {
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < FALL.length; i++) { acc += FALL[i].w; if (r <= acc) return FALL[i]; }
+    return FALL[0];
+  }
   var confettiGeo = new THREE.BoxGeometry(CONFETTI.size, CONFETTI.thick, CONFETTI.size * 1.5);
   // vertexColors (needed below) makes the shader multiply by the geometry's `color`
   // attribute as well as instanceColor. BoxGeometry has no `color`, so it defaults to
@@ -1562,9 +1585,13 @@
     for (var i = 0; i < count; i++) {
       var piece;
       if (confettiPieces.length < CONFETTI.max) {
-        piece = { p: new THREE.Vector3(), v: new THREE.Vector3(), rot: new THREE.Euler(),
-                  rv: new THREE.Vector3(), phase: 0, resting: false, col: new THREE.Color(),
-                  sx: 1, sz: 1, delay: 0, born: 0 };
+        piece = { p: new THREE.Vector3(), v: new THREE.Vector3(),
+                  // Orientation as a quaternion with a free angular-velocity vector, not
+                  // Euler increments: the spin axis can precess, so tumbling looks
+                  // irregular instead of turning about one fixed axis forever.
+                  q: new THREE.Quaternion(), w: new THREE.Vector3(),
+                  rot: new THREE.Euler(), phase: 0, resting: false, col: new THREE.Color(),
+                  sx: 1, sz: 1, delay: 0, born: 0, mass: 1, fall: FALL[0] };
         confettiPieces.push(piece);
       } else {
         // Recycle the oldest settled piece so repeated bursts accumulate without growing.
@@ -1578,8 +1605,18 @@
       var rr = spread * Math.sqrt(Math.random());
       piece.p.set(Math.sin(a) * rr, top + Math.random() * 2.4, Math.cos(a) * rr);
       piece.v.set((Math.random() - 0.5) * 1.6, -0.3 - Math.random() * 0.7, (Math.random() - 0.5) * 1.6);
-      piece.rot.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
-      piece.rv.set((Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin, (Math.random() - 0.5) * CONFETTI.spin);
+      piece.q.setFromEuler(_e.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28));
+      piece.w.set((Math.random() - 0.5) * CONFETTI.spin,
+                  (Math.random() - 0.5) * CONFETTI.spin,
+                  (Math.random() - 0.5) * CONFETTI.spin);
+      piece.fall = pickFall();
+      if (piece.fall.name === 'autorotate') {
+        // Autorotators spin mostly about their own face normal.
+        piece.w.set((Math.random() - 0.5) * 1.2, (6 + Math.random() * 5) * (Math.random() < 0.5 ? -1 : 1), (Math.random() - 0.5) * 1.2);
+      }
+      // Slight mass variation so terminal velocities differ — without it the whole burst
+      // descends as one uniform curtain.
+      piece.mass = 0.75 + Math.random() * 0.6;
       piece.phase = Math.random() * 6.28;
       piece.resting = false;
       // Mixed stock, like a real handful: squares, long strips, a few big flakes.
@@ -1600,7 +1637,7 @@
     for (var i = 0; i < confettiPieces.length; i++) {
       var c = confettiPieces[i];
       _dummy.position.copy(c.p);
-      _dummy.rotation.copy(c.rot);
+      _dummy.quaternion.copy(c.q);
       _dummy.scale.set(c.sx, 1, c.sz);
       // Not yet released: park it at zero scale rather than showing it waiting.
       if (c.delay > 0 && performance.now() - c.born < c.delay) _dummy.scale.set(0, 0, 0);
@@ -1622,66 +1659,104 @@
     return (yTo <= 0) ? 0 : null;
   }
 
-  // Orientation-coupled aerodynamics. The reason real confetti zigzags is that its drag
-  // depends on which way it's facing: broadside it's slowed hard and pushed sideways,
-  // edge-on it slices. Coupling drag and lift to the angle between the piece's face
-  // normal and its own velocity produces the falling-leaf path for free — you can't get
-  // it from a sine-wave sway, which is what the old version used.
-  var _n = new THREE.Vector3(), _q = new THREE.Quaternion(), _vn = new THREE.Vector3(),
-      _liftDir = new THREE.Vector3(), _e = new THREE.Euler();
+  // Orientation-coupled aerodynamics with feedback.
+  //
+  // The previous version had drag and lift depending on orientation, but nothing the
+  // other way round: the forces never changed how the piece was facing. Real falling
+  // paper is a loop — it presents a face to the air, that generates a TORQUE about its
+  // centre of pressure, the torque flips it, the new orientation changes the force, and
+  // round it goes. That loop is what produces the rock-flip-rock of real confetti, and
+  // without it rotation and translation just run alongside each other, which reads as
+  // "everything falls the same way".
+  var _n = new THREE.Vector3(), _vn = new THREE.Vector3(), _liftDir = new THREE.Vector3(),
+      _torque = new THREE.Vector3(), _e = new THREE.Euler(), _dq = new THREE.Quaternion(),
+      _wq = new THREE.Quaternion(), _air = new THREE.Vector3();
+
+  // One shared, slowly-varying air current. Cheap, and it makes the burst behave like a
+  // cloud in a room rather than 200 independent particles.
+  function airAt(t) {
+    _air.set(
+      Math.sin(t * 0.31) * 0.6 + Math.sin(t * 0.13 + 1.7) * 0.4,
+      Math.sin(t * 0.21 + 0.6) * 0.18,
+      Math.cos(t * 0.27 + 2.1) * 0.6 + Math.cos(t * 0.11) * 0.4
+    );
+    return _air.multiplyScalar(CONFETTI.wind);
+  }
 
   function updateConfetti(dt, t) {
     if (!confettiActive) return;
     var now = performance.now();
     var moving = 0;
+    var air = airAt(t);
     for (var i = 0; i < confettiPieces.length; i++) {
       var c = confettiPieces[i];
       if (c.resting) continue;
       moving++;
       if (c.delay > 0 && now - c.born < c.delay) continue;     // not released yet
 
+      var fall = c.fall;
+
       // Face normal in world space (the piece is a flat slab in its own XZ plane).
-      _q.setFromEuler(c.rot);
-      _n.set(0, 1, 0).applyQuaternion(_q);
+      _n.set(0, 1, 0).applyQuaternion(c.q);
 
-      var speed = c.v.length();
+      // Velocity relative to the moving air is what the piece actually feels.
+      _vn.copy(c.v).sub(air);
+      var speed = _vn.length();
+
       if (speed > 0.0001) {
-        _vn.copy(c.v).multiplyScalar(1 / speed);
-        // |cos| between face normal and travel: 1 = broadside, 0 = edge-on.
-        var face = Math.abs(_n.dot(_vn));
-        var cd = CONFETTI.dragEdge + (CONFETTI.dragFlat - CONFETTI.dragEdge) * face;
-        // Quadratic drag, opposing motion.
-        var dmag = cd * speed * speed * dt;
-        c.v.addScaledVector(_vn, -Math.min(speed, dmag));
+        _vn.multiplyScalar(1 / speed);
+        var dotNV = _n.dot(_vn);
+        var face = Math.abs(dotNV);                 // 1 = broadside, 0 = edge-on
 
-        // Lift: perpendicular to travel, in the plane containing the face normal.
-        // Peaks at 45° angle of attack, vanishes broadside and edge-on — that's what
-        // makes it slide sideways then flip and slide back.
-        var aoa = face * (1 - face) * 4;                        // 0..1, peak at face=0.5
-        _liftDir.copy(_n).addScaledVector(_vn, -_n.dot(_vn));   // component ⟂ to velocity
+        // Drag, quadratic, scaled by how much area is presented.
+        var cd = (CONFETTI.dragEdge + (CONFETTI.dragFlat - CONFETTI.dragEdge) * face) * fall.drag / c.mass;
+        c.v.addScaledVector(_vn, -Math.min(speed, cd * speed * speed * dt));
+
+        // Lift perpendicular to travel, peaking at ~45° angle of attack.
+        var aoa = face * (1 - face) * 4;
+        _liftDir.copy(_n).addScaledVector(_vn, -dotNV);
         if (_liftDir.lengthSq() > 1e-6) {
           _liftDir.normalize();
-          var sign = _n.dot(_vn) > 0 ? -1 : 1;
-          c.v.addScaledVector(_liftDir, sign * CONFETTI.lift * aoa * speed * dt);
+          c.v.addScaledVector(_liftDir, (dotNV > 0 ? -1 : 1) * CONFETTI.lift * aoa * speed * dt / c.mass);
         }
+
+        // AERODYNAMIC TORQUE. The centre of pressure sits ahead of the centre of mass on
+        // a flat plate, so the air twists it toward edge-on — it overshoots, flips, and
+        // the cycle repeats. Torque axis is normal × velocity.
+        _torque.crossVectors(_n, _vn).multiplyScalar(
+          CONFETTI.torque * fall.torque * speed * dotNV * dt / c.mass
+        );
+        c.w.add(_torque);
       }
 
-      c.v.y -= CONFETTI.gravity * dt;
+      // Lift with a torque feedback loop can, occasionally, keep one piece hovering
+      // indefinitely — which would leave this whole loop running forever on someone's
+      // phone. Age ramps gravity up so everything lands eventually.
+      var age = now - c.born;
+      var extraG = age > CONFETTI.settleMs
+        ? 1 + 2.5 * Math.min(1, (age - CONFETTI.settleMs) / (CONFETTI.forceMs - CONFETTI.settleMs))
+        : 1;
+      c.v.y -= CONFETTI.gravity * extraG * dt;
+      if (age > CONFETTI.forceMs) { c.v.x *= 0.9; c.v.z *= 0.9; }
       var yPrev = c.p.y;
       c.p.addScaledVector(c.v, dt);
 
-      // Tumble, slowing as it goes; broadside pieces are damped harder (air resists the flip).
-      var damp = Math.max(0, 1 - CONFETTI.spinDamp * dt * (0.5 + Math.abs(_n.y)));
-      c.rv.multiplyScalar(damp);
-      c.rot.x += c.rv.x * dt; c.rot.y += c.rv.y * dt; c.rot.z += c.rv.z * dt;
+      // Integrate the quaternion from the angular-velocity vector.
+      var wlen = c.w.length();
+      if (wlen > 0.0001) {
+        _wq.setFromAxisAngle(_torque.copy(c.w).multiplyScalar(1 / wlen), wlen * dt);
+        c.q.premultiply(_wq).normalize();
+      }
+      c.w.multiplyScalar(Math.max(0, 1 - CONFETTI.spinDamp * fall.spinDamp * dt));
+      var wl = c.w.length();
+      if (wl > CONFETTI.maxSpin) c.w.multiplyScalar(CONFETTI.maxSpin / wl);
 
       var land = landingFor(c.p.x, c.p.z, yPrev, c.p.y);
       if (land !== null) {
         c.p.y = land + CONFETTI.thick * 0.5 + 0.002;
-        // Slide a little on impact rather than stopping dead where it hit.
-        c.p.x += c.v.x * 0.04;
+        c.p.x += c.v.x * 0.04;                       // a little slide on impact
         c.p.z += c.v.z * 0.04;
-        c.rot.set((Math.random() - 0.5) * 0.24, Math.random() * 6.28, (Math.random() - 0.5) * 0.24);
+        c.q.setFromEuler(_e.set((Math.random() - 0.5) * 0.24, Math.random() * 6.28, (Math.random() - 0.5) * 0.24));
         c.resting = true;
         moving--;
       }
@@ -2130,6 +2205,13 @@
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil) }; },
     PIXEL: PIXEL,
+    confettiRaw: function () {
+      return confettiPieces.slice(0, 200).map(function (c) {
+        return { fall: c.fall.name, resting: c.resting,
+                 p: [+c.p.x.toFixed(2), +c.p.y.toFixed(2), +c.p.z.toFixed(2)],
+                 w: +c.w.length().toFixed(2), v: +c.v.length().toFixed(2) };
+      });
+    },
     confetti: function () { return { count: confetti.count, active: confettiActive, resting: confettiPieces.filter(function (c) { return c.resting; }).length }; },
     debug: function () { return { azimuth: +camAzimuth.toFixed(2), omega: +omega.toFixed(2), elev: +camElev.toFixed(1), roll: +camRoll.toFixed(3), twist: +bankZ.toFixed(3), zoom: +camZoom.toFixed(2), dragging: dragging, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
     blowAll: function () { for (var i = 0; i < flames.length; i++) extinguish(flames[i], 0, -1); }
