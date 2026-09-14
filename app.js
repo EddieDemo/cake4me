@@ -734,7 +734,7 @@
   var camAzimuth = 0;            // radians, around Y
   var camRoll = 0;               // radians, about the view axis
   var camZoom = 1;               // multiplier on the framed distance (smaller = closer)
-  var ZOOM = { min: 0.45, max: 1.7 };
+  var ZOOM = { min: 0.64, max: 2.4 };   // smaller = closer. 0.64 = halfway between v0.12 (0.45) and v0.13 (0.82).
   // Radius the camera frames to. Cake: two-tier r=2.5 plus air (bigger number = smaller cake).
   // Box: its corner diagonal, or the lid gets cropped on a narrow phone.
   var FRAME = { cake: 3.3, box: 4.5 };
@@ -1032,11 +1032,11 @@
   var SPIN = {
     idle: (Math.PI * 2) / ROTATION_SECONDS_PER_TURN,   // ambient, rad/s (~0.26)
     max: Infinity,                                     // no cap: flick it as hard as you like
-    drag: 2.1,                                         // coast decay, per second
+    friction: 1.4,                                     // rad/s² — constant deceleration, like a real turntable
     blowAt: 1.9,                                       // wind starts to bite, rad/s
     blowFull: 5.5,                                     // a wave every ~120ms up here
     pxPerTurn: 1600,                                   // thumb travel for one full turn (higher = heavier)
-    flingGain: 0.35,                                   // how much of the smoothed release velocity is kept
+    flingGain: 0.5,                                    // how much of the smoothed release velocity is kept
     velSmoothMs: 80                                    // window the release velocity is averaged over
   };
   // Tilt (X) and twist (Z) are held, not sprung: they stay where the user leaves them.
@@ -1084,10 +1084,15 @@
   function updateSpin(now, dt) {
     // Drag sets omega directly (see the pointer handlers). Otherwise coast toward idle.
     if (!dragging) {
+      // Constant deceleration toward the ambient orbit, not exponential decay.
+      // Exponential sheds big speeds almost instantly, which is what made a hard
+      // flick feel like it was being clamped. With friction, twice the speed coasts
+      // for twice as long, which is how a real turntable behaves.
       var target = SPIN.idle;
-      var k = 1 - Math.exp(-SPIN.drag * dt);
-      omega += (target - omega) * k;
-      if (Math.abs(omega - target) < 0.004) omega = target;
+      var diff = omega - target;
+      var step = SPIN.friction * dt;
+      if (Math.abs(diff) <= step) omega = target;
+      else omega -= Math.sign(diff) * step;
     }
     if (!isFinite(omega)) omega = SPIN.idle;           // only guard left: never let NaN in
     // The camera orbits; the cake never moves. Negative so a rightward drag still
@@ -1197,7 +1202,9 @@
           var d = ang - pinchPrev;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          bankZ = Math.max(TWIST.min, Math.min(TWIST.max, bankZ - d));
+          // Twisting the hand clockwise should turn the cake clockwise. Rolling the
+          // camera one way makes the scene appear to roll the other, hence the sign.
+          bankZ = Math.max(TWIST.min, Math.min(TWIST.max, bankZ + d));
         }
         if (sp !== null && spanPrev) {
           camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, camZoom * (spanPrev / sp)));
@@ -1654,7 +1661,7 @@
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
-    debug: function () { return { azimuth: +camAzimuth.toFixed(2), omega: +omega.toFixed(2), elev: +camElev.toFixed(1), roll: +camRoll.toFixed(3), zoom: +camZoom.toFixed(2), dragging: dragging, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
+    debug: function () { return { azimuth: +camAzimuth.toFixed(2), omega: +omega.toFixed(2), elev: +camElev.toFixed(1), roll: +camRoll.toFixed(3), twist: +bankZ.toFixed(3), zoom: +camZoom.toFixed(2), dragging: dragging, lit: litCount(), state: document.body.getAttribute('data-vstate') }; },
     blowAll: function () { for (var i = 0; i < flames.length; i++) extinguish(flames[i], 0, -1); }
   };
 })();
