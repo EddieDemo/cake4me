@@ -10,5 +10,6 @@ it forward.
 | `cake-build-plan.md` | The phased build. Ground rules, workflow, Phase 0–7 with a "done when" for each, and what's deliberately not in v1. Status notes record where we've got to. |
 | `cake-feel-spec.md` | The four moments (sending, receiving, cutting, receiving a slice) with easings, timings, sound cues and mobile constraints. Superseded sections are marked, not deleted. |
 | `cakeAesthetics.md` | Parked: how to make the render less flat. Lighting tiers, materials, sprinkles/drips/rosettes, the clay-vs-realistic decision, performance budget. |
+| `cake-serverless-mitigations.md` | Parked: what happens when a paid link gets shared or forged, and the serverless options for each. Signed links, open counting, slice ledger, platform free tiers, and a recommended sequence (which starts with "do nothing"). |
 
 Reading order for a cold start: business plan §1–3, then build plan, then feel spec.

@@ -147,7 +147,14 @@ Goal: it is a gift, small but complete. This page carries the business.
 - `100dvh`, not `100vh`. `overscroll-behavior: none`. `touch-action: none` on the canvas. `-webkit-tap-highlight-color: transparent`. `user-select: none` on interactive text.
 - `devicePixelRatio` capped at 2. Flames as sprites. Candles share one geometry and material. No shadows, no post-processing, one point light + one directional + ambient.
 - Confetti on a 2D canvas overlay, never in three.js. Show the overlay before measuring it — a hidden canvas measures zero.
-- No plate. A soft contact-shadow disc does the grounding; camera elevation is 36°.
+- No plate. A soft contact-shadow disc does the grounding; camera elevation rests at 36°.
+- **Nothing on screen is ever rotated.** The camera orbits; the cake and the box stay put and upright, so gravity looks right at every angle. One rig, four controls:
+  - one-finger horizontal drag → azimuth, with momentum, decaying back to the ambient orbit
+  - one-finger vertical drag → elevation, fully side-on (2°) to fully top-down (88°), the whole 90° in one swipe of 80% of the canvas height
+  - two-finger rotate → camera roll, ±25°
+  - two-finger pinch → zoom, 0.45×–1.7× of the framed distance, always centred on the cake
+  Elevation, roll and zoom are held, not sprung. Only the orbit decays.
+- The "wind" that blows the candles out is still driven by orbit speed. Nothing is physically moving the air; it's a toy and it reads fine.
 - Audio: one `AudioContext` created on the open tap; all buffers decoded once; a single mute toggle.
 - No vibration API on iOS Safari. Don't design around haptics.
 - Anything requiring `getUserMedia` must have a swipe fallback that is visibly primary.
