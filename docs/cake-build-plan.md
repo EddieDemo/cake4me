@@ -189,6 +189,8 @@ Deploy first. Push to GitHub Pages so you have an `https://` URL on your phone.
 
 **Feel pass (moments 3 and 4):** cut and lift per the feel spec; slice arrival as its own small ceremony. The slice page carries the business, so it gets the same care as the cake.
 
+*Status: v0.23 (18 Sept) implements Phase 4 end to end — wedges per tier (top tier cut first), tap-to-cut with raycasting, lift onto a plate toward the viewer, filling reveal on the cut faces, the message band carried across wedges by per-wedge texture offsets, slice links (`&s=&b=&n=&sb=`), `localStorage` persistence of gone slices, the slice recipient page with one candle and the blow mechanic, and the **slice-back-to-sender acknowledgement** (first suggestion; the sender's page reads "They blew out the candles — your cake landed" and offers next year's reminder). Decisions: tap-a-wedge rather than a knife drag for v1; the message shown as text on the slice page; spent candles vanish when cutting begins. Knife drag and the moment-3/4 feel pass still to do.*
+
 ---
 
 ## Phase 5 — Polish and share surface (day 6–8)

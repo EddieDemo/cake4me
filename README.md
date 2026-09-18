@@ -1,57 +1,60 @@
-# Cake — v0.20 (confetti that actually tumbles)
+# Cake — v0.23 (Phase 4: cut the cake, send slices)
 
-You were right that it looked wrong, and the honest diagnosis is that the previous version already
-had orientation-coupled drag and lift — the physics was nominally there, it just wasn't reading.
-Three reasons, all now fixed.
+The loop, built.
 
-## 1. The air never drove the rotation
-Orientation affected the forces, but the forces never affected orientation, so rotation and
-translation ran alongside each other and never talked. That's exactly what "everything falls the
-same way" looks like.
+## Cutting
+- **"Cut the cake"** clears the spent candles and replaces the cake with wedges: 8 per tier, so
+  8 / 16 / 24. Faint seams on top. **Tap a wedge to lift it** (raycast on a tap, never on a drag,
+  so the cake stays spinnable). The top tier cuts first — a bottom wedge with a tier resting on it
+  makes no sense.
+- The wedge lifts up and over onto a small plate that slides in **toward the viewer**, whichever way
+  the camera happens to be facing, with a decaying wobble and a squash on landing.
+- **The filling shows on both cut faces** — the second reveal, and the sender's secret.
+- **The message survives cutting.** Each bottom-tier wedge carries its arc of the message band via a
+  cloned texture with per-wedge `offset`/`repeat`, so the writing reads continuously round the
+  remaining cake and a lifted wedge carries its fragment.
+- Slices gone are persisted in `localStorage` keyed by the cake's code, so a reopened cake is still
+  missing the slices you gave away. "7 slices left" → "You gave away the whole cake ❤️".
 
-There's now **aerodynamic torque**: the centre of pressure on a flat plate sits ahead of its centre
-of mass, so airflow twists the piece toward edge-on, it overshoots, flips, and the cycle repeats.
-Torque axis is `normal × velocity`, magnitude scaled by speed and angle of attack. That feedback
-loop is what produces the rock-flip-rock of real paper.
+## Sending a slice
+The card under a lifted wedge: an optional name, then **"Send a slice back to Eddie"** as the
+primary (once — it hides after use), then Share / Copy. Slice links are the cake link plus
+`&s=<index>&b=1&n=<name>` (and `&sb=1` when it's going back to the sender). Web Share where it
+exists, clipboard otherwise.
 
-## 2. The tumble was being damped to nothing
-`spinDamp` was 0.55, so within a second or two pieces had stopped turning. It's now 0.16 — light,
-because paper keeps tumbling until it lands. Measured across a burst: median spin holds around
-3.7–4.8 rad/s the whole way down instead of decaying to zero.
+## The slice page
+`#c=…&s=…` renders **one wedge on a plate with one candle** and no cutting further. Header:
+*"Hollie sent you a slice / of the cake Eddie made"*, then the original message as text ("Eddie wrote
+'Happy 30th, love you'"), then "Blow out the candle, or spin it". The same spin/mic/wind mechanic
+works on the single flame; a small confetti burst; then **"Send someone a cake — Cakes from £4.49"**
+with `?src=slice` on the link so slice-to-cake conversion is measurable.
 
-## 3. Drag was too high for lift to do anything
-`dragFlat` was 3.1, high enough that pieces hit terminal velocity within a few frames. Lift scales
-with speed, so there was nothing left to push them sideways. Now 1.15, and lift raised to 3.4.
+## The slice back to the sender — acknowledgement without a server
+When the slice link carries `sb=1`, the sender's page reads *"Hollie sent you a slice / They blew
+out the candles 🎂"*, the lead is **"Your cake landed."**, and the call to action is **"Send Hollie
+another next year"**, which opens the reminder pop-up. That's the loop from the revenue doc, delivered
+by the chat thread instead of an email server, in the same conversation the gift went out in.
 
-## Also added
-- **Quaternion orientation with a free angular-velocity vector**, rather than Euler increments, so
-  the spin axis itself precesses and tumbling looks irregular instead of turning about one fixed
-  axis forever.
-- **Three fall archetypes**, mixed per burst: `flutter` (rocks side to side, strong torque
-  response — the classic falling leaf, 46%), `tumble` (continuous end-over-end with a steady
-  sideways drift, 34%), `autorotate` (spins about its own face normal and descends in a slow
-  helix, like a sycamore seed, 20%). Real confetti shows all three at once and that variety is
-  most of what sells it.
-- **Per-piece mass variation** (0.75–1.35), so terminal velocities differ. Without it the burst
-  descends as one uniform curtain. Measured speed spread grows from 1.3 to 3.8 during a fall.
-- **One shared, slowly-varying air current**, so the cloud drifts and swirls together rather than
-  being 200 independent particles. Drag and lift are computed against velocity *relative to the
-  air*, not absolute velocity.
+## Decisions made here
+- **Tap-a-wedge, not a knife drag.** The drag is polish for the feel pass.
+- **The message is text on the slice page**, not on the wedge — a wedge carries only a fragment.
+- **Spent candles vanish when cutting begins**, rather than persisting per wedge.
 
-## Two guards this needed
-A torque feedback loop plus lift is not unconditionally stable, and both failure modes would land
-on a real phone:
+## Not yet
+The moment-3/4 feel pass from `cake-feel-spec.md` (sounds, knife drag, the plate ceremony timing),
+and the group-chat idea of suggesting the *other* names the sender typed.
 
-- **A piece could hover forever.** One in 160 did, in testing — which would leave the whole update
-  loop running indefinitely and drain battery, since it only stops when everything has settled.
-  Gravity now ramps up from 7s and horizontal motion is bled off at 12s, so everything lands.
-  Verified: all 160 pieces settle on all three tiers.
-- **Angular velocity is unbounded**, since torque only ever adds. Capped at 13 rad/s.
+## Three bugs found on the way
+- `.primary { display: block }` beats the `hidden` attribute, so "Send a slice back" stayed visible
+  after use. Same trap as the swatch rows; now `.primary[hidden] { display: none }`.
+- The slice-page wedge sat beside its plate rather than on it: I offset by the wedge's centroid
+  *before* rotating it, and the centroid moves when you rotate. Rotate first, then offset by where
+  the centroid ended up.
+- Not a bug, but it looked like one: the cut cake appeared to have lost its message. It hadn't —
+  the message is on the back of the cake and the render showed the front.
 
-## Tuning
-`CONFETTI { gravity, dragFlat, dragEdge, lift, torque, spinDamp, spin, maxSpin, wind, settleMs,
-forceMs, streamMs, marginY }` · `FALL[]` for the archetype mix.
-Console: `cake.confetti()` for counts, `cake.confettiRaw()` for per-piece state.
+Verified end to end headlessly: cut → real touch-tap lift → send back → three to a friend →
+persistence → the friend's slice page (candle lit, blow, done) → the sender's slice-back page.
 
 ## docs/
-Business plan, build plan, feel spec, aesthetics notes, serverless mitigations.
+Build plan updated with Phase 4 status. Everything else as before.

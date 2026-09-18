@@ -13,7 +13,7 @@
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0 };
   var PRICES = { 1: '£4.49', 2: '£9.99', 3: '£24.99' };
   var SLICES = { 1: 8, 2: 16, 3: 24 };
 
@@ -88,6 +88,39 @@
     ]
   };
 
+  // Occasions. `rule` says whether and how it recurs, which is what the reminder needs:
+  //   yearly   — recurs on a date the sender tells us (birthday, anniversary)
+  //   fixed    — same date for everyone (Christmas, Valentine's)
+  //   weekday  — nth weekday of a month (Father's Day: 3rd Sunday of June, UK/US/CA)
+  //   becomes  — a one-off that turns into a yearly one (a birth → first birthday; a wedding → anniversary)
+  //   none     — one-off; we offer a birthday reminder for the recipient instead
+  // Mother's Day and Easter move by country/calendar and aren't expressible as a simple rule; skipped.
+  var OCCASIONS = [
+    { name: 'Birthday',        emoji: '🎂', rule: { type: 'yearly' },                     say: 'birthday' },
+    { name: 'Christmas',       emoji: '🎄', rule: { type: 'fixed', m: 12, d: 25 },          say: 'Christmas' },
+    { name: 'Anniversary',     emoji: '💍', rule: { type: 'yearly' },                     say: 'anniversary' },
+    { name: 'New baby',        emoji: '🍼', rule: { type: 'becomes', into: 'first birthday' }, say: 'first birthday' },
+    { name: 'Wedding',         emoji: '💒', rule: { type: 'becomes', into: 'anniversary' }, say: 'anniversary' },
+    { name: "Valentine's",     emoji: '❤️', rule: { type: 'fixed', m: 2, d: 14 },           say: "Valentine's" },
+    { name: "Mother's Day",    emoji: '🌷', rule: { type: 'none' } },
+    { name: "Father's Day",    emoji: '👔', rule: { type: 'weekday', m: 6, wd: 'SU', n: 3 }, say: "Father's Day" },
+    { name: 'Get well',        emoji: '🩹', rule: { type: 'none' } },
+    { name: 'Congratulations', emoji: '🎉', rule: { type: 'none' } },
+    { name: 'Thank you',       emoji: '🙏', rule: { type: 'none' } },
+    { name: 'Just because',    emoji: '✨', rule: { type: 'none' } },
+    { name: 'Graduation',      emoji: '🎓', rule: { type: 'none' } },
+    { name: 'Leaving',         emoji: '👋', rule: { type: 'none' } },
+    { name: 'Halloween',       emoji: '🎃', rule: { type: 'fixed', m: 10, d: 31 },          say: 'Halloween' },
+    { name: 'New Year',        emoji: '🥂', rule: { type: 'fixed', m: 1, d: 1 },            say: 'New Year' }
+  ];
+  var REMIND_LEAD_DAYS = 3;
+  // If the sender never picks an occasion, this is what the cake is sent as. "Just because"
+  // makes no recurrence claim, so the reminder honestly asks for a birthday instead of
+  // inventing an anniversary. (Links decode a missing `o` as Birthday for legacy reasons;
+  // this only applies to a fresh build where nothing was chosen.)
+  var OCCASION_UNCHOSEN = -1;
+  var OCCASION_FALLBACK = 11;   // 'Just because'
+
   var SPONGE = 0xE9C07A;
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
@@ -159,13 +192,15 @@
       // default candle colour produced on those cakes anyway.
       rc: clampInt(c.rc, 0, PALETTES.ribbon.length - 1, 0),
       // Appended after rc. Missing on older links → 0 (Auto), which is what they did.
-      tc: clampInt(c.tc, 0, PALETTES.text.length - 1, 0)
+      tc: clampInt(c.tc, 0, PALETTES.text.length - 1, 0),
+      // Appended after tc. Missing on older links → 0 (Birthday), which is what they were.
+      o: clampInt(c.o, 0, OCCASIONS.length - 1, 0)
     };
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -174,13 +209,41 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12] });
     } catch (e) { return null; }
   }
   function readHash() {
     var h = location.hash || '';
     var m = /[#&]c=([A-Za-z0-9_-]+)/.exec(h);
     return m ? decodeConfig(m[1]) : null;
+  }
+  // #edit=<code>: open the BUILDER pre-filled with that cake. This is what a calendar
+  // reminder links to ("send Hollie a cake" → last year's cake, ready to tweak), and what
+  // "Send one back to Eddie" links to.
+  function readEditHash() {
+    var h = location.hash || '';
+    var m = /[#&]edit=([A-Za-z0-9_-]+)/.exec(h);
+    return m ? decodeConfig(m[1]) : null;
+  }
+  function editLinkFor(c) { return baseUrl() + '#edit=' + encodeConfig(c); }
+  // Slice links: #c=<cake>&s=<slice index>[&b=1][&n=<name>][&sb=1]
+  //   b  = the candles had been blown out when this slice was sent
+  //   n  = who the slice is for
+  //   sb = this slice went back to the sender (the acknowledgement)
+  function readSliceHash() {
+    var h = location.hash || '';
+    var m = /[#&]s=(\d+)/.exec(h);
+    if (!m) return null;
+    var n = /[#&]n=([^&]*)/.exec(h);
+    var name = ''; try { name = n ? cleanText(decodeURIComponent(n[1]), MAX_NAME) : ''; } catch (e) {}
+    return { index: m[1] | 0, blown: /[#&]b=1/.test(h), name: name, back: /[#&]sb=1/.test(h) };
+  }
+  function sliceLinkFor(c, index, opts) {
+    var u = linkFor(c) + '&s=' + index;
+    if (opts.blown) u += '&b=1';
+    if (opts.name) u += '&n=' + encodeURIComponent(opts.name);
+    if (opts.back) u += '&sb=1';
+    return u;
   }
   function baseUrl() { return location.origin + location.pathname; }
   function linkFor(c) { return baseUrl() + '#c=' + encodeConfig(c); }
@@ -348,6 +411,7 @@
   var spawn = null;          // candle pop-in animation state
 
   function build(cfg, opts) {
+    built.visible = true;
     var prevN = (config && config.t === cfg.t) ? (config.n | 0) : 0;
     var prevT = config ? config.t : null;
     config = cfg;
@@ -1777,10 +1841,11 @@
   function reveal() {
     var pal = [PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex,
                PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166, 0xFF6F91];
-    confettiBurst(pal.map(function (h) { return hexCss(h); }), 160);
+    confettiBurst(pal.map(function (h) { return hexCss(h); }), viewerMode === 'slice' ? 40 : 160);
     setTimeout(showRevealedControls, 700);
   }
   function showRevealedControls() {
+    if (viewerMode === 'slice') { showSliceDone(); return; }
     setViewerState('revealed');
     requestAnimationFrame(function () { document.getElementById('vs-revealed').classList.add('on'); });
   }
@@ -1788,7 +1853,7 @@
   // ---- Gate & open ----
   var boxOpenDone = false;
   function setViewerState(st) {
-    ['gate', 'blow', 'revealed'].forEach(function (k) {
+    ['gate', 'blow', 'revealed', 'cut', 'slice', 'slice-done'].forEach(function (k) {
       var el = document.getElementById('vs-' + k); if (el) el.hidden = (k !== st);
     });
     document.body.setAttribute('data-vstate', st);
@@ -1851,11 +1916,420 @@
     }, 1200);
   }
   function relight() {
+    if (cut) { while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]); cut = null; built.visible = true; }
     blow.revealed = false;
     for (var i = 0; i < flames.length; i++) { flames[i].__out = false; }
     lightRipple(centreOutOrder().reverse(), Math.min(20, 1200 / Math.max(1, flames.length)), true);
     document.getElementById('vs-revealed').classList.remove('on');
     setTimeout(function () { setViewerState('blow'); blow.enabled = true; }, 600);
+  }
+
+  // =====================================================================
+  //  Phase 4 — cut the cake, send slices. The loop.
+  // =====================================================================
+  var WEDGES_PER_TIER = 8;
+  var cutGroup = new THREE.Group(); cakeGroup.add(cutGroup);
+  var cut = null;          // { wedges: [ {mesh group, tier, i, gone} ], plate, lifted, code, sentBack }
+  var viewerMode = 'cake'; // 'cake' | 'slice'
+  var slice = null;        // slice-page state
+
+  function cakeCode() { return config ? encodeConfig(config) : ''; }
+  function loadCutState(code) {
+    try { return JSON.parse(localStorage.getItem('cake.cut.' + code) || 'null') || { gone: [], sentBack: false }; }
+    catch (e) { return { gone: [], sentBack: false }; }
+  }
+  function saveCutState(code, st) { try { localStorage.setItem('cake.cut.' + code, JSON.stringify(st)); } catch (e) {} }
+
+  function tierTops(cfg) {
+    var tiers = TIERS[cfg.t] || TIERS[1], y = PLATE_TOP, out = [];
+    tiers.forEach(function (t) { out.push({ r: t.r, h: t.h, y0: y }); y += t.h; });
+    return out;
+  }
+
+  // One wedge: body + cap + two cut faces showing the filling. The message band on the
+  // bottom tier is carried by a cloned texture whose offset/repeat select this wedge's arc.
+  function makeWedge(tier, i, cfg, frostingMat, capMat, faceMat, msgMap) {
+    var N = WEDGES_PER_TIER, theta0 = i * Math.PI * 2 / N, len = Math.PI * 2 / N;
+    var g = new THREE.Group();
+    var bodyH = tier.h - CAP_H;
+    var side = frostingMat;
+    if (msgMap) {
+      var t = msgMap.clone(); t.needsUpdate = true;
+      t.wrapS = THREE.RepeatWrapping;
+      t.repeat.x = len / (Math.PI * 2);
+      t.offset.x = theta0 / (Math.PI * 2);
+      side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t });
+    }
+    var body = new THREE.Mesh(new THREE.CylinderGeometry(tier.r, tier.r, bodyH, CYL_SEG / N * 2 + 2, 1, false, theta0, len), [side, frostingMat, frostingMat]);
+    body.position.y = tier.y0 + bodyH / 2; g.add(body);
+    var cap = new THREE.Mesh(new THREE.CylinderGeometry(tier.r + 0.08, tier.r + 0.02, CAP_H, CYL_SEG / N * 2 + 2, 1, false, theta0, len), capMat);
+    cap.position.y = tier.y0 + bodyH + CAP_H / 2; g.add(cap);
+    [theta0, theta0 + len].forEach(function (th) {
+      var f = new THREE.Mesh(new THREE.PlaneGeometry(tier.r, tier.h), faceMat);
+      f.position.set(Math.sin(th) * tier.r / 2, tier.y0 + tier.h / 2, Math.cos(th) * tier.r / 2);
+      f.rotation.y = th + Math.PI / 2;
+      g.add(f);
+    });
+    g.traverse(function (o) { if (o.isMesh) o.userData.wedge = g; });
+    return g;
+  }
+
+  function startCut() {
+    if (cut) return;
+    var cfg = config, code = cakeCode();
+    var st = loadCutState(code);
+    var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
+    var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
+    var msgMap = messageMesh && messageMesh.material[0] && messageMesh.material[0].map ? messageMesh.material[0].map : null;
+
+    built.visible = false;                    // the whole cake, candles included, steps aside
+    cut = { wedges: [], plate: null, lifted: null, code: code, sentBack: !!st.sentBack, total: 0 };
+    var tiers = tierTops(cfg);
+    tiers.forEach(function (tier, ti) {
+      for (var i = 0; i < WEDGES_PER_TIER; i++) {
+        var w = makeWedge(tier, i, cfg, frostingMat, capMat, faceMat, ti === 0 ? msgMap : null);
+        var idx = ti * WEDGES_PER_TIER + i;
+        w.userData.index = idx; w.userData.tier = ti; w.userData.i = i;
+        if (st.gone.indexOf(idx) >= 0) w.visible = false;
+        cutGroup.add(w);
+        cut.wedges.push(w);
+      }
+    });
+    cut.total = cut.wedges.length;
+    setViewerState('cut');
+    updateCutUI();
+  }
+
+  function slicesLeft() { return cut ? cut.wedges.filter(function (w) { return w.visible && !w.userData.lifted; }).length : 0; }
+  function topRemainingTier() {
+    // You cut the top tier first; a bottom wedge with a tier on top of it makes no sense.
+    var best = -1;
+    cut.wedges.forEach(function (w) { if (w.visible && !w.userData.lifted) best = Math.max(best, w.userData.tier); });
+    return best;
+  }
+
+  var _ray = new THREE.Raycaster(), _ndc2 = new THREE.Vector2();
+  function wedgeAt(clientX, clientY) {
+    if (!cut) return null;
+    var r = canvas.getBoundingClientRect();
+    _ndc2.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    _ray.setFromCamera(_ndc2, camera);
+    var hits = _ray.intersectObjects(cutGroup.children, true);
+    for (var i = 0; i < hits.length; i++) {
+      var w = hits[i].object.userData.wedge;
+      if (w && w.visible && !w.userData.lifted && w.userData.tier === topRemainingTier()) return w;
+    }
+    return null;
+  }
+
+  function liftWedge(w) {
+    if (!cut || cut.lifted) return;
+    cut.lifted = w; w.userData.lifted = true;
+    // Toward the viewer, whatever the camera's doing: the slice always comes to you.
+    var dir = new THREE.Vector3(camera.position.x, 0, camera.position.z).normalize();
+    var tier = tierTops(config)[w.userData.tier];
+    var out = tier.r + 1.9;
+    var target = dir.clone().multiplyScalar(out);
+    // Small plate arrives from the side
+    var plate = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.08, 48), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
+    plate.position.set(target.x + dir.z * 3, 0.04, target.z - dir.x * 3);
+    cutGroup.add(plate); cut.plate = plate;
+    // The wedge's own centroid direction, so it lands centred on the plate
+    var thMid = (w.userData.i + 0.5) * Math.PI * 2 / WEDGES_PER_TIER;
+    var cen = new THREE.Vector3(Math.sin(thMid) * tier.r * 0.6, 0, Math.cos(thMid) * tier.r * 0.6);
+    var startP = w.position.clone();
+    var endP = new THREE.Vector3(target.x - cen.x, 0.08 - tier.y0, target.z - cen.z);
+    tween({ duration: 450, ease: EASE.lift, update: function (k) {
+      w.position.lerpVectors(startP, endP, k);
+      w.position.y += Math.sin(Math.PI * k) * 0.55;                  // up and over
+      w.rotation.z = Math.sin(k * Math.PI * 2) * 0.05 * (1 - k);      // wobble, decaying
+    }, done: function () {
+      w.position.copy(endP);
+      tween({ duration: 160, ease: EASE.pop, update: function (k) { w.scale.y = 0.96 + 0.04 * k; } });
+    } });
+    tween({ delay: 120, duration: 280, ease: EASE.soft, update: function (k) {
+      plate.position.set(target.x + dir.z * 3 * (1 - k), 0.04, target.z - dir.x * 3 * (1 - k));
+    } });
+    updateCutUI();
+  }
+
+  function updateCutUI() {
+    if (!cut) return;
+    var lead = $('cut-lead'), card = $('slicecard'), left = $('slices-left'), back = $('slice-back'), nameEl = $('slice-name');
+    var n = slicesLeft();
+    if (cut.lifted) {
+      lead.textContent = 'Send this slice to someone';
+      card.hidden = false;
+      var canBack = !!config.from && !cut.sentBack;
+      back.hidden = !canBack;
+      back.textContent = 'Send a slice back to ' + config.from;
+      nameEl.value = '';
+      left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
+    } else if (n === 0) {
+      lead.textContent = 'You gave away the whole cake ❤️';
+      card.hidden = true; left.textContent = '';
+    } else {
+      lead.textContent = 'Tap a slice to cut it';
+      card.hidden = true;
+      left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
+    }
+  }
+
+  function sendLiftedSlice(name, back) {
+    if (!cut || !cut.lifted) return null;
+    var w = cut.lifted, idx = w.userData.index;
+    var st = loadCutState(cut.code);
+    if (st.gone.indexOf(idx) < 0) st.gone.push(idx);
+    if (back) { st.sentBack = true; cut.sentBack = true; }
+    saveCutState(cut.code, st);
+    var url = sliceLinkFor(config, idx, { blown: true, name: back ? config.from : name, back: back });
+    // The wedge leaves; the plate goes with it.
+    var plate = cut.plate;
+    tween({ duration: 280, ease: EASE.soft, update: function (k) {
+      w.position.y += 0.02; w.scale.setScalar(1 - 0.6 * k);
+      if (plate) plate.scale.setScalar(1 - k);
+    }, done: function () {
+      w.visible = false; w.scale.setScalar(1);
+      if (plate) { cutGroup.remove(plate); }
+      cut.plate = null; cut.lifted = null;
+      updateCutUI();
+    } });
+    return url;
+  }
+
+  // ---- Slice page: one wedge on a plate, one candle ----
+  function enterSlice(cfg, sl) {
+    viewerMode = 'slice'; slice = sl;
+    build(cfg, { showMessage: true, animate: false });
+    built.visible = false;                                   // no whole cake here
+    while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]);
+    var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
+    var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
+    var tiers = tierTops(cfg);
+    var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
+    var tier = { r: tiers[ti].r, h: tiers[ti].h, y0: 0.08 };
+    var w = makeWedge(tier, 0, cfg, frostingMat, capMat, faceMat, null);
+    // Centre the wedge's centroid on the plate and face the cut toward +z
+    // The wedge is built around the cake's axis; rotate it so the cut points at the camera,
+    // then move it by its (rotated) centroid so it sits on the plate's centre.
+    var thMid = 0.5 * Math.PI * 2 / WEDGES_PER_TIER;
+    w.rotation.y = Math.PI - thMid;                          // centroid now points to -z (away)
+    var cr = tier.r * 0.62;
+    w.position.set(0, 0, cr);                                 // pull it back to the centre
+    cutGroup.add(w);
+    var plate = new THREE.Mesh(new THREE.CylinderGeometry(tier.r * 0.78, tier.r * 0.78, 0.08, 64), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
+    plate.position.y = 0.04; cutGroup.add(plate);
+    var rim = new THREE.Mesh(new THREE.TorusGeometry(tier.r * 0.74, 0.045, 10, 96),
+      new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex, roughness: 0.5 }));
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.09; cutGroup.add(rim);
+    // One candle, wired into the blow system
+    var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
+    var cm = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.5, 10), new THREE.MeshStandardMaterial({ color: candleHex, roughness: 0.45 }));
+    var topY = 0.08 + tier.h;
+    cm.position.set(0, topY + 0.25, 0.15); cutGroup.add(cm);
+    var wick = new THREE.Mesh(wickGeo, wickMat); wick.position.set(0, topY + 0.53, 0.15); cutGroup.add(wick);
+    var fl = new THREE.Sprite(flameMat.clone()); fl.material.__shared = false;
+    fl.scale.set(0.28 * 0.7, 0.28, 1); fl.position.set(0, topY + 0.66, 0.15); cutGroup.add(fl);
+    flames.length = 0; wicks.length = 0;
+    flames.push({ sprite: fl, base: 0.28, phase: 0, x: 0, z: 0.15, k: 1, lit: 1, y: topY + 0.66, leanX: 0, leanZ: 0 });
+    rebuildLandings({ t: 1 });
+    landings = [{ y: topY, r: tier.r * 0.8, rInner: 0 }];
+    fitShadow(tier.r * 0.8);
+    blow = { enabled: true, lastWave: 0, micLevel: 0, micHold: 0, total: 1, revealed: false };
+    setFrame('cake', 0.9, true);
+    camAzimuth = 0; spinEnabled = true; spinFree = false;
+    // Chrome
+    var head = $('slice-head'); head.hidden = false;
+    var isBack = sl.back && cfg.from;
+    $('sh-title').textContent = (cfg.to || 'Someone') + ' sent you a slice';
+    $('sh-sub').textContent = isBack ? 'They blew out the candles 🎂' : ('of the cake ' + (cfg.from ? cfg.from + ' made' : 'they were sent'));
+    $('slice-msg').textContent = cfg.m ? ((cfg.from || 'They') + ' wrote “' + cfg.m + '”') : (isBack ? 'Your cake landed.' : 'Someone is thinking of you.');
+    setViewerState('slice');
+  }
+  function showSliceDone() {
+    var isBack = slice && slice.back && config.from;
+    $('slice-done-lead').textContent = isBack ? 'Your cake landed.' : ((config.to || 'They') + ' shared their cake with you.');
+    var cta = $('slice-cta'), hint = $('slice-cta-hint');
+    if (isBack) {
+      cta.textContent = 'Send ' + config.to + ' another next year';
+      cta.href = '#'; cta.onclick = function (e) { e.preventDefault(); openRemind('sender', config); };
+      hint.textContent = "We'll put it in your calendar";
+    } else {
+      cta.textContent = 'Send someone a cake'; cta.href = './?src=slice'; cta.onclick = null;
+      hint.textContent = 'Cakes from ' + PRICES[1];
+    }
+    setViewerState('slice-done');
+    requestAnimationFrame(function () { $('vs-slice-done').classList.add('on'); });
+  }
+
+  // =====================================================================
+  //  Reminders — a calendar file, no server.
+  //  Moonpig's reminders drive ~40% of its orders and need a database and an email
+  //  operation. A .ics with a yearly RRULE gets most of the effect for free: the alert
+  //  comes from the phone's own calendar, works everywhere, and never depends on us.
+  // =====================================================================
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function ymd(d) { return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()); }
+  function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+  function nthWeekdayOfMonth(year, month1, weekday0, n) {
+    var d = new Date(year, month1 - 1, 1);
+    var offset = (weekday0 - d.getDay() + 7) % 7;
+    return new Date(year, month1 - 1, 1 + offset + (n - 1) * 7);
+  }
+  var WD = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+
+  // Returns { first: Date (the first alert date), rrule: string|null, label } or null if no rule.
+  function reminderPlan(occ, pickedDate) {
+    var rule = occ.rule, now = new Date(), yr = now.getFullYear();
+    var next, rrule = null;
+    if (rule.type === 'yearly' || rule.type === 'becomes') {
+      if (!pickedDate) return null;
+      next = new Date(yr, pickedDate.getMonth(), pickedDate.getDate());
+      if (next <= now) next = new Date(yr + 1, pickedDate.getMonth(), pickedDate.getDate());
+      rrule = 'FREQ=YEARLY';
+    } else if (rule.type === 'fixed') {
+      next = new Date(yr, rule.m - 1, rule.d);
+      if (next <= now) next = new Date(yr + 1, rule.m - 1, rule.d);
+      rrule = 'FREQ=YEARLY';
+    } else if (rule.type === 'weekday') {
+      next = nthWeekdayOfMonth(yr, rule.m, WD[rule.wd], rule.n);
+      if (next <= now) next = nthWeekdayOfMonth(yr + 1, rule.m, WD[rule.wd], rule.n);
+      rrule = 'FREQ=YEARLY;BYMONTH=' + rule.m + ';BYDAY=' + rule.n + rule.wd;
+    } else {
+      return null;
+    }
+    // The event goes on the real date. The early nudge is an ALARM on it (see icsFor),
+    // not a shifted event — a shifted event would show the wrong date in the month view.
+    return { first: next, rrule: rrule, eventDate: next };
+  }
+
+  // summary = the occasion as it should appear in the calendar ("Hollie's birthday 🎂").
+  // nudge   = what the alarm says ("Send Hollie a cake").
+  // Alarms on an all-day event are relative to 00:00 on the day, so "3 days before at
+  // 09:00" is -P2DT15H, and "on the day at 09:00" is +PT9H. Apple and Google both honour
+  // these; a bare -P3D would fire at midnight, which nobody wants.
+  function icsFor(summary, description, plan, url, nudge) {
+    var uid = 'cake-' + Date.now() + '-' + Math.floor(Math.random() * 1e6) + '@cake4.me';
+    var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    var esc = function (t) { return String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n'); };
+    var lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//cake4.me//Reminder//EN', 'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      'UID:' + uid,
+      'DTSTAMP:' + stamp,
+      'DTSTART;VALUE=DATE:' + ymd(plan.first),
+      'DTEND;VALUE=DATE:' + ymd(addDays(plan.first, 1)),
+      plan.rrule ? 'RRULE:' + plan.rrule : null,
+      'SUMMARY:' + esc(summary),
+      'DESCRIPTION:' + esc(description + '\n' + url),
+      'URL:' + url,
+      'BEGIN:VALARM', 'TRIGGER:-P' + (REMIND_LEAD_DAYS - 1) + 'DT15H', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc(nudge || summary), 'END:VALARM',
+      'BEGIN:VALARM', 'TRIGGER:PT9H', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc(nudge || summary), 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR'
+    ].filter(Boolean);
+    return lines.join('\r\n') + '\r\n';
+  }
+
+  function downloadIcs(filename, text) {
+    var blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  // ---- The pop-up. Big "Yes", quiet "Maybe next time". ----
+  // mode 'sender'    → after sending: remind me next year (or, for one-offs, ask for their birthday)
+  // mode 'recipient' → after opening: remind me for the sender's birthday
+  var remindState = null;
+  function openRemind(mode, cfg) {
+    var occ = OCCASIONS[clampIndex(cfg.o, OCCASIONS)];
+    var el = $('remind'); if (!el) return;
+    var who = mode === 'sender' ? (cfg.to || 'them') : (cfg.from || 'them');
+    var title = $('remind-title'), body = $('remind-body'), dateWrap = $('remind-date-wrap'), date = $('remind-date');
+    var needsDate = false, plan = null, summary, description;
+
+    if (mode === 'sender' && occ.rule.type !== 'none') {
+      needsDate = (occ.rule.type === 'yearly' || occ.rule.type === 'becomes');
+      if (occ.rule.type === 'becomes') {
+        title.textContent = 'Remind you for ' + who + "'s " + occ.rule.into + '?';
+        body.textContent = 'A yearly reminder, three days before, with this cake ready to send again.';
+      } else if (needsDate) {
+        title.textContent = 'Remind you next year?';
+        body.textContent = "We'll put " + who + "'s " + occ.say + ' in your calendar, three days before, with this cake ready to send again.';
+      } else {
+        title.textContent = 'Remind you next ' + occ.say + '?';
+        body.textContent = 'A yearly calendar reminder, three days before, with this cake ready to send again.';
+      }
+      var occLabel = (occ.rule.type === 'fixed' || occ.rule.type === 'weekday') ? occ.name : (who + "'s " + (occ.say || occ.name));
+      summary = occLabel + ' 🎂';
+      description = 'Send ' + who + ' a cake. Last time you sent this one:';
+      remindState = { mode: mode, occ: occ, cfg: cfg, summary: summary, nudge: 'Send ' + who + ' a cake 🎂', description: description, needsDate: needsDate };
+    } else {
+      // One-off occasion, or the recipient's side: capture a birthday.
+      needsDate = true;
+      title.textContent = "When's " + who + "'s birthday?";
+      body.textContent = mode === 'sender'
+        ? "We'll remind you three days before, with a cake ready to go."
+        : "We'll remind you three days before, so you can send one back.";
+      summary = who + "'s birthday 🎂";
+      description = 'Send ' + who + ' a cake:';
+      remindState = { mode: mode, occ: OCCASIONS[0], cfg: cfg, summary: summary, nudge: 'Send ' + who + ' a birthday cake 🎂', description: description, needsDate: true, birthday: true };
+    }
+    dateWrap.hidden = !needsDate;
+    if (needsDate) { var t = new Date(); date.value = t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()); }
+    el.hidden = false;
+    requestAnimationFrame(function () { el.classList.add('on'); });
+  }
+  function closeRemind() {
+    var el = $('remind'); if (!el) return;
+    el.classList.remove('on');
+    setTimeout(function () { el.hidden = true; }, 220);
+  }
+  function confirmRemind() {
+    if (!remindState) return;
+    var st = remindState, picked = null;
+    if (st.needsDate) {
+      var v = $('remind-date').value;
+      if (!v) return;
+      var parts = v.split('-'); picked = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    }
+    var occForPlan = st.birthday ? OCCASIONS[0] : st.occ;
+    var plan = reminderPlan(occForPlan, picked);
+    if (!plan) { closeRemind(); return; }
+    // The reminder's link opens the builder pre-filled. Sender: this cake, same names.
+    // Recipient: names swapped, message cleared, same cake as a starting point.
+    var pre;
+    if (st.mode === 'sender') {
+      pre = normalize(st.cfg);
+    } else {
+      pre = normalize(st.cfg);
+      var to = pre.from, from = pre.to;
+      pre.to = to; pre.from = from; pre.m = '';
+    }
+    var url = editLinkFor(pre);
+    downloadIcs('cake-reminder.ics', icsFor(st.summary, st.description, plan, url, st.nudge));
+    rememberDate(st.mode === 'sender' ? st.cfg.to : st.cfg.from, occForPlan.name, plan.eventDate);
+    var hint = $('remind-done');
+    if (hint) { hint.textContent = 'Added "' + st.summary + '" to your calendar — you\'ll get a nudge three days before.'; hint.hidden = false; }
+    closeRemind();
+  }
+  // Birthday book: dates the sender has told us, kept on their phone. No account.
+  function rememberDate(name, occasion, date) {
+    if (!name) return;
+    try {
+      var book = JSON.parse(localStorage.getItem('cake.book') || '[]');
+      book = book.filter(function (e) { return !(e.name === name && e.occasion === occasion); });
+      book.push({ name: name, occasion: occasion, month: date.getMonth() + 1, day: date.getDate() });
+      localStorage.setItem('cake.book', JSON.stringify(book));
+    } catch (e) {}
   }
 
   // =====================================================================
@@ -1954,6 +2428,7 @@
     syncSwatches(els.swTc, draft.tc);
     syncSwatches(els.swBg, draft.bg);
     refreshAutoSwatch();
+    syncOccasions();
     updateCta();
   }
 
@@ -1961,7 +2436,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['message', 'candles', 'cake', 'colours'].forEach(function (k) {
+    ['occasion', 'message', 'candles', 'cake', 'colours'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -2006,7 +2481,36 @@
     if (cn) cn.textContent = draft.n;
   }
 
+  function makeOccasions() {
+    var host = $('occasions'); if (!host) return;
+    host.innerHTML = '';
+    OCCASIONS.forEach(function (o, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'occ'; b.setAttribute('role', 'radio');
+      var em = document.createElement('span'); em.className = 'em'; em.textContent = o.emoji;
+      b.appendChild(em); b.appendChild(document.createTextNode(o.name));
+      b.addEventListener('click', function () {
+        draft.o = i;
+        syncOccasions();
+        // The first two questions should feel like one motion: pick, then straight to the words.
+        setTimeout(function () { if (openTray === 'occasion') setTray('message'); }, 220);
+      });
+      host.appendChild(b);
+    });
+  }
+  function syncOccasions() {
+    var host = $('occasions'); if (!host || !draft) return;
+    Array.prototype.forEach.call(host.children, function (b, i) {
+      b.setAttribute('aria-checked', i === draft.o ? 'true' : 'false');
+    });
+    var chip = $('chip-o'), ic = $('chip-o-ic');
+    var occ = OCCASIONS[draft.o];
+    if (chip) chip.textContent = occ ? occ.name : 'Occasion';
+    if (ic) ic.textContent = occ ? occ.emoji : '🎁';
+  }
+
   function wireBuilder() {
+    makeOccasions();
     Array.prototype.forEach.call($('chiprow').children, function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
     });
@@ -2049,7 +2553,9 @@
     });
 
     els.getLink.addEventListener('click', function () {
+      if (draft.o === OCCASION_UNCHOSEN) draft.o = OCCASION_FALLBACK;
       draft = normalize(draft);
+      syncOccasions();
       config = draft;
       var url = linkFor(draft);
       els.linkOut.value = url;
@@ -2066,10 +2572,13 @@
         els.linkpanel.hidden = false; els.linkpanel.classList.add('away');
         setTimeout(resize, 0);
       }, 280);
+      var remindDone = $('remind-done'); if (remindDone) { remindDone.hidden = true; }
       startCeremony(function () {
         els.linkpanel.classList.remove('away');
         els.linkpanel.classList.add('stage1');
         setTimeout(function () { els.linkpanel.classList.add('stage2'); }, 240);
+        // Once the link is in hand, arm next year: the highest-value moment for this ask.
+        setTimeout(function () { openRemind('sender', config); }, 900);
       });
     });
 
@@ -2110,14 +2619,22 @@
     els.builder.hidden = which !== 'builder';
     if (which === 'builder' && firstBuilderVisit) {
       firstBuilderVisit = false;
-      // Open the message tray on arrival so it's obvious there's something to fill in.
-      openTray = null; setTray('message');
+      // Fresh build: "What's the occasion?" is the first question. Pre-filled (a reminder or
+      // "send one back"): the occasion is already known, go straight to the message.
+      openTray = null; setTray(draft && draft.o >= 0 && draft.__prefilled ? 'message' : 'occasion');
     }
     els.linkpanel.hidden = which !== 'linkpanel';
     els.viewerFoot.hidden = which !== 'viewer';
     setTimeout(resize, 0);
   }
+  function wireRemind() {
+    var yes = $('remind-yes'), later = $('remind-later'), modal = $('remind');
+    if (yes) yes.addEventListener('click', confirmRemind);
+    if (later) later.addEventListener('click', closeRemind);
+    if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeRemind(); });
+  }
   function wireViewer() {
+    wireRemind();
     document.getElementById('open-cake').addEventListener('click', function () { openBox(); });
     document.getElementById('use-mic').addEventListener('click', function () {
       var st = document.getElementById('mic-status');
@@ -2128,10 +2645,46 @@
       openBox();
     });
     document.getElementById('relight').addEventListener('click', relight);
-    document.getElementById('cut-cake').addEventListener('click', function () {
-      var h = document.getElementById('cut-hint');
-      h.textContent = 'Slices arrive in the next update.';
-      setTimeout(function () { h.innerHTML = '&nbsp;'; }, 2000);
+    var rb = $('remind-back');
+    if (rb) rb.addEventListener('click', function () { if (config) openRemind('recipient', config); });
+    document.getElementById('cut-cake').addEventListener('click', startCut);
+
+    // Tap (not drag) on a wedge lifts it
+    (function () {
+      var down = null;
+      canvas.addEventListener('pointerdown', function (e) { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+      canvas.addEventListener('pointerup', function (e) {
+        if (!down || !cut || cut.lifted) { down = null; return; }
+        var moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+        var quick = performance.now() - down.t < 450;
+        down = null;
+        if (moved < 10 && quick) { var w = wedgeAt(e.clientX, e.clientY); if (w) liftWedge(w); }
+      });
+    })();
+
+    // Slice card
+    function shareUrl(url, title) {
+      if (navigator.share) { navigator.share({ title: title, text: title, url: url }).catch(function () {}); return true; }
+      return false;
+    }
+    function copyUrl(url, done) {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, done); else done();
+    }
+    $('slice-back').addEventListener('click', function () {
+      var url = sendLiftedSlice('', true); if (!url) return;
+      var title = 'A slice of the cake you sent ' + (config.to || 'me') + ' 🍰';
+      if (!shareUrl(url, title)) copyUrl(url, function () { $('slice-hint').textContent = 'Link copied — send it to ' + config.from; });
+    });
+    $('slice-share').addEventListener('click', function () {
+      var name = cleanText($('slice-name').value, MAX_NAME);
+      var url = sendLiftedSlice(name, false); if (!url) return;
+      var title = (config.to || 'Someone') + ' sent you a slice of cake 🍰';
+      if (!shareUrl(url, title)) copyUrl(url, function () { $('slice-hint').textContent = 'Link copied'; });
+    });
+    $('slice-copy').addEventListener('click', function () {
+      var name = cleanText($('slice-name').value, MAX_NAME);
+      var url = sendLiftedSlice(name, false); if (!url) return;
+      copyUrl(url, function () { $('slice-hint').textContent = 'Link copied'; setTimeout(function () { $('slice-hint').innerHTML = '&nbsp;'; }, 1800); });
     });
   }
 
@@ -2149,17 +2702,51 @@
     els.linkpanel.classList.remove('stage1', 'stage2', 'away');
     els.builder.classList.remove('away');
     var fromLink = readHash();
+    var sl = fromLink ? readSliceHash() : null;
+    // Reset Phase 4 state on any route
+    while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]);
+    cut = null; slice = null; viewerMode = 'cake';
+    var shead = $('slice-head'); if (shead) shead.hidden = true;
+    if (fromLink && sl) {
+      // Slice recipient: one wedge, one candle, no cutting further.
+      document.body.classList.remove('mode-builder');
+      document.body.classList.add('mode-viewer');
+      showSheet('viewer');
+      enterSlice(fromLink, sl);
+      resize();
+      return;
+    }
     if (fromLink) {
       // Viewer
       document.body.classList.remove('mode-builder');
       document.body.classList.add('mode-viewer');
       showSheet('viewer');
+      // Reciprocity, pre-filled: the recipient's call to action names the sender and
+      // opens the builder with the names swapped and this cake as the starting point.
+      var so = $('send-own');
+      if (so) {
+        if (fromLink.from) {
+          var back = normalize(fromLink);
+          var t = back.from, f = back.to; back.to = t; back.from = f; back.m = '';
+          so.textContent = 'Send one back to ' + fromLink.from;
+          so.href = editLinkFor(back);
+        } else {
+          so.textContent = 'Send someone a cake'; so.href = './';
+        }
+      }
+      var rb2 = $('remind-back');
+      if (rb2) {
+        rb2.hidden = !fromLink.from;
+        rb2.textContent = 'Remind me for ' + (fromLink.from || 'their') + "'s birthday";
+      }
       enterGate(fromLink);
     } else {
       // Builder
       document.body.classList.remove('mode-viewer');
       document.body.classList.add('mode-builder');
-      if (!draft) draft = normalize(DEFAULTS);
+      var pre = readEditHash();
+      if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; }
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
@@ -2205,6 +2792,9 @@
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil) }; },
     PIXEL: PIXEL,
+    cut: function () { return cut ? { left: slicesLeft(), lifted: !!cut.lifted, sentBack: cut.sentBack, total: cut.total } : null; },
+    startCut: startCut, liftFirst: function () { if (!cut) return; var w = cut.wedges.filter(function (x) { return x.visible && x.userData.tier === topRemainingTier(); })[0]; if (w) liftWedge(w); },
+    sendSlice: function (name, back) { return sendLiftedSlice(name || '', !!back); },
     confettiRaw: function () {
       return confettiPieces.slice(0, 200).map(function (c) {
         return { fall: c.fall.name, resting: c.resting,

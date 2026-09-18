@@ -27,6 +27,9 @@
     <!-- Builder (sender): floating chip bar + one tray at a time -->
     <section class="builder" id="builder" aria-label="Make a cake">
       <div class="chiprow" id="chiprow" role="tablist">
+        <button type="button" class="chip" data-tray="occasion" aria-selected="false">
+          <span class="ic" aria-hidden="true" id="chip-o-ic">🎁</span><span id="chip-o">Occasion</span>
+        </button>
         <button type="button" class="chip" data-tray="message" aria-selected="false">
           <span class="ic" aria-hidden="true">✎</span>Message
         </button>
@@ -42,6 +45,10 @@
       </div>
 
       <div class="trays" id="trays">
+        <div class="tray" id="tray-occasion" hidden>
+          <div class="tray-head"><span>What's the occasion?</span></div>
+          <div class="occasions" id="occasions" role="radiogroup" aria-label="Occasion"></div>
+        </div>
         <div class="tray" id="tray-message" hidden>
           <div class="tray-row two">
             <label>To<input id="f-to" type="text" maxlength="24" autocomplete="off" placeholder="Their name"></label>
@@ -98,6 +105,7 @@
           <button type="button" id="copy-link">Copy link</button>
         </div>
         <p class="hint" id="copy-hint">&nbsp;</p>
+        <p class="hint" id="remind-done" hidden></p>
         <div class="actions">
           <a id="open-link" href="#" target="_blank" rel="noopener">Open it</a>
           <button type="button" class="link" id="edit-cake">Edit cake</button>
@@ -105,7 +113,13 @@
       </div>
     </section>
 
-    <!-- Viewer footer (recipient): gate → blow → revealed -->
+    <!-- Slice page header (only in slice mode) -->
+    <header class="slice-head" id="slice-head" hidden>
+      <h1 id="sh-title"></h1>
+      <p id="sh-sub"></p>
+    </header>
+
+    <!-- Viewer footer (recipient): gate → blow → revealed → cut / slice -->
     <section class="sheet viewer-foot" id="viewer-foot" hidden>
       <div class="sheet-scroll centered">
         <div class="vstate" id="vs-gate">
@@ -124,10 +138,51 @@
             <button type="button" class="link" id="relight">Relight the candles</button>
             <a class="link-cta" id="send-own" href="./">Send someone a cake</a>
           </div>
+          <button type="button" class="link" id="remind-back">Remind me for their birthday</button>
+        </div>
+
+        <!-- Cutting: a wedge is lifted, send it -->
+        <div class="vstate" id="vs-cut" hidden>
+          <p class="lead" id="cut-lead">Tap a slice to cut it</p>
+          <div class="slicecard" id="slicecard" hidden>
+            <input type="text" id="slice-name" maxlength="24" autocomplete="off" placeholder="Their name (optional)">
+            <button type="button" class="primary" id="slice-back">Send a slice back</button>
+            <div class="actions">
+              <button type="button" id="slice-share">Share slice</button>
+              <button type="button" id="slice-copy">Copy link</button>
+            </div>
+            <p class="hint" id="slice-hint">&nbsp;</p>
+          </div>
+          <p class="hint" id="slices-left"></p>
+        </div>
+
+        <!-- Slice recipient -->
+        <div class="vstate" id="vs-slice" hidden>
+          <p class="lead" id="slice-msg"></p>
+          <p class="hint" id="slice-blow-hint">Blow out the candle, or spin it</p>
+        </div>
+        <div class="vstate" id="vs-slice-done" hidden>
+          <p class="lead" id="slice-done-lead"></p>
+          <a class="primary" id="slice-cta" href="./">Send someone a cake</a>
+          <p class="hint" id="slice-cta-hint">Cakes from £4.49</p>
         </div>
       </div>
     </section>
   </main>
+
+  <!-- Reminder pop-up: centre screen, big yes, quiet maybe -->
+  <div class="modal" id="remind" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="remind-title">
+      <h2 id="remind-title">Remind you next year?</h2>
+      <p id="remind-body"></p>
+      <label class="modal-date" id="remind-date-wrap">
+        <span>Their date</span>
+        <input type="date" id="remind-date">
+      </label>
+      <button type="button" class="primary" id="remind-yes">Yes, remind me</button>
+      <button type="button" class="modal-later" id="remind-later">Maybe next time</button>
+    </div>
+  </div>
 
   <script src="vendor/three.min.js"></script>
   <script src="app.js"></script>

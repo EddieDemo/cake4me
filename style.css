@@ -529,3 +529,81 @@ body.mode-builder.dark-bg #linkpanel .lead { color: #fff; text-shadow: 0 1px 12p
 body.mode-builder.dark-bg #link-out,
 body.mode-builder.dark-bg #linkpanel .actions button:not(.primary),
 body.mode-builder.dark-bg #linkpanel .actions a { background: rgba(255,255,255,0.88); }
+
+
+/* ---------- Occasion grid: its own tray, the first question ---------- */
+.occasions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; padding: 2px; }
+.occ {
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  font: inherit; font-size: 0.7rem; line-height: 1.15; text-align: center; white-space: normal;
+  padding: 0.5rem 0.2rem; border-radius: 14px; cursor: pointer;
+  color: var(--ink); background: rgba(255,255,255,0.85);
+  border: 1.5px solid rgba(59,42,42,0.12);
+  transition: transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1), border-color 160ms;
+}
+.occ .em { font-size: 1.25rem; line-height: 1; }
+.occ[aria-checked="true"] { border-color: var(--accent); background: #fff; transform: scale(1.04); }
+.occ:active { transform: scale(0.96); }
+
+/* ---------- Reminder pop-up ---------- */
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.2rem;
+  background: rgba(30,20,20,0.28);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 220ms;
+}
+.modal[hidden] { display: none; }
+.modal.on { opacity: 1; }
+.modal-card {
+  width: min(100%, 340px);
+  background: rgba(255,255,255,0.96);
+  border-radius: 24px;
+  padding: 1.3rem 1.2rem 1.1rem;
+  box-shadow: 0 20px 60px rgba(30,20,20,0.28);
+  text-align: center;
+  transform: translateY(8px) scale(0.98);
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal.on .modal-card { transform: none; }
+.modal-card h2 { margin: 0 0 0.4rem; font-size: 1.25rem; color: var(--ink); }
+.modal-card p { margin: 0 0 0.9rem; font-size: 0.92rem; color: var(--ink-soft); line-height: 1.4; }
+.modal-date { display: flex; flex-direction: column; gap: 0.3rem; align-items: stretch;
+  font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 0.9rem; }
+.modal-date[hidden] { display: none; }
+.modal-date input { font: inherit; font-size: 1rem; padding: 0.55rem 0.7rem; border-radius: 12px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); }
+.modal-card .primary { width: 100%; margin-bottom: 0.55rem; }
+.modal-later {
+  font: inherit; font-size: 0.9rem; color: var(--ink-soft);
+  background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0.4rem;
+}
+
+
+/* ---------- Slice page header ---------- */
+.slice-head {
+  position: absolute; top: max(1.1rem, env(safe-area-inset-top)); left: 0; right: 0;
+  text-align: center; pointer-events: none; padding: 0 1.2rem;
+}
+.slice-head[hidden] { display: none; }
+.slice-head h1 { margin: 0; font-family: "Pacifico", cursive; font-weight: 400;
+  font-size: clamp(1.4rem, 6.5vw, 2rem); color: var(--ink); text-shadow: 0 1px 10px rgba(255,255,255,0.8); }
+.slice-head p { margin: 0.15rem 0 0; color: var(--ink-soft); font-size: 0.95rem; }
+body.dark-bg .slice-head h1 { color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,0.7); }
+body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
+
+/* ---------- Slice card ---------- */
+.slicecard { display: flex; flex-direction: column; gap: 0.55rem; align-items: center; width: 100%; }
+.slicecard[hidden] { display: none; }
+.slicecard input {
+  font: inherit; font-size: 0.95rem; padding: 0.6rem 0.9rem; border-radius: 999px;
+  width: min(100%, 300px); text-align: center; color: var(--ink);
+  background: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.95);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.slicecard .primary { max-width: 300px; }
+#vs-slice-done .primary { display: inline-block; text-align: center; text-decoration: none; max-width: 300px; }
+
+/* `display:block` on .primary beats the hidden attribute — same trap as the swatch rows. */
+.primary[hidden] { display: none; }
