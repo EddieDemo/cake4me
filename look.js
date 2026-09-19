@@ -35,7 +35,14 @@
     // fixed small kernel, which is why v0.28's shadows read as cel-shaded. VSM blurs the map
     // itself, giving the wide, soft penumbra of a large light source (a window, a softbox)
     // rather than the crisp edge of a tiny distant sun.
-    shadowType: 'VSM',             // 'VSM' | 'PCFSoft'
+    shadowType: 'PCSS',            // 'PCSS' | 'VSM' | 'PCFSoft'
+    // PCSS: contact-hardening. Crisp where the caster touches, soft further away.
+    pcss: {
+      lightSize: 0.6,              // world units — how big the light is. Bigger = softer far penumbra.
+                                   // (2.4 was the first guess; it's wider than the cake and dissolved every shadow.)
+      samples: 13,                 // Poisson samples per pass (×3 lookups). 9 is cheap, 17 is silky.
+      maxRadius: 0.035             // penumbra cap in shadow-map UV, so distant shadows don't dissolve
+    },
     shadowRadius: 9,               // VSM blur radius (in shadow-map texels)
     shadowBlurSamples: 12,
     shadowOpacity: 0.18,           // the cast shadow on the floor
@@ -172,7 +179,21 @@
   var ground = null;
   function applyShadows(renderer, scene, key) {
     renderer.shadowMap.enabled = !!LOOK.shadows;
-    renderer.shadowMap.type = LOOK.shadowType === 'PCFSoft' ? THREE.PCFSoftShadowMap : THREE.VSMShadowMap;
+    var type = LOOK.shadowType;
+    if (type === 'PCSS' && !window.CakePCSS) type = 'VSM';         // pcss.js not loaded: fall back
+    if (window.CakePCSS) {
+      if (type === 'PCSS' && LOOK.shadows) {
+        var e0 = LOOK.shadowExtent;
+        CakePCSS.install({ lightSize: LOOK.pcss.lightSize, samples: LOOK.pcss.samples, maxRadius: LOOK.pcss.maxRadius,
+                           frustumWidth: e0.half * 2, near: e0.near, far: e0.far });
+      } else {
+        CakePCSS.uninstall();
+      }
+    }
+    // PCSS reads a plain depth map, so its renderer type is PCF; VSM stores moments instead.
+    renderer.shadowMap.type = type === 'PCFSoft' ? THREE.PCFSoftShadowMap
+                            : type === 'PCSS' ? THREE.PCFShadowMap
+                            : THREE.VSMShadowMap;
     if (!key) return;
     key.castShadow = !!LOOK.shadows;
     if (LOOK.shadows) {
@@ -253,6 +274,13 @@
     tick(scene);
   }
 
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial,
+  // The one-rung emergency fallback. Only for a phone that genuinely can't hold the target,
+  // sustained over several seconds: hard shadows, no halos. Never touches resolution.
+  function emergency(on, renderer, scene, key) {
+    LOOK.shadowType = on ? 'PCFSoft' : 'PCSS';
+    LOOK.halo.enabled = !on;
+    apply(renderer, scene, key);
+  }
+  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

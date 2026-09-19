@@ -127,7 +127,14 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   materials get a faint emissive lift at night, the message band a little more. Lit → out → relit
   now visibly changes the room on Midnight/Ink/Dusk and does nothing on light backdrops. No gating
   needed: it follows the background the sender already chose.
+- **Contact-hardening shadows (v0.35)** — `pcss.js`, a self-contained patch of three's shadow chunk.
+  Crisp where the caster touches the receiver, wider the further the shadow falls: a blocker search,
+  a penumbra estimate from blocker distance and light size (0.6 world units), then a per-pixel-rotated
+  Poisson filter of that width. Default shadow type is now `PCSS`; VSM and PCFSoft remain as options,
+  and a live switch recompiles every material via a global program-cache key. Costs ~39 texture taps
+  per shadowed pixel; the dev overlay is the arbiter on old phones.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
+  contact-hardening (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.

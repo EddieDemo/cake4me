@@ -141,30 +141,24 @@
   //
   // So: start at 2, measure, and climb toward the device's real ratio only if
   // there's frame-time headroom — dropping back if there isn't.
+  // Rendering runs at the device's full pixel ratio with every effect on. Phone testing
+  // (20 Sept) showed the frame rate barely moves, so nothing is traded away by default.
+  //
+  // The ONE remaining safety net is an emergency fallback for a phone that genuinely can't
+  // hold the target, sustained over several seconds: hard shadows and no halos, and back
+  // again once it has been comfortable for a while. It never touches resolution.
   var PIXEL = {
-    floor: 1.5,                  // never below this: a phone at 1× is unacceptable
-    ceil: 3,                     // start at the device's ratio, up to this
+    ceil: 4,                     // the device's ratio, up to this
     lateMs: 22,                  // a frame slower than this (≈45fps) counts as late
-    dropFrac: 0.20,              // …and a window is "bad" when more than this fraction were late
-    climbFrac: 0.04,             // a window is "good" when fewer than this were late
-    badWindows: 2,               // consecutive bad windows before stepping down (a one-off hitch never counts)
-    goodWindows: 3,              // consecutive good windows before stepping back up
-    step: 0.5,
+    dropFrac: 0.25,              // a window is "bad" when more than this fraction were late
+    climbFrac: 0.05,             // …and "good" when fewer than this were
+    badWindows: 4,               // ≈5s of sustained trouble before the fallback engages
+    goodWindows: 8,              // ≈10s of comfort before it lets go
     checkMs: 1200,
     graceMs: 1500,               // ignore the first window: first paint, font load, texture upload
     rebuildGraceMs: 900,         // …and the window after any rebuild (tier switch, cut, slice)
     minSamples: 10               // a window with fewer frames than this (tab hidden, keyboard up) is ignored
   };
-  // RESOLUTION IS THE LAST THING TO SACRIFICE. Before the pixel ratio drops, the effects step down
-  // in this order; each is cheaper to lose than sharpness on a phone.
-  var QUALITY_LADDER = [
-    'shadow-512',      // shadow map 1024 → 512
-    'halo-half',       // halo on every other candle
-    'shadow-pcf',      // VSM blur → plain PCF (loses the soft penumbra)
-    'halo-off',
-    'shadow-off',
-    'ratio'            // only now: pixel ratio − 0.5, down to the floor
-  ];
   // Strategy: START HIGH, DROP ON EVIDENCE. The previous "start at 2 and climb" never climbed on
   // iPhones: lateness was judged against the display's fastest interval, and on a 120Hz
   // ProMotion panel a rock-steady 60fps read as every frame being late. A moment of stutter in
@@ -322,7 +316,7 @@
   var canvas = document.getElementById('cake');
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
   var deviceDPR = window.devicePixelRatio || 1;
-  var pixelRatio = (window.CakeDev && CakeDev.on) ? deviceDPR : Math.min(deviceDPR, PIXEL.ceil);   // dev: no cap at all
+  var pixelRatio = Math.min(deviceDPR, PIXEL.ceil);
   renderer.setPixelRatio(pixelRatio);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setClearColor(0x000000, 0);
@@ -1106,52 +1100,16 @@
 
   // Frame-time sampling for the adaptive pixel ratio.
   var costAccum = 0, costCount = 0, lateCount = 0, fpsSince = 0, lastFrameAt = 0, bootAt = performance.now();
-  var lastLateFrac = 0, badRun = 0, goodRun = 0, heavyUntil = 0, ladderPos = 0;
+  var lastLateFrac = 0, badRun = 0, goodRun = 0, heavyUntil = 0, fallback = false;
   var qualityLog = [];
   // Anything that rebuilds the scene calls this so the spike it causes isn't read as evidence.
   function markHeavy() { heavyUntil = performance.now() + PIXEL.rebuildGraceMs; }
-
-  function applyLadder(step, on) {
-    if (!window.CakeLook) return false;
-    var L = CakeLook.LOOK;
-    switch (step) {
-      case 'shadow-512': L.shadowMapSize = on ? 512 : 1024; CakeLook.rebuild(renderer, scene, key); return true;
-      case 'halo-half':  L.halo.maxHalos = on ? 0 : 100; return true;   // takes effect on next candle build
-      case 'shadow-pcf': L.shadowType = on ? 'PCFSoft' : 'VSM'; CakeLook.rebuild(renderer, scene, key); return true;
-      case 'halo-off':   L.halo.enabled = !on; return true;
-      case 'shadow-off': L.shadows = !on; CakeLook.rebuild(renderer, scene, key); return true;
-      case 'ratio':      return false;
-    }
-    return false;
-  }
-  function stepDown() {
-    // Walk the ladder; each rung is tried once. 'ratio' is repeatable down to the floor.
-    while (ladderPos < QUALITY_LADDER.length) {
-      var rung = QUALITY_LADDER[ladderPos];
-      if (rung === 'ratio') {
-        if (pixelRatio <= PIXEL.floor) return false;
-        pixelRatio = Math.max(PIXEL.floor, pixelRatio - PIXEL.step);
-        renderer.setPixelRatio(pixelRatio); resize();
-        qualityLog.push('ratio→' + pixelRatio); return true;
-      }
-      ladderPos++;
-      if (applyLadder(rung, true)) { qualityLog.push('-' + rung); markHeavy(); return true; }
-    }
-    return false;
-  }
-  function stepUp() {
-    var ceiling = Math.min(deviceDPR, PIXEL.ceil);
-    if (pixelRatio < ceiling) {                     // sharpness comes back first
-      pixelRatio = Math.min(ceiling, pixelRatio + PIXEL.step);
-      renderer.setPixelRatio(pixelRatio); resize();
-      qualityLog.push('ratio→' + pixelRatio); return true;
-    }
-    if (ladderPos > 0) {                            // then the effects, in reverse
-      ladderPos--;
-      var rung = QUALITY_LADDER[ladderPos];
-      if (rung !== 'ratio' && applyLadder(rung, false)) { qualityLog.push('+' + rung); markHeavy(); return true; }
-    }
-    return false;
+  function setFallback(on) {
+    if (fallback === on || !window.CakeLook) return;
+    fallback = on;
+    CakeLook.emergency(on, renderer, scene, key);
+    qualityLog.push((on ? 'fallback on' : 'fallback off') + ' @' + Math.round(performance.now() / 1000) + 's');
+    markHeavy();
   }
 
   function tunePixelRatio(now, costMs) {
@@ -1170,9 +1128,8 @@
     if (lateFrac > PIXEL.dropFrac) { badRun++; goodRun = 0; }
     else if (lateFrac < PIXEL.climbFrac) { goodRun++; badRun = 0; }
     else { badRun = 0; goodRun = 0; }
-    // Sustained evidence only: two bad windows in a row to step down, three good to step up.
-    if (badRun >= PIXEL.badWindows) { if (stepDown()) badRun = 0; }
-    else if (goodRun >= PIXEL.goodWindows) { if (stepUp()) goodRun = 0; }
+    if (!fallback && badRun >= PIXEL.badWindows) { setFallback(true); badRun = 0; }
+    else if (fallback && goodRun >= PIXEL.goodWindows) { setFallback(false); goodRun = 0; }
   }
 
   function frame() {
@@ -3120,7 +3077,7 @@
       key.intensity = L.key; fill.intensity = L.fill;
       updateRoomLights();
     },
-    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil), lateFrac: +lastLateFrac.toFixed(2), ladder: QUALITY_LADDER.slice(0, ladderPos), log: qualityLog.slice(-8) }; },
+    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, lateFrac: +lastLateFrac.toFixed(2), fallback: fallback, log: qualityLog.slice(-8) }; },
     PIXEL: PIXEL,
     cut: function () { return cut ? { left: slicesLeft(), lifted: !!cut.lifted, sentBack: cut.sentBack, total: cut.total } : null; },
     startCut: startCut, liftFirst: function () { if (!cut) return; var w = cut.wedges.filter(function (x) { return x.visible && x.userData.tier === topRemainingTier(); })[0]; if (w) liftWedge(w); },
