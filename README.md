@@ -1,30 +1,29 @@
-# Cake — v0.27
+# Cake — v0.32 (candlelight as the light source)
 
-## 1. The cake shows on the occasion screen (and scales to fit)
-The free-area measurement was sorting UI elements into "top edge" or "bottom edge" by which half
-of the screen their centre sat in. With a tall tray — the occasion grid, especially at larger text
-sizes — the chip row's centre crossed above the midpoint, got counted as a top edge, and the free
-space collapsed to a sliver between the chips and the tray. The cake was faithfully scaled into
-that sliver, behind the UI.
+The last item in the look pass, and the one the halo was for.
 
-Edges are now classified **by role**: the builder, viewer footer and link panel are always the
-bottom edge; the slice header and gift tag are always the top. A floor of 140px keeps the cake
-meaningful when a tray is very tall. Reproduced with the chip row at 30% of the screen (your phone's
-layout): the cake now sits, small, in the space above it.
+## What it does
+On a dark background the room goes dim and **the flames light the cake**. Blowing the candles out
+visibly darkens it — each extinguished wave is a wave of dimming, not just flames disappearing — and
+relighting brings the glow back. On light backgrounds nothing changes.
 
-## 2. Resolution: start at the device's ratio, drop on evidence
-Two things were wrong with the adaptive ratio.
+Nothing is gated or chosen: it follows the background the sender already picked. Darkness ramps from
+the backdrop's luminance (0 above 0.55, 1 below 0.16), so Dusk is half-lit and Midnight and Ink are
+fully candlelit.
 
-- **It judged lateness against the display's fastest interval.** On a 120Hz ProMotion iPhone a
-  rock-steady 60fps read as *every frame late*, so it never climbed and could even drop. Lateness is
-  now judged against a fixed budget: anything under ~22ms is fine, whatever the display could do.
-- **It started low and climbed on evidence.** Now it **starts at the device's ratio (up to 3) and
-  drops on evidence** — more than 20% late frames in a 1.2s window, after a 1.5s grace period for
-  first paint and font load. A moment of stutter at load is far less bad than permanent blur. It
-  climbs back only when late frames are under 4% and CPU cost is low.
+## How (all in `look.js` → `LOOK.night`, applied by `app.js`)
+- **Room lights** lerp toward a dim, cooler night set as darkness rises (hemisphere 0.62 → 0.20, key
+  0.82 → 0.26, fill 0.22 → 0.10).
+- **Candle light** = `base + perSqrt·√lit`, boosted 2.4× at full darkness. Square root, or one candle
+  looks nearly as bright as twenty. Eased at 6/s so a wave of candles going out reads as dimming.
+- **A faint self-glow** on the cake materials at night (5%) so the shape never goes fully black, and
+  a little more on the message band (14%, using the message texture as its emissive map) so the
+  writing stays readable when the candles are out.
 
-Net: on an iPhone Pro, 3× from the first frame unless the phone proves it can't hold it.
-`cake.quality()` now reports `lateFrac` so you can see the evidence it's acting on.
+Tuned from a sweep: the tops were clipping to white at the first strength, so the per-candle factor
+came down from 0.42 to 0.30, and the night ambient came up so the sides keep some form.
 
-## docs/
-Unchanged.
+## The look pass, complete
+Shadows (v0.28/29) → rounded geometry (v0.30) → flame halo (v0.31) → candlelight (v0.32). What
+remains in the aesthetics doc is cake-ness — sprinkles, drips, rosettes — which belongs to the
+builder's object library, and environment/tone mapping, which wait for a glossy skin.

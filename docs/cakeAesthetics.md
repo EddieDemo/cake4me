@@ -94,6 +94,44 @@ vertical video. Implementation notes:
 **Suggested link fields when built:** `li` (lighting preset index), `ls` (ambient strength, 0–9).
 Both append to the schema, so old links keep working — same rule as `bg`.
 
+## What the pass actually found (19 Sept 2026, v0.28)
+
+Rendered side by side against v0.27 across four palettes, the box and a cut cake:
+
+- **A real shadow map is the lever**, not the environment. With one 1024 PCF-soft caster on the key
+  light: candles shadow the frosting, each cap shadows the tier below, the box and the lifted wedge
+  cast onto the floor. That is what "clay render" means and it grounds everything at once. **Shipped
+  on by default in `look.js`.** The old contact disc stays at half strength underneath, reading as
+  ambient occlusion beneath the cast shadow.
+- **The environment map barely registers** on matte materials at roughness ~0.6 — it adds diffuse
+  tint, not sheen — and **ACES desaturates the pastel palette** and greys the whites. Both are
+  implemented and kept in `look.js` as options, **off by default**, for glossier skins later
+  (ganache, glaze, satin ribbon), where they will earn their place. Tier A items 1 and 2 above are
+  therefore demoted; item 3 promoted to first.
+- **Penumbra matters more than the shadow itself (v0.29).** The first shadows read as cel-shaded: three.js's PCFSoft mode ignores its blur radius, so the edge was crisp like sunlight. Switched to **VSM** (variance shadow maps), which blurs the map itself and gives the wide, soft edge of a large light source. Paired with a **hemisphere light** in place of the flat ambient (cool sky above, warm bounce below), so the shadow side fills with colour rather than grey, and a warm-dark, lower-opacity floor shadow. That combination is the "diffuse but directional" look — like the contact disc, with a direction.
+- **Rounded geometry (v0.30)** — `shapes.js`. Sponge and cap are lathe profiles: a rounded base, a
+  1.8% bulge at mid-height, a small tuck under the cap, an overhanging cap with a rounded rim. The
+  cap's underside lip meets the sponge's tuck, so the old torus "drip band" hiding the seam is gone.
+  Wedges use the same profiles with a partial sweep; cut faces are the tier's actual outline rather
+  than a rectangle. UV v on the sponge is rewritten as normalised height so the message band isn't
+  stretched by the fillet points. Same triangle budget.
+- **Two-layer flame (v0.31)** — `look.js` supplies a shared additive halo sprite (radial gradient,
+  warm, `toneMapped: false`); `app.js` gives each flame one on the same pivot, scaled 3.4× and
+  breathing with the flame's flicker, behind the core. Over 100 candles every other candle skips its
+  halo so 100 candles is 150 sprites, not 200. This is the fake bloom, and it's what the
+  candlelight-as-light-source idea (Tier B+) needs before it can be built.
+- **Candlelight as the light source (v0.32)** — built as described in Tier B+, in `look.js`
+  (`LOOK.night`). Darkness ramps from the backdrop's luminance (0 above 0.55, 1 below 0.16); the
+  room lights lerp toward a dim, cooler night set; the candle point light is `base + perSqrt·√lit`,
+  boosted 2.4× at full darkness and eased so each extinguished wave reads as a wave of dimming; cake
+  materials get a faint emissive lift at night, the message band a little more. Lit → out → relit
+  now visibly changes the room on Midnight/Ink/Dusk and does nothing on light backdrops. No gating
+  needed: it follows the background the sender already chose.
+- Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
+  environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
+  cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
+- Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.
+
 ## Tier D — skip for now
 
 Real bloom, SSAO, subsurface scattering, depth of field. All need post-processing passes (EffectComposer from the examples bundle) that hurt phones. The halo sprite gets ~80% of bloom for free.
@@ -105,7 +143,7 @@ Real bloom, SSAO, subsurface scattering, depth of field. All need post-processin
 - Sprinkles / rosettes / drips all `InstancedMesh`.
 - Flames: up to 200 sprites (100 core + 100 halo). If that stutters, halo only on every other candle over 60.
 - No post-processing.
-- `devicePixelRatio` stays capped at 2.
+- `devicePixelRatio` is adaptive, up to 3 (v0.27).
 
 ## Later / occasion skins
 

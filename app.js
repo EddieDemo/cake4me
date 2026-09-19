@@ -319,13 +319,23 @@
   camera.position.set(0, 6.2, 12.4);
   camera.lookAt(0, 1.35, 0);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  var key = new THREE.DirectionalLight(0xfff1dd, 0.9);
+  // Lights. Intensities come from look.js when it's present: the environment provides
+  // most of the fill, so the direct lights step back.
+  var LI = (window.CakeLook && CakeLook.LOOK.lights) || { ambient: 0.55, key: 0.9, fill: 0.35 };
+  // Hemisphere light when the look supplies one (sky from above, warm bounce from below);
+  // flat ambient otherwise.
+  var ambientLight = LI.hemiSky
+    ? new THREE.HemisphereLight(new THREE.Color(LI.hemiSky), new THREE.Color(LI.hemiGround), LI.hemi)
+    : new THREE.AmbientLight(0xffffff, LI.ambient);
+  scene.add(ambientLight);
+  var key = new THREE.DirectionalLight(0xfff1dd, LI.key);
   key.position.set(-4, 7, 5);
   scene.add(key);
-  var fill = new THREE.DirectionalLight(0xdcefff, 0.35);
+  var fill = new THREE.DirectionalLight(0xdcefff, LI.fill);
   fill.position.set(5, 3, -2);
   scene.add(fill);
+  // The look (shadows, optional environment and tone mapping) lives in look.js.
+  if (window.CakeLook) CakeLook.apply(renderer, scene, key);
   var candleLight = new THREE.PointLight(0xffb36b, 0, 8, 2);
   scene.add(candleLight);
 
@@ -362,7 +372,8 @@
   var shadowRadius = 2.2;
   function updateShadow() {
     var t = Math.max(0, Math.min(1, (camElev - CAM_ELEV_MIN) / 18));
-    contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / 0.55));
+    var discScale = (window.CakeLook && CakeLook.LOOK.shadows) ? CakeLook.LOOK.contactDiscScale : 1;
+    contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / 0.55)) * discScale;
   }
   function fitShadow(radius) {
     shadowRadius = radius;
@@ -382,6 +393,7 @@
   var flameTex = makeFlameTexture();
   // Normal blending, not additive: additive flames vanish against light backgrounds.
   var flameMat = new THREE.SpriteMaterial({
+    toneMapped: false,             // additive glow tuned by eye; ACES would dim it
     map: flameTex, transparent: true, depthWrite: false
   });
   candleGeo.__shared = wickGeo.__shared = true;
@@ -444,6 +456,7 @@
 
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
     var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
     frostingMat.__shared = capMat.__shared = true;   // reused across meshes within this build
     var localShared = [frostingMat, capMat];
 
@@ -466,26 +479,23 @@
         sideMat = new THREE.MeshStandardMaterial({
           color: 0xffffff, roughness: 0.62, map: makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH)
         });
+        nightGlow(sideMat, 0xffffff, true);
       }
-      var bodyGeo = new THREE.CylinderGeometry(tier.r, tier.r, bodyH, CYL_SEG, 1, false, open, Math.PI * 2 - open);
+      // Rounded lathe profiles (shapes.js): a slight bulge, a rounded base, a rounded rim.
+      // The lathe's origin is its base, not its centre, hence the different .position.y.
+      var bodyGeo = CakeShapes.body(tier.r, bodyH, CYL_SEG, open, Math.PI * 2 - open);
       var body = new THREE.Mesh(bodyGeo, [sideMat, frostingMat, frostingMat]);
-      body.position.y = y + bodyH / 2;
+      body.position.y = y;
       tg.add(body);
       if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = bodyH; }
 
       // Frosting cap, a touch wider than the body
-      var capGeo = new THREE.CylinderGeometry(tier.r + 0.08, tier.r + 0.02, CAP_H, CYL_SEG, 1, false, open, Math.PI * 2 - open);
+      var capGeo = CakeShapes.cap(tier.r, CAP_H, CYL_SEG, open, Math.PI * 2 - open);
       var cap = new THREE.Mesh(capGeo, capMat);
-      cap.position.y = y + bodyH + CAP_H / 2;
+      cap.position.y = y + bodyH;
       tg.add(cap);
-
-      // Drip band where cap meets body
-      if (!cfg.cutaway) {
-        var drip = new THREE.Mesh(new THREE.TorusGeometry(tier.r + 0.02, 0.07, 12, 128), capMat);
-        drip.rotation.x = Math.PI / 2;
-        drip.position.y = y + bodyH;
-        tg.add(drip);
-      }
+      // (The old torus "drip band" at the cap/body seam is gone: the cap's underside lip
+      // and the sponge's top tuck now meet properly, so there's no seam to hide.)
 
       // Cut faces (dev cut-away): two planes showing sponge + filling layers
       if (cfg.cutaway) {
@@ -493,9 +503,10 @@
         var faceMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.9, side: THREE.DoubleSide });
         faceMat.__shared = true; localShared.push(faceMat);
         [0, open].forEach(function (theta) {
-          var face = new THREE.Mesh(new THREE.PlaneGeometry(tier.r, tier.h), faceMat);
-          face.position.set(Math.sin(theta) * tier.r / 2, y + tier.h / 2, Math.cos(theta) * tier.r / 2);
-          face.rotation.y = theta + Math.PI / 2;
+          var face = new THREE.Mesh(CakeShapes.cutFace(tier.r, bodyH, CAP_H), faceMat);
+          face.position.set(0, y, 0);
+          // The shape's +x is radius; rotating by (θ − π/2) about Y points it along (sin θ, cos θ).
+          face.rotation.y = theta - Math.PI / 2;
           tg.add(face);
         });
         // Inner core so the cake isn't hollow when you look in
@@ -549,7 +560,7 @@
     FRAME.cake = cakeFrame(cfg.t);
     if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg.t); }
     candleLight.position.set(0, y + 0.9, 0);
-    candleLight.intensity = Math.min(1.6, 0.25 + flames.length * 0.03);
+    candleLight.intensity = window.CakeLook ? CakeLook.candleIntensity(flames.length, darkness) : Math.min(1.6, 0.25 + flames.length * 0.03);
 
     applyBackground(frosting, cfg.bg);
   }
@@ -679,7 +690,17 @@
       flame.scale.set(fs * 0.7, fs, 1);
       flame.position.set(p.x, p.y + height + 0.16, p.z);
       built.add(flame);
-      flames.push({ sprite: flame, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: p.x, z: p.z,
+      // The halo: same pivot, follows the flame in the update loop. Skipped on every other
+      // candle past the budget so 100 candles is still 150 sprites, not 200.
+      var halo = null;
+      if (window.CakeLook && CakeLook.LOOK.halo.enabled && (pts.length <= CakeLook.LOOK.halo.maxHalos || i % 2 === 0)) {
+        halo = new THREE.Sprite(CakeLook.haloMaterial());
+        halo.scale.set(fs * CakeLook.LOOK.halo.scale, fs * CakeLook.LOOK.halo.scale, 1);
+        halo.position.copy(flame.position);
+        halo.renderOrder = -1;                           // behind the core
+        built.add(halo);
+      }
+      flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: p.x, z: p.z,
                     k: 1, lit: 1, y: p.y + height + 0.16, leanX: 0, leanZ: 0 });
     });
     bodies.instanceMatrix.needsUpdate = true;
@@ -888,6 +909,15 @@
     var c = new THREE.Color(hex);
     return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   }
+  // At night the cake gets a faint self-glow so the shape never goes fully black, and the
+  // message band a little more so the writing stays readable. Zero in daylight.
+  function nightGlow(mat, hex, isMessage) {
+    if (!window.CakeLook) return;
+    var N = CakeLook.LOOK.night;
+    mat.emissive = new THREE.Color(hex);
+    mat.emissiveIntensity = darkness * (isMessage ? N.emissiveMessage : N.emissiveFrosting);
+    if (isMessage && mat.map) mat.emissiveMap = mat.map;
+  }
   function pickInk(frostingHex, tcIndex) {
     var opt = PALETTES.text[clampIndex(tcIndex, PALETTES.text)];
     if (!opt.auto) return hexCss(opt.hex);
@@ -900,7 +930,17 @@
     var lb = 0.2126 * b.r + 0.7152 * b.g + 0.0722 * b.b;
     return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
   }
-  var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow.
+  var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow and the room lights.
+  var darkness = 0;             // 0 daylight … 1 candlelit (look.js decides from bgLuminance)
+  function updateRoomLights() {
+    if (!window.CakeLook) return;
+    darkness = CakeLook.darknessFor(bgLuminance);
+    var R = CakeLook.roomLights(darkness);
+    if (ambientLight.isHemisphereLight) { ambientLight.intensity = R.hemi; ambientLight.color.copy(R.hemiSky); ambientLight.groundColor.copy(R.hemiGround); }
+    else ambientLight.intensity = R.hemi;
+    key.intensity = R.key; fill.intensity = R.fill;
+    candleLight.distance = CakeLook.LOOK.night.distance; candleLight.decay = CakeLook.LOOK.night.decay;
+  }
   function applyBackground(frostingHex, bgIndex) {
     var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];
     var top, bottom;
@@ -917,6 +957,7 @@
     bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
     // A dark shadow on a dark backdrop is just a smudge; fade it out as the floor darkens.
     document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
+    updateRoomLights();
   }
 
 
@@ -1089,7 +1130,7 @@
       camY += (camTargetY - camY) * Math.min(1, dt * 5);
       frameRadius += (frameTarget - frameRadius) * Math.min(1, dt * 5);
     }
-    if (now - lastMeasure > 180) { lastMeasure = now; measureFree(); }
+    if (now - lastMeasure > 180) { lastMeasure = now; measureFree(); if (window.CakeLook) CakeLook.tick(scene); }
     free.top += (freeTarget.top - free.top) * Math.min(1, dt * 6);
     free.bottom += (freeTarget.bottom - free.bottom) * Math.min(1, dt * 6);
     if (spinEnabled) updateSpin(now, dt);
@@ -1112,9 +1153,20 @@
       f.sprite.position.z = f.z + (_right.z * lx + _fwd.z * lz) * 0.08;
       f.sprite.position.y = f.y - (1 - f.k) * 0.5 - Math.abs(lz) * 0.06;
       f.sprite.visible = f.k > 0.05 && f.lit > 0.01;
+      if (f.halo) {
+        // Halo rides the flame: same position, a touch higher, scaled with it (and with the
+        // flame's own flicker, so the glow breathes).
+        var hs = f.base * CakeLook.LOOK.halo.scale * f.k * f.lit * (1 + 0.06 * Math.sin(t * 3.1 + f.phase));
+        f.halo.scale.set(hs, hs, 1);
+        f.halo.position.set(f.sprite.position.x + (_right.x * lx) * 0.03, f.sprite.position.y + CakeLook.LOOK.halo.liftY, f.sprite.position.z + (_right.z * lx) * 0.03);
+        f.halo.visible = f.sprite.visible;
+      }
     }
     if (flames.length) {
-      candleLight.intensity = Math.min(1.6, 0.25 + litCount() * 0.03) * (0.92 + 0.08 * Math.sin(t * 7));
+      var lit = litCount();
+      var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
+      // Ease toward it so each extinguished wave reads as a wave of dimming, not a step.
+      candleLight.intensity += (target * (0.92 + 0.08 * Math.sin(t * 7)) - candleLight.intensity) * Math.min(1, dt * 6);
     }
     updateSmoke(dt);
     updateConfetti(dt, t);
@@ -1293,7 +1345,7 @@
   var smokeGroup = new THREE.Group(); cakeGroup.add(smokeGroup);
 
   function puffSmoke(f, dirX, dirZ) {
-    var m = new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0.9 });
+    var m = new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0.9, toneMapped: false });
     var sp = new THREE.Sprite(m);
     sp.position.set(f.x, f.y + 0.05, f.z);
     sp.scale.set(0.12, 0.12, 1);
@@ -2028,14 +2080,16 @@
       t.offset.x = theta0 / (Math.PI * 2);
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t });
     }
-    var body = new THREE.Mesh(new THREE.CylinderGeometry(tier.r, tier.r, bodyH, CYL_SEG / N * 2 + 2, 1, false, theta0, len), [side, frostingMat, frostingMat]);
-    body.position.y = tier.y0 + bodyH / 2; g.add(body);
-    var cap = new THREE.Mesh(new THREE.CylinderGeometry(tier.r + 0.08, tier.r + 0.02, CAP_H, CYL_SEG / N * 2 + 2, 1, false, theta0, len), capMat);
-    cap.position.y = tier.y0 + bodyH + CAP_H / 2; g.add(cap);
+    var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
+    var body = new THREE.Mesh(CakeShapes.body(tier.r, bodyH, wseg, theta0, len), [side, frostingMat, frostingMat]);
+    body.position.y = tier.y0; g.add(body);
+    var cap = new THREE.Mesh(CakeShapes.cap(tier.r, CAP_H, wseg, theta0, len), capMat);
+    cap.position.y = tier.y0 + bodyH; g.add(cap);
+    // Cut faces follow the rounded outline, so the wedge matches the whole cake.
     [theta0, theta0 + len].forEach(function (th) {
-      var f = new THREE.Mesh(new THREE.PlaneGeometry(tier.r, tier.h), faceMat);
-      f.position.set(Math.sin(th) * tier.r / 2, tier.y0 + tier.h / 2, Math.cos(th) * tier.r / 2);
-      f.rotation.y = th + Math.PI / 2;
+      var f = new THREE.Mesh(CakeShapes.cutFace(tier.r, bodyH, CAP_H), faceMat);
+      f.position.set(0, tier.y0, 0);
+      f.rotation.y = th - Math.PI / 2;               // +x (radius) → along (sin θ, cos θ)
       g.add(f);
     });
     g.traverse(function (o) { if (o.isMesh) o.userData.wedge = g; });
@@ -2050,6 +2104,7 @@
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
     var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
     var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
     var msgMap = messageMesh && messageMesh.material[0] && messageMesh.material[0].map ? messageMesh.material[0].map : null;
 
@@ -2253,6 +2308,7 @@
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
     var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
     var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
     var tiers = tierTops(cfg);
     var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
@@ -2995,6 +3051,16 @@
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
+    look: window.CakeLook ? CakeLook.LOOK : null,
+    relook: function () {
+      if (!window.CakeLook) return;
+      CakeLook.rebuild(renderer, scene, key);
+      var L = CakeLook.LOOK.lights;
+      ambientLight.intensity = L.hemiSky ? L.hemi : L.ambient;
+      if (ambientLight.isHemisphereLight) { ambientLight.color.set(L.hemiSky); ambientLight.groundColor.set(L.hemiGround); }
+      key.intensity = L.key; fill.intensity = L.fill;
+      updateRoomLights();
+    },
     quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil), lateFrac: +lastLateFrac.toFixed(2) }; },
     PIXEL: PIXEL,
     cut: function () { return cut ? { left: slicesLeft(), lifted: !!cut.lifted, sentBack: cut.sentBack, total: cut.total } : null; },
