@@ -158,6 +158,7 @@ Goal: it is a gift, small but complete. This page carries the business.
   - two-finger rotate → camera roll, ±25°
   - two-finger pinch → zoom, 0.45×–1.7× of the framed distance, always centred on the cake
   Elevation, roll and zoom are held, not sprung. Only the orbit decays.
+- **Everything pivots on the cake** (v0.26). The camera orbits around and aims at the cake's centre of mass; the on-screen position is set by a projection offset (a shift lens), not by aiming elsewhere. Aiming below the cake to push it up the screen — the earlier approach — made the two-finger roll swing the cake around the screen centre instead of turning it in place.
 - The "wind" that blows the candles out is still driven by orbit speed. Nothing is physically moving the air; it's a toy and it reads fine.
 - Audio: one `AudioContext` created on the open tap; all buffers decoded once; a single mute toggle.
 - No vibration API on iOS Safari. Don't design around haptics.

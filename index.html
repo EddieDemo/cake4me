@@ -184,6 +184,10 @@
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="remind-title">
       <h2 id="remind-title">Remind you next year?</h2>
       <p id="remind-body"></p>
+      <label class="modal-date" id="remind-who-wrap" hidden>
+        <span>Who is this for?</span>
+        <input type="text" id="remind-who" maxlength="24" autocomplete="off" placeholder="Their name">
+      </label>
       <label class="modal-date" id="remind-date-wrap">
         <span>Their date</span>
         <input type="date" id="remind-date">

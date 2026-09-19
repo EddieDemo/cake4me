@@ -926,7 +926,7 @@
     camera.updateProjectionMatrix();
     // One comfortable swipe (80% of the canvas height) should cover the entire tilt range.
     TILT.pxPerRad = (h * TILT.swipeFraction) / (TILT.max - TILT.min);
-    measureUiReserve();
+    measureFree(); free.top = freeTarget.top; free.bottom = freeTarget.bottom;   // no easing on resize
     frameCamera();
   }
   // Keep the whole plate in shot whatever the canvas aspect (portrait phones are narrow).
@@ -962,44 +962,63 @@
   function frameCamera() {
     var vHalf = THREE.MathUtils.degToRad(camera.fov / 2);
     var hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
-    var dist = Math.max(9.0, frameRadius / Math.tan(hHalf)) * camZoom;
+    // Distance: far enough that the framed radius fits the free HEIGHT and the full width.
+    var vh = canvas.clientHeight || 1;
+    var freeH = Math.max(80, free.bottom - free.top);
+    var distH = frameRadius / Math.tan(hHalf);
+    var distV = frameRadius / (Math.tan(vHalf) * (freeH / vh));
+    var dist = Math.max(9.0, distH, distV) * camZoom;
     var e = THREE.MathUtils.degToRad(camElev);
     var a = camAzimuth;
-    // Offset the look-at so the cake lands in the middle of the space the UI leaves free.
-    var vh = canvas.clientHeight || 1;
-    var pxOffset = (vh - uiReserve) / 2 - vh / 2;              // free centre, relative to screen centre
-    var worldPerPx = (2 * dist * Math.tan(vHalf)) / vh;
-    var lookY = camY + pxOffset * worldPerPx;                  // free centre is above → look lower
+    // Orbit AROUND the cake's centre and aim AT it. Every gesture then pivots on the cake:
+    // spin and tilt orbit it, roll turns about the axis through it, pinch zooms toward it.
     camera.position.set(
       dist * Math.cos(e) * Math.sin(a),
-      dist * Math.sin(e) + camY * 0,
+      camY + dist * Math.sin(e),
       dist * Math.cos(e) * Math.cos(a)
     );
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, lookY, 0);
-    if (camRoll) camera.rotateZ(camRoll);      // roll is about the view axis, after aiming
+    camera.lookAt(0, camY, 0);
+    if (camRoll) camera.rotateZ(camRoll);      // about the view axis — which now passes through the cake
+    // Put the cake where the free space is by shifting the PROJECTION, not the aim. Aiming
+    // below the cake (the previous approach) made every rotation pivot on a point that
+    // wasn't the cake, so a two-finger roll swung it round the screen centre instead of
+    // turning it in place. A view offset is a shift lens: same perspective, verticals stay
+    // vertical, and the pivot stays on the cake.
+    var vw = canvas.clientWidth || 1;
+    var pxOffset = (free.top + free.bottom) / 2 - vh / 2;     // negative = free centre is above middle
+    camera.setViewOffset(vw, vh, 0, -pxOffset, vw, vh);
   }
   // Ease between framings rather than cutting (the box needs a wider frame than the cake).
   // Height of the TALLEST UI state, measured from the DOM rather than hardcoded, so the
   // cake's pinned position survives any future UI change — and, crucially, doesn't shift
   // as the sender moves from tray to tray.
-  var uiReserve = 0;
-  function measureUiReserve() {
-    var isViewer = document.body.classList.contains('mode-viewer');
-    var host = document.getElementById(isViewer ? 'viewer-foot' : 'builder');
-    if (!host || host.hidden) { uiReserve = 0; return; }
-    var panels = host.querySelectorAll('.tray, .vstate');
-    var tallest = 0, current = 0;
-    Array.prototype.forEach.call(panels, function (t) {
-      var wasHidden = t.hidden;
-      if (wasHidden) { t.hidden = false; t.style.visibility = 'hidden'; }
-      tallest = Math.max(tallest, t.offsetHeight);
-      if (wasHidden) { t.hidden = true; t.style.visibility = ''; }
-      else current = t.offsetHeight;
-    });
-    // Everything that isn't the tray: chip row, CTA, padding.
-    uiReserve = Math.max(0, host.offsetHeight - current) + tallest;
+  // The cake lives in the space the UI leaves free RIGHT NOW: from the bottom of anything
+  // pinned to the top (slice header, gift tag) to the top of whatever is showing at the
+  // bottom (chip row, tray, slice card, link panel). Measured, not assumed, so it keeps
+  // working when the UI changes — and re-measured cheaply so the cake eases to a new spot
+  // as trays open and close. That easing is the "scaling effect" and it's deliberate.
+  var FREE_MARGIN = 22;                       // px of breathing room above and below the cake
+  var free = { top: 0, bottom: 0 };           // eased, in canvas px
+  var freeTarget = { top: 0, bottom: 0 };
+  var OBSTRUCTORS = '.chiprow, .tray:not([hidden]), #viewer-foot .vstate:not([hidden]) > *, #linkpanel:not([hidden]) .sheet-scroll > *, .slice-head:not([hidden]), .lid-label, #builder:not([hidden]) > .primary';
+  function measureFree() {
+    var r = canvas.getBoundingClientRect(), vh = r.height || 1;
+    var top = 0, bottom = vh;
+    var els = document.querySelectorAll(OBSTRUCTORS);
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;  // not rendered
+      var b = el.getBoundingClientRect();
+      if (b.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
+      var cy = (b.top + b.bottom) / 2 - r.top;
+      if (cy < vh / 2) top = Math.max(top, b.bottom - r.top);
+      else bottom = Math.min(bottom, b.top - r.top);
+    }
+    freeTarget.top = Math.min(top + FREE_MARGIN, vh * 0.45);
+    freeTarget.bottom = Math.max(bottom - FREE_MARGIN, vh * 0.55);
   }
+  var lastMeasure = 0;
 
   function setFrame(which, y, immediate) {
     frameTarget = FRAME[which];
@@ -1055,6 +1074,9 @@
       camY += (camTargetY - camY) * Math.min(1, dt * 5);
       frameRadius += (frameTarget - frameRadius) * Math.min(1, dt * 5);
     }
+    if (now - lastMeasure > 180) { lastMeasure = now; measureFree(); }
+    free.top += (freeTarget.top - free.top) * Math.min(1, dt * 6);
+    free.bottom += (freeTarget.bottom - free.bottom) * Math.min(1, dt * 6);
     if (spinEnabled) updateSpin(now, dt);
     // Tilt and twist are held, not sprung, and apply whether or not the spin loop runs.
     camElev = Math.max(CAM_ELEV_MIN, Math.min(CAM_ELEV_MAX, CAM_ELEV_BASE + tiltX * 180 / Math.PI));
@@ -2030,11 +2052,47 @@
       }
     });
     cut.total = cut.wedges.length;
+    cut.tiers = tiers.length;
+    cut.seams = new THREE.Group(); cutGroup.add(cut.seams);
+    cut.seamMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.16, depthWrite: false });
     var fin = $('vs-finished'); if (fin) fin.hidden = true;
     setViewerState('cut');
+    updateSeams();
     updateCutUI();
   }
 
+  // Seams show only on the tier you can cut right now, so the affordance itself says
+  // where to tap. Redrawn whenever the cuttable tier changes.
+  function updateSeams() {
+    if (!cut || !cut.seams) return;
+    while (cut.seams.children.length) cut.seams.remove(cut.seams.children[0]);
+    var ti = topRemainingTier(); if (ti < 0) return;
+    var tier = tierTops(config)[ti], N = WEDGES_PER_TIER;
+    var topY = tier.y0 + tier.h + 0.003;
+    for (var k = 0; k < N; k++) {
+      var w = cut.wedges[ti * N + k];
+      if (!w.visible || w.userData.lifted) continue;
+      // one line per remaining wedge, along its leading edge
+      var th = k * Math.PI * 2 / N;
+      var line = new THREE.Mesh(new THREE.BoxGeometry(tier.r + 0.06, 0.004, 0.012), cut.seamMat);
+      line.position.set(Math.sin(th) * (tier.r + 0.06) / 2, topY, Math.cos(th) * (tier.r + 0.06) / 2);
+      // A box's length runs along local X; rotating by (th − π/2) about Y points X along (sin th, cos th).
+      line.rotation.y = th - Math.PI / 2;
+      cut.seams.add(line);
+    }
+  }
+  // Tap on a tier that still has one above it: acknowledge it with a wobble on the tier
+  // in the way, so the tap isn't ignored and the reason is visible.
+  function wobbleTier(ti) {
+    cut.wedges.forEach(function (w) {
+      if (w.userData.tier !== ti || !w.visible || w.userData.lifted) return;
+      tween({ duration: 380, ease: EASE.soft, update: function (k) {
+        w.rotation.z = Math.sin(k * Math.PI * 3) * 0.035 * (1 - k);
+      }, done: function () { w.rotation.z = 0; } });
+    });
+    var lead = $('cut-lead');
+    if (lead) { lead.textContent = 'Start at the top'; setTimeout(updateCutUI, 1100); }
+  }
   function slicesLeft() { return cut ? cut.wedges.filter(function (w) { return w.visible && !w.userData.lifted; }).length : 0; }
   function topRemainingTier() {
     // You cut the top tier first; a bottom wedge with a tier on top of it makes no sense.
@@ -2050,9 +2108,13 @@
     _ndc2.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     _ray.setFromCamera(_ndc2, camera);
     var hits = _ray.intersectObjects(cutGroup.children, true);
+    var top = topRemainingTier();
     for (var i = 0; i < hits.length; i++) {
       var w = hits[i].object.userData.wedge;
-      if (w && w.visible && !w.userData.lifted && w.userData.tier === topRemainingTier()) return w;
+      if (!w || !w.visible || w.userData.lifted) continue;
+      if (w.userData.tier === top) return w;
+      wobbleTier(top);                         // they tapped a lower tier: show why not
+      return null;
     }
     return null;
   }
@@ -2106,10 +2168,15 @@
       fitShadow(0.6);                                   // nothing left to cast it
       showFinished();
     } else {
-      lead.textContent = 'Tap a slice to cut it';
+      // Multi-tier: say where to start, and say when the next tier comes into play.
+      var top = topRemainingTier(), multi = cut.tiers > 1;
+      var tierDone = multi && top < cut.tiers - 1;
+      lead.textContent = !multi ? 'Tap a slice to cut it'
+                       : (tierDone ? 'Now the next tier — tap a slice' : 'Start at the top — tap a slice to cut it');
       card.hidden = true;
       left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
     }
+    updateSeams();
   }
 
   function sendLiftedSlice(name, back) {
@@ -2308,40 +2375,46 @@
   // ---- The pop-up. Big "Yes", quiet "Maybe next time". ----
   // mode 'sender'    → after sending: remind me next year (or, for one-offs, ask for their birthday)
   // mode 'recipient' → after opening: remind me for the sender's birthday
+  function poss(name) { return name === 'their' ? 'their' : (name + (/s$/i.test(name) ? "'" : "'s")); }
   var remindState = null;
   function openRemind(mode, cfg) {
     var occ = OCCASIONS[clampIndex(cfg.o, OCCASIONS)];
     var el = $('remind'); if (!el) return;
-    var who = mode === 'sender' ? (cfg.to || 'them') : (cfg.from || 'them');
+    var known = mode === 'sender' ? cfg.to : cfg.from;
+    var who = known || 'their';               // possessive-safe fallback: "their birthday"
+    var whoWrap = $('remind-who-wrap'), whoIn = $('remind-who');
+    whoWrap.hidden = !!known; if (!known) whoIn.value = '';
     var title = $('remind-title'), body = $('remind-body'), dateWrap = $('remind-date-wrap'), date = $('remind-date');
     var needsDate = false, plan = null, summary, description;
 
     if (mode === 'sender' && occ.rule.type !== 'none') {
       needsDate = (occ.rule.type === 'yearly' || occ.rule.type === 'becomes');
       if (occ.rule.type === 'becomes') {
-        title.textContent = 'Remind you for ' + who + "'s " + occ.rule.into + '?';
+        title.textContent = 'Remind you for ' + poss(who) + ' ' + occ.rule.into + '?';
         body.textContent = "We'll add it to your calendar, yearly, with a nudge three days before and this cake ready to send again.";
       } else if (needsDate) {
         title.textContent = 'Remind you next year?';
-        body.textContent = "We'll put " + who + "'s " + occ.say + " in your calendar, with a nudge three days before and this cake ready to send again.";
+        body.textContent = "We'll put " + poss(who) + ' ' + occ.say + " in your calendar, with a nudge three days before and this cake ready to send again.";
       } else {
         title.textContent = 'Remind you next ' + occ.say + '?';
         body.textContent = "We'll add " + occ.say + " to your calendar, yearly, with a nudge three days before and this cake ready to send again.";
       }
-      var occLabel = (occ.rule.type === 'fixed' || occ.rule.type === 'weekday') ? occ.name : (who + "'s " + (occ.say || occ.name));
+      var occLabel = (occ.rule.type === 'fixed' || occ.rule.type === 'weekday') ? occ.name : (poss(who) + ' ' + (occ.say || occ.name));
       summary = occLabel + ' 🎂';
-      description = 'Send ' + who + ' a cake. Last time you sent this one:';
-      remindState = { mode: mode, occ: occ, cfg: cfg, summary: summary, nudge: 'Send ' + who + ' a cake 🎂', description: description, needsDate: needsDate };
+      var whoObj = known ? who : 'them';
+      description = 'Send ' + whoObj + ' a cake. Last time you sent this one:';
+      remindState = { mode: mode, occ: occ, cfg: cfg, summary: summary, nudge: 'Send ' + whoObj + ' a cake 🎂', description: description, needsDate: needsDate };
     } else {
       // One-off occasion, or the recipient's side: capture a birthday.
       needsDate = true;
-      title.textContent = "When's " + who + "'s birthday?";
+      title.textContent = "When's " + poss(who) + ' birthday?';
       body.textContent = mode === 'sender'
         ? "We'll put it in your calendar with a nudge three days before and a cake ready to go."
         : "We'll put it in your calendar with a nudge three days before, so you can send one back.";
-      summary = who + "'s birthday 🎂";
-      description = 'Send ' + who + ' a cake:';
-      remindState = { mode: mode, occ: OCCASIONS[0], cfg: cfg, summary: summary, nudge: 'Send ' + who + ' a birthday cake 🎂', description: description, needsDate: true, birthday: true };
+      summary = poss(who) + ' birthday 🎂';
+      var whoObj2 = known ? who : 'them';
+      description = 'Send ' + whoObj2 + ' a cake:';
+      remindState = { mode: mode, occ: OCCASIONS[0], cfg: cfg, summary: summary, nudge: 'Send ' + whoObj2 + ' a birthday cake 🎂', description: description, needsDate: true, birthday: true };
     }
     dateWrap.hidden = !needsDate;
     if (needsDate) { var t = new Date(); date.value = t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()); }
@@ -2358,6 +2431,19 @@
             '&details=' + encodeURIComponent(description + '\n' + url) +
             (plan.rrule ? '&recur=' + encodeURIComponent('RRULE:' + plan.rrule) : '');
     return 'https://calendar.google.com/calendar/render?' + q;
+  }
+  // If the pop-up asked for a name, fold it into the wording before anything is built.
+  function applyTypedName(st) {
+    var w = $('remind-who');
+    if (!w || $('remind-who-wrap').hidden) return st;
+    var name = cleanText(w.value, MAX_NAME);
+    if (!name) return st;
+    var out = {}; for (var k in st) out[k] = st[k];
+    out.summary = st.summary.replace(/\btheir\b/g, poss(name));
+    out.nudge = (st.nudge || '').replace(/\bthem\b/g, name).replace(/\btheir\b/g, poss(name));
+    out.description = st.description.replace(/\bthem\b/g, name).replace(/\btheir\b/g, poss(name));
+    out.name = name;
+    return out;
   }
   function currentPlan() {
     if (!remindState) return null;
@@ -2378,7 +2464,9 @@
     var plan = currentPlan();
     if (!plan) { a.hidden = true; return; }
     a.hidden = false;
-    a.href = googleCalendarUrl(remindState.summary, remindState.description, plan, editLinkFor(prefillFor(remindState)));
+    var st = applyTypedName(remindState);
+    var pre = prefillFor(st); if (st.name) pre.to = st.name;
+    a.href = googleCalendarUrl(st.summary, st.description, plan, editLinkFor(pre));
   }
   function closeRemind() {
     var el = $('remind'); if (!el) return;
@@ -2396,11 +2484,13 @@
     var occForPlan = st.birthday ? OCCASIONS[0] : st.occ;
     var plan = reminderPlan(occForPlan, picked);
     if (!plan) { closeRemind(); return; }
+    st = applyTypedName(st);
     // The reminder's link opens the builder pre-filled. Sender: this cake, same names.
     // Recipient: names swapped, message cleared, same cake as a starting point.
-    var url = editLinkFor(prefillFor(st));
+    var pre = prefillFor(st); if (st.name) pre.to = st.name;
+    var url = editLinkFor(pre);
     downloadIcs('cake-reminder.ics', icsFor(st.summary, st.description, plan, url, st.nudge));
-    rememberDate(st.mode === 'sender' ? st.cfg.to : st.cfg.from, occForPlan.name, plan.eventDate);
+    rememberDate(st.name || (st.mode === 'sender' ? st.cfg.to : st.cfg.from), occForPlan.name, plan.eventDate);
     var hint = $('remind-done');
     if (hint) {
       // iOS opens the file in a preview: the event only lands when they tap "Add To Calendar"
@@ -2720,6 +2810,7 @@
     var yes = $('remind-yes'), later = $('remind-later'), modal = $('remind'), date = $('remind-date'), g = $('remind-google');
     if (yes) yes.addEventListener('click', confirmRemind);
     if (date) date.addEventListener('change', refreshGoogleLink);
+    var who = $('remind-who'); if (who) who.addEventListener('input', refreshGoogleLink);
     if (g) g.addEventListener('click', function () {
       // They chose Google: record the date and close, same as Yes, but the link does the adding.
       var st = remindState, plan = currentPlan();
