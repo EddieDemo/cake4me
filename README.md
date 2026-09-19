@@ -1,36 +1,29 @@
-# Cake — v0.33 (resolution is the last thing to sacrifice)
+# Cake — v0.34 (dev overlay: measure before sacrificing)
 
-## What went wrong
-The look pass added the first real per-frame costs — a shadow depth pass plus VSM blur, up to 150
-flame sprites — and on a heavy moment (switching to the Showstopper rebuilds the cake *and* its
-shadow map) enough frames ran late that the adaptive system stepped the pixel ratio down. It then
-never climbed back, because I'd made climbing require the frame's CPU cost under 8ms, which shadows
-keep it above. One hitch cost 3× permanently. Two design mistakes: reacting to a spike rather than
-sustained lateness, and treating sharpness as the first thing to give up.
+## `dev.js`, only with `?dev=1`
+Add `?dev=1` to the URL (works alongside a `#c=` link too). Without it nothing changes and nothing
+is shown — recipients never see this, and `app.js` only carries two small hooks.
 
-## What changed
-**A quality ladder, resolution last.** Before the pixel ratio moves, the effects step down in this
-order, each cheaper to lose than sharpness on a phone:
-1. shadow map 1024 → 512
-2. halo on every other candle
-3. VSM → plain PCF (loses the soft penumbra)
-4. halos off
-5. shadows off
-6. only now: pixel ratio − 0.5, and never below **1.5**
+**Top left:** the current frame rate (over the last ~10 frames, updated a few times a second so it's
+readable), the **lowest** frame rate in the last second, and a count of dropped frames since load.
+The low number is the one to watch: an average hides a stutter, the worst frame *is* the stutter.
+A tier switch or a cut will show a dip for a second, then clear — that's a rebuild, not a stutter.
 
-Recovery runs the other way: sharpness first, then the effects back in reverse order.
+**Top right:** a 30 / 45 / 60 toggle. It does two things at once: **caps the render loop** to that
+rate, and **defines what counts as a dropped frame** (slower than 1.5× the target's slot). Choice
+persists in `localStorage`.
 
-**Sustained evidence only.** Two consecutive bad windows (>20% late frames) to step down; three
-consecutive good ones (<4% late) to step up. A single hitch never counts.
+**While the overlay is on, all limits are off.** Full device pixel ratio (not even the 3 cap), the
+quality ladder never runs, shadows at 1024 with the soft VSM blur, halo on every candle. Worst
+case, on purpose.
 
-**Rebuilds don't count.** Anything that rebuilds the scene — a tier switch, a cut, a slice page —
-marks a grace period, so the spike it causes isn't read as evidence. Windows with too few frames
-(tab hidden, keyboard up) are ignored too.
+## The thing to look at first
+Your phone is 120Hz. Until now the app rendered on every animation frame, so it was *attempting*
+120fps with an 8ms budget — half the headroom of 60 — for nothing anyone asked for. With the toggle
+at 60, rendering lands at 60 and the budget doubles. If the low number holds at 60 through a spin,
+the open ceremony and a confetti burst, the phone can do the full look and the ladder's whole
+premise was wrong. If it sags, the number tells you by how much, and 45 is one tap away to feel
+whether that's smooth enough.
 
-Verified under the slow software renderer: the ladder walked all five effect rungs over 22s with
-the ratio pinned at 3 the whole time, then recovered in reverse when frames were fast again.
-
-## On the phone
-`cake.quality()` now shows the ratio, the late-frame fraction, which rungs are currently stepped
-down, and a log of the last eight moves — so if it ever looks soft you can see exactly what it did
-and why. If your phone can't hold shadows *and* 3×, it'll drop shadow quality first and tell you.
+Verified headlessly: no overlay without the flag; overlay and toggle with it; ratio at the device's
+full value; the ladder inert for 10s under the slow software renderer.

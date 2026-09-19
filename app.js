@@ -322,7 +322,7 @@
   var canvas = document.getElementById('cake');
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
   var deviceDPR = window.devicePixelRatio || 1;
-  var pixelRatio = Math.min(deviceDPR, PIXEL.ceil);
+  var pixelRatio = (window.CakeDev && CakeDev.on) ? deviceDPR : Math.min(deviceDPR, PIXEL.ceil);   // dev: no cap at all
   renderer.setPixelRatio(pixelRatio);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setClearColor(0x000000, 0);
@@ -1176,9 +1176,10 @@
   }
 
   function frame() {
+    var now = performance.now();
+    if (window.CakeDev && CakeDev.on && !CakeDev.shouldRender(now)) { requestAnimationFrame(frame); return; }
     var dt = Math.min(clock.getDelta(), 0.05);
     var t = clock.elapsedTime;
-    var now = performance.now();
     var frameStart = now;
     updateTweens(now);
     updateSpawn(now);
@@ -1228,7 +1229,8 @@
     updateConfetti(dt, t);
     updateRipple(now);
     renderer.render(scene, camera);
-    tunePixelRatio(now, performance.now() - frameStart);
+    if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
+    else tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
   }
 
