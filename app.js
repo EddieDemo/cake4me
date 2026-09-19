@@ -145,11 +145,15 @@
     floor: 1,
     ceil: 4,                     // 4K/5K desktop panels and future phones
     start: 2,
-    goodMs: 12.5,                // climb below this average frame time
-    badMs: 20,                   // drop above it
+    goodMs: 8,                   // climb when the frame's own work averages under this
+    badMs: 15,                   // drop above it
+    dropFrac: 0.12,              // …or when more than this fraction of frames were late
     step: 0.5,
     checkMs: 1200                // how often to reassess
   };
+  // Why not frame interval: requestAnimationFrame is locked to the display, so on a 60Hz
+  // screen every frame reports ~16.7ms however cheap it was to draw. Measured that way the
+  // ratio could never climb — which is exactly what happened on iPhones from v0.15 to v0.23.
   var CYL_SEG = 96;              // cylinder segments: silhouette stays smooth when zoomed in
 
   var reduceMotion = window.matchMedia &&
@@ -537,6 +541,8 @@
 
     fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
     rebuildLandings(cfg);
+    FRAME.cake = cakeFrame(cfg.t);
+    if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg.t); }
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = Math.min(1.6, 0.25 + flames.length * 0.03);
 
@@ -936,7 +942,20 @@
   var ZOOM = { min: 0.64, max: 2.4 };   // smaller = closer. 0.64 = halfway between v0.12 (0.45) and v0.13 (0.82).
   // Radius the camera frames to. Cake: two-tier r=2.5 plus air (bigger number = smaller cake).
   // Box: its corner diagonal, or the lid gets cropped on a narrow phone.
-  var FRAME = { cake: 3.6, box: 5.2 };   // box frame widened to match the tier-sized box
+  var FRAME = { cake: 3.6, box: 5.2 };   // 'cake' is recomputed per tier by cakeFrame()
+  // Volume-weighted centre of mass (r²h per tier). The camera aims here, so one-, two- and
+  // three-tier cakes all sit balanced instead of a fixed height that only suits the Classic.
+  function centreOfMass(tierKey) {
+    var tiers = TIERS[tierKey] || TIERS[1], num = 0, den = 0, y = PLATE_TOP;
+    tiers.forEach(function (t) { var v = t.r * t.r * t.h; num += v * (y + t.h / 2); den += v; y += t.h; });
+    return den ? num / den : 0.8;
+  }
+  // Framing radius from the cake's real size: wide cakes need width, tall cakes need height.
+  function cakeFrame(tierKey) {
+    var tiers = TIERS[tierKey] || TIERS[1], h = PLATE_TOP;
+    tiers.forEach(function (t) { h += t.h; });
+    return Math.max(tiers[0].r * 1.45, (h + 0.7) * 0.95);
+  }
   var frameRadius = FRAME.cake;
   var camTargetY = 1.3, camY = 1.3;
   var frameTarget = 3.3;
@@ -997,16 +1016,27 @@
   var running = false;
 
   // Frame-time sampling for the adaptive pixel ratio.
-  var fpsAccum = 0, fpsCount = 0, fpsSince = 0;
-  function tunePixelRatio(now, dtMs) {
-    fpsAccum += dtMs; fpsCount++;
+  var costAccum = 0, costCount = 0, lateCount = 0, fpsSince = 0, lastFrameAt = 0, baseInterval = 1000;
+  function tunePixelRatio(now, costMs) {
+    // Render cost is what the frame actually did; lateness is whether the display waited.
+    if (lastFrameAt) {
+      var interval = now - lastFrameAt;
+      if (interval < baseInterval) baseInterval = Math.max(6, interval);      // learn the display's cadence
+      if (interval > baseInterval * 1.6) lateCount++;
+    }
+    lastFrameAt = now;
+    costAccum += costMs; costCount++;
     if (now - fpsSince < PIXEL.checkMs) return;
-    var avg = fpsAccum / Math.max(1, fpsCount);
-    fpsAccum = 0; fpsCount = 0; fpsSince = now;
+    var avgCost = costAccum / Math.max(1, costCount);
+    var lateFrac = lateCount / Math.max(1, costCount);
+    costAccum = 0; costCount = 0; lateCount = 0; fpsSince = now;
     var target = pixelRatio;
     var ceiling = Math.min(deviceDPR, PIXEL.ceil);
-    if (avg > PIXEL.badMs && pixelRatio > PIXEL.floor) target = Math.max(PIXEL.floor, pixelRatio - PIXEL.step);
-    else if (avg < PIXEL.goodMs && pixelRatio < ceiling) target = Math.min(ceiling, pixelRatio + PIXEL.step);
+    if ((avgCost > PIXEL.badMs || lateFrac > PIXEL.dropFrac * 2) && pixelRatio > PIXEL.floor) {
+      target = Math.max(PIXEL.floor, pixelRatio - PIXEL.step);
+    } else if (avgCost < PIXEL.goodMs && lateFrac < PIXEL.dropFrac && pixelRatio < ceiling) {
+      target = Math.min(ceiling, pixelRatio + PIXEL.step);
+    }
     if (target !== pixelRatio) {
       pixelRatio = target;
       renderer.setPixelRatio(pixelRatio);
@@ -1018,7 +1048,7 @@
     var dt = Math.min(clock.getDelta(), 0.05);
     var t = clock.elapsedTime;
     var now = performance.now();
-    tunePixelRatio(now, dt * 1000);
+    var frameStart = now;
     updateTweens(now);
     updateSpawn(now);
     if (Math.abs(camY - camTargetY) > 0.001 || Math.abs(frameRadius - frameTarget) > 0.001) {
@@ -1053,6 +1083,7 @@
     updateConfetti(dt, t);
     updateRipple(now);
     renderer.render(scene, camera);
+    tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
   }
 
@@ -1176,7 +1207,7 @@
     boxMode = false;
     box.visible = lid.visible = ribbon.visible = false;
     showLidLabel(false);
-    setFrame('cake', 1.3);
+    setFrame('cake', centreOfMass(config ? config.t : 1));
   }
 
   // Kept for reference; the label is now pinned in screen space by CSS so the cake
@@ -1904,7 +1935,7 @@
       box.visible = false; built.position.y = 0;
       boxMode = false; fitShadow((TIERS[config.t] || TIERS[1])[0].r);
       tween({ duration: 160, ease: EASE.pop, update: function (k) { var sc = 1.03 - 0.03 * k; built.scale.set(sc, sc, sc); } });
-      setFrame('cake', 1.3);
+      setFrame('cake', centreOfMass(config ? config.t : 1));
     } });
     // 4. candles light in a ripple, centre out, capped at 1.2s
     setTimeout(function () {
@@ -1999,6 +2030,7 @@
       }
     });
     cut.total = cut.wedges.length;
+    var fin = $('vs-finished'); if (fin) fin.hidden = true;
     setViewerState('cut');
     updateCutUI();
   }
@@ -2069,8 +2101,10 @@
       nameEl.value = '';
       left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
     } else if (n === 0) {
-      lead.textContent = 'You gave away the whole cake ❤️';
+      lead.textContent = 'You shared the whole cake 🎉';
       card.hidden = true; left.textContent = '';
+      fitShadow(0.6);                                   // nothing left to cast it
+      showFinished();
     } else {
       lead.textContent = 'Tap a slice to cut it';
       card.hidden = true;
@@ -2084,6 +2118,9 @@
     var st = loadCutState(cut.code);
     if (st.gone.indexOf(idx) < 0) st.gone.push(idx);
     if (back) { st.sentBack = true; cut.sentBack = true; }
+    st.names = st.names || [];
+    var who = back ? config.from : name;
+    if (who && st.names.indexOf(who) < 0) st.names.push(who);
     saveCutState(cut.code, st);
     var url = sliceLinkFor(config, idx, { blown: true, name: back ? config.from : name, back: back });
     // The wedge leaves; the plate goes with it.
@@ -2100,7 +2137,31 @@
     return url;
   }
 
-  // ---- Slice page: one wedge on a plate, one candle ----
+  // The end of the cake is the most generous moment in the whole flow — straight back into
+  // the loop from here: send one back, set the reminder, or send someone a cake.
+  function showFinished() {
+    var st = loadCutState(cut.code), names = st.names || [];
+    var sub = $('finished-sub'), back = $('finished-back'), rem = $('finished-remind'), send = $('finished-send');
+    var n = cut.total;
+    var who = names.length === 0 ? '' :
+              names.length === 1 ? names[0] :
+              names.length === 2 ? names[0] + ' and ' + names[1] :
+              names.slice(0, 2).join(', ') + ' and ' + (names.length - 2) + ' more';
+    sub.textContent = n + ' slices' + (who ? ', shared with ' + who : '') + (config.from ? ' — ' + config.from + "'s cake went a long way" : '');
+    var canBack = !!config.from && !st.sentBack;
+    back.hidden = !canBack;
+    if (canBack) {
+      var pre = normalize(config); var t = pre.from, f = pre.to; pre.to = t; pre.from = f; pre.m = '';
+      back.textContent = 'Send one back to ' + config.from; back.href = editLinkFor(pre);
+    }
+    rem.hidden = !config.from;
+    rem.textContent = 'Remind me for ' + (config.from || 'their') + "'s birthday";
+    rem.onclick = function () { openRemind('recipient', config); };
+    send.href = './?src=slice';
+    $('vs-finished').hidden = false;
+  }
+
+  // ---- Slice page: one wedge on a plate ----
   function enterSlice(cfg, sl) {
     viewerMode = 'slice'; slice = sl;
     build(cfg, { showMessage: true, animate: false });
@@ -2128,20 +2189,13 @@
     var rim = new THREE.Mesh(new THREE.TorusGeometry(tier.r * 0.74, 0.045, 10, 96),
       new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex, roughness: 0.5 }));
     rim.rotation.x = Math.PI / 2; rim.position.y = 0.09; cutGroup.add(rim);
-    // One candle, wired into the blow system
-    var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
-    var cm = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.5, 10), new THREE.MeshStandardMaterial({ color: candleHex, roughness: 0.45 }));
-    var topY = 0.08 + tier.h;
-    cm.position.set(0, topY + 0.25, 0.15); cutGroup.add(cm);
-    var wick = new THREE.Mesh(wickGeo, wickMat); wick.position.set(0, topY + 0.53, 0.15); cutGroup.add(wick);
-    var fl = new THREE.Sprite(flameMat.clone()); fl.material.__shared = false;
-    fl.scale.set(0.28 * 0.7, 0.28, 1); fl.position.set(0, topY + 0.66, 0.15); cutGroup.add(fl);
+    // No candle on a slice: the candles went when the cake was cut, and a slice that
+    // sprouted a new one would contradict that. It's a piece of the cake you were sent.
     flames.length = 0; wicks.length = 0;
-    flames.push({ sprite: fl, base: 0.28, phase: 0, x: 0, z: 0.15, k: 1, lit: 1, y: topY + 0.66, leanX: 0, leanZ: 0 });
-    rebuildLandings({ t: 1 });
+    var topY = 0.08 + tier.h;
     landings = [{ y: topY, r: tier.r * 0.8, rInner: 0 }];
     fitShadow(tier.r * 0.8);
-    blow = { enabled: true, lastWave: 0, micLevel: 0, micHold: 0, total: 1, revealed: false };
+    blow = { enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: 0, revealed: true };
     setFrame('cake', 0.9, true);
     camAzimuth = 0; spinEnabled = true; spinFree = false;
     // Chrome
@@ -2151,6 +2205,12 @@
     $('sh-sub').textContent = isBack ? 'They blew out the candles 🎂' : ('of the cake ' + (cfg.from ? cfg.from + ' made' : 'they were sent'));
     $('slice-msg').textContent = cfg.m ? ((cfg.from || 'They') + ' wrote “' + cfg.m + '”') : (isBack ? 'Your cake landed.' : 'Someone is thinking of you.');
     setViewerState('slice');
+    // A little confetti as it lands, then the actions. No blow step to wait for.
+    setTimeout(function () {
+      var pal = [PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex, PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166];
+      confettiBurst(pal.map(function (h) { return hexCss(h); }), 40);
+    }, 700);
+    setTimeout(showSliceDone, 2200);
   }
   function showSliceDone() {
     var isBack = slice && slice.back && config.from;
@@ -2260,13 +2320,13 @@
       needsDate = (occ.rule.type === 'yearly' || occ.rule.type === 'becomes');
       if (occ.rule.type === 'becomes') {
         title.textContent = 'Remind you for ' + who + "'s " + occ.rule.into + '?';
-        body.textContent = 'A yearly reminder, three days before, with this cake ready to send again.';
+        body.textContent = "We'll add it to your calendar, yearly, with a nudge three days before and this cake ready to send again.";
       } else if (needsDate) {
         title.textContent = 'Remind you next year?';
-        body.textContent = "We'll put " + who + "'s " + occ.say + ' in your calendar, three days before, with this cake ready to send again.';
+        body.textContent = "We'll put " + who + "'s " + occ.say + " in your calendar, with a nudge three days before and this cake ready to send again.";
       } else {
         title.textContent = 'Remind you next ' + occ.say + '?';
-        body.textContent = 'A yearly calendar reminder, three days before, with this cake ready to send again.';
+        body.textContent = "We'll add " + occ.say + " to your calendar, yearly, with a nudge three days before and this cake ready to send again.";
       }
       var occLabel = (occ.rule.type === 'fixed' || occ.rule.type === 'weekday') ? occ.name : (who + "'s " + (occ.say || occ.name));
       summary = occLabel + ' 🎂';
@@ -2277,16 +2337,48 @@
       needsDate = true;
       title.textContent = "When's " + who + "'s birthday?";
       body.textContent = mode === 'sender'
-        ? "We'll remind you three days before, with a cake ready to go."
-        : "We'll remind you three days before, so you can send one back.";
+        ? "We'll put it in your calendar with a nudge three days before and a cake ready to go."
+        : "We'll put it in your calendar with a nudge three days before, so you can send one back.";
       summary = who + "'s birthday 🎂";
       description = 'Send ' + who + ' a cake:';
       remindState = { mode: mode, occ: OCCASIONS[0], cfg: cfg, summary: summary, nudge: 'Send ' + who + ' a birthday cake 🎂', description: description, needsDate: true, birthday: true };
     }
     dateWrap.hidden = !needsDate;
     if (needsDate) { var t = new Date(); date.value = t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()); }
+    refreshGoogleLink();
     el.hidden = false;
     requestAnimationFrame(function () { el.classList.add('on'); });
+  }
+  // Google Calendar takes an event as a URL — no file, no preview, works everywhere Google
+  // Calendar does (Android, and iPhones that live in it). Built from the same plan as the .ics.
+  function googleCalendarUrl(summary, description, plan, url) {
+    var d1 = ymd(plan.first), d2 = ymd(addDays(plan.first, 1));
+    var q = 'action=TEMPLATE&text=' + encodeURIComponent(summary) +
+            '&dates=' + d1 + '/' + d2 +
+            '&details=' + encodeURIComponent(description + '\n' + url) +
+            (plan.rrule ? '&recur=' + encodeURIComponent('RRULE:' + plan.rrule) : '');
+    return 'https://calendar.google.com/calendar/render?' + q;
+  }
+  function currentPlan() {
+    if (!remindState) return null;
+    var st = remindState, picked = null;
+    if (st.needsDate) {
+      var v = $('remind-date').value; if (!v) return null;
+      var parts = v.split('-'); picked = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    }
+    return reminderPlan(st.birthday ? OCCASIONS[0] : st.occ, picked);
+  }
+  function prefillFor(st) {
+    var pre = normalize(st.cfg);
+    if (st.mode !== 'sender') { var to = pre.from, from = pre.to; pre.to = to; pre.from = from; pre.m = ''; }
+    return pre;
+  }
+  function refreshGoogleLink() {
+    var a = $('remind-google'); if (!a || !remindState) return;
+    var plan = currentPlan();
+    if (!plan) { a.hidden = true; return; }
+    a.hidden = false;
+    a.href = googleCalendarUrl(remindState.summary, remindState.description, plan, editLinkFor(prefillFor(remindState)));
   }
   function closeRemind() {
     var el = $('remind'); if (!el) return;
@@ -2306,19 +2398,16 @@
     if (!plan) { closeRemind(); return; }
     // The reminder's link opens the builder pre-filled. Sender: this cake, same names.
     // Recipient: names swapped, message cleared, same cake as a starting point.
-    var pre;
-    if (st.mode === 'sender') {
-      pre = normalize(st.cfg);
-    } else {
-      pre = normalize(st.cfg);
-      var to = pre.from, from = pre.to;
-      pre.to = to; pre.from = from; pre.m = '';
-    }
-    var url = editLinkFor(pre);
+    var url = editLinkFor(prefillFor(st));
     downloadIcs('cake-reminder.ics', icsFor(st.summary, st.description, plan, url, st.nudge));
     rememberDate(st.mode === 'sender' ? st.cfg.to : st.cfg.from, occForPlan.name, plan.eventDate);
     var hint = $('remind-done');
-    if (hint) { hint.textContent = 'Added "' + st.summary + '" to your calendar — you\'ll get a nudge three days before.'; hint.hidden = false; }
+    if (hint) {
+      // iOS opens the file in a preview: the event only lands when they tap "Add To Calendar"
+      // at the bottom. The tick in the corner just closes the preview. Say so.
+      hint.textContent = 'Tap "Add To Calendar" when it opens — "' + st.summary + '" will repeat yearly with a nudge three days before.';
+      hint.hidden = false;
+    }
     closeRemind();
   }
   // Birthday book: dates the sender has told us, kept on their phone. No account.
@@ -2436,7 +2525,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'candles', 'cake', 'colours'].forEach(function (k) {
+    ['occasion', 'message', 'cake', 'candles', 'colours'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -2628,8 +2717,15 @@
     setTimeout(resize, 0);
   }
   function wireRemind() {
-    var yes = $('remind-yes'), later = $('remind-later'), modal = $('remind');
+    var yes = $('remind-yes'), later = $('remind-later'), modal = $('remind'), date = $('remind-date'), g = $('remind-google');
     if (yes) yes.addEventListener('click', confirmRemind);
+    if (date) date.addEventListener('change', refreshGoogleLink);
+    if (g) g.addEventListener('click', function () {
+      // They chose Google: record the date and close, same as Yes, but the link does the adding.
+      var st = remindState, plan = currentPlan();
+      if (st && plan) rememberDate(st.mode === 'sender' ? st.cfg.to : st.cfg.from, (st.birthday ? OCCASIONS[0] : st.occ).name, plan.eventDate);
+      setTimeout(closeRemind, 300);
+    });
     if (later) later.addEventListener('click', closeRemind);
     if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeRemind(); });
   }
@@ -2767,7 +2863,10 @@
   if (document.fonts && document.fonts.load) {
     document.fonts.load('60px "Pacifico"').then(boot, boot);
     setTimeout(boot, 1500);
-    document.fonts.ready.then(function () { if (config) build(config, { showMessage: showMessage }); });
+    // Redraw the message texture with the real typeface once it lands. Never a full build:
+    // on a phone the font arrives after a slice or cut page has set itself up, and a full
+    // rebuild put the whole cake back — candles and all — on top of the slice.
+    document.fonts.ready.then(function () { if (config && viewerMode !== 'slice' && !cut) updateMessage(config.m); });
   } else {
     boot();
   }
@@ -2790,7 +2889,7 @@
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
-    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil) }; },
+    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil), baseIntervalMs: +baseInterval.toFixed(1) }; },
     PIXEL: PIXEL,
     cut: function () { return cut ? { left: slicesLeft(), lifted: !!cut.lifted, sentBack: cut.sentBack, total: cut.total } : null; },
     startCut: startCut, liftFirst: function () { if (!cut) return; var w = cut.wedges.filter(function (x) { return x.visible && x.userData.tier === topRemainingTier(); })[0]; if (w) liftWedge(w); },

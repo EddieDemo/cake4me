@@ -110,7 +110,7 @@ All in `cake-backend-options.md`; none needed for anything in §3.
 
 ## 6. Notes on the `.ics` approach
 
-- iOS Safari opens a downloaded `.ics` in a preview with "Add All"; Android hands it to the calendar app; desktop opens it in whatever owns `.ics`. In-app browsers (Instagram, Facebook) may block downloads — the pop-up should degrade to "open this in Safari to add the reminder" rather than fail silently. **Test this on the phone.**
+- **Tested on an iPhone (19 Sept):** Safari opens the `.ics` in a preview showing the real date, "Repeats yearly", both alerts and the notes. The event is only added when the user taps **"Add To Calendar"** at the bottom — the tick in the corner just closes the preview. The pop-up now says so after "Yes". A **Google Calendar** option (a plain `calendar.google.com/render?action=TEMPLATE…&recur=RRULE:FREQ=YEARLY` link, no file) sits under the button for Android and for iPhone users who live in Google Calendar. In-app browsers may still block the download; untested.
 - **The event sits on the real date**, titled as the occasion ("Hollie's anniversary 🎂"), and recurs yearly by `RRULE` (Father's Day via `BYMONTH`/`BYDAY`). The early nudge is an **alarm** on that event, not a shifted event — a shifted event would show the wrong date in the month view. Two alarms: three days before at 09:00 (`TRIGGER:-P2DT15H`, because all-day alarms are relative to midnight) and on the day at 09:00 (`TRIGGER:PT9H`). Both say "Send Hollie a cake 🎂".
 - The reminder's link is the *builder* pre-filled, never the viewer, so a sender can't mistake it for the gift.
 - Dates in the birthday book are month/day only. We don't store the year, and we don't need it.

@@ -1,60 +1,49 @@
-# Cake — v0.23 (Phase 4: cut the cake, send slices)
+# Cake — v0.24
 
-The loop, built.
+Eight fixes from the phone test.
 
-## Cutting
-- **"Cut the cake"** clears the spent candles and replaces the cake with wedges: 8 per tier, so
-  8 / 16 / 24. Faint seams on top. **Tap a wedge to lift it** (raycast on a tap, never on a drag,
-  so the cake stays spinnable). The top tier cuts first — a bottom wedge with a tier resting on it
-  makes no sense.
-- The wedge lifts up and over onto a small plate that slides in **toward the viewer**, whichever way
-  the camera happens to be facing, with a decaying wobble and a squash on landing.
-- **The filling shows on both cut faces** — the second reveal, and the sender's secret.
-- **The message survives cutting.** Each bottom-tier wedge carries its arc of the message band via a
-  cloned texture with per-wedge `offset`/`repeat`, so the writing reads continuously round the
-  remaining cake and a lifted wedge carries its fragment.
-- Slices gone are persisted in `localStorage` keyed by the cake's code, so a reopened cake is still
-  missing the slices you gave away. "7 slices left" → "You gave away the whole cake ❤️".
+## 1. Vertical balance across tiers
+The camera aimed at a fixed height that suited the Classic and nothing else. It now aims at the
+cake's **volume-weighted centre of mass** per tier (≈0.80 / 1.07 / 1.30) and frames from the cake's
+real size, so a taller cake also pulls back a little. Camera Y now rises with the tier count.
 
-## Sending a slice
-The card under a lifted wedge: an optional name, then **"Send a slice back to Eddie"** as the
-primary (once — it hides after use), then Share / Copy. Slice links are the cake link plus
-`&s=<index>&b=1&n=<name>` (and `&sb=1` when it's going back to the sender). Web Share where it
-exists, clipboard otherwise.
+## 2. Low resolution on iPhone Pro — a real bug since v0.15
+The adaptive pixel ratio climbed when the *frame interval* averaged under 12.5ms. But
+`requestAnimationFrame` is locked to the display: on a 60Hz screen every frame reports ~16.7ms
+however cheap it was to draw. It could never climb, so every iPhone has been rendering at 2 on a
+3× panel. It now measures the frame's **own work** (update + render) and counts **late frames**
+against the display's learned cadence, climbing when both are comfortably under budget.
 
-## The slice page
-`#c=…&s=…` renders **one wedge on a plate with one candle** and no cutting further. Header:
-*"Hollie sent you a slice / of the cake Eddie made"*, then the original message as text ("Eddie wrote
-'Happy 30th, love you'"), then "Blow out the candle, or spin it". The same spin/mic/wind mechanic
-works on the single flame; a small confetti burst; then **"Send someone a cake — Cakes from £4.49"**
-with `?src=slice` on the link so slice-to-cake conversion is measurable.
+## 3. Chip order
+Occasion · Message · **Cake · Candles** · Colours.
 
-## The slice back to the sender — acknowledgement without a server
-When the slice link carries `sb=1`, the sender's page reads *"Hollie sent you a slice / They blew
-out the candles 🎂"*, the lead is **"Your cake landed."**, and the call to action is **"Send Hollie
-another next year"**, which opens the reminder pop-up. That's the loop from the revenue doc, delivered
-by the chat thread instead of an email server, in the same conversation the gift went out in.
+## 4. Pop-up wording
+Now describes what actually happens: the event on the real date, with a nudge three days before.
 
-## Decisions made here
-- **Tap-a-wedge, not a knife drag.** The drag is polish for the feel pass.
-- **The message is text on the slice page**, not on the wedge — a wedge carries only a fragment.
-- **Spent candles vanish when cutting begins**, rather than persisting per wedge.
+## 5. "The event doesn't appear"
+It does — but iOS shows the `.ics` in a preview first, and the event is only added when you tap
+**"Add To Calendar"** at the bottom. The tick in the corner just closes the preview. The pop-up now
+says so after "Yes". Also new: **"Use Google Calendar instead"**, a plain link that opens the event
+pre-filled with yearly recurrence and no file download, for Android and for iPhone users who live
+in Google Calendar. Choosing it still records the date in the birthday book.
 
-## Not yet
-The moment-3/4 feel pass from `cake-feel-spec.md` (sounds, knife drag, the plate ceremony timing),
-and the group-chat idea of suggesting the *other* names the sender typed.
+## 6. Whole cake appearing on the slice page — the one headless couldn't see
+When the Pacifico font finished loading, the app rebuilt the entire scene so the message used the
+right typeface. On a phone the font arrives *after* the slice page has set itself up, so the rebuild
+put the whole cake back, candles and all. Headless had the font cached before routing. The refresh
+now redraws only the message texture and never touches the scene. Verified by throttling the font
+2s behind the page: the slice page stays a slice.
 
-## Three bugs found on the way
-- `.primary { display: block }` beats the `hidden` attribute, so "Send a slice back" stayed visible
-  after use. Same trap as the swatch rows; now `.primary[hidden] { display: none }`.
-- The slice-page wedge sat beside its plate rather than on it: I offset by the wedge's centroid
-  *before* rotating it, and the centroid moves when you rotate. Rotate first, then offset by where
-  the centroid ended up.
-- Not a bug, but it looked like one: the cut cake appeared to have lost its message. It hadn't —
-  the message is on the back of the cake and the render showed the front.
+## 7. No candle on a slice
+The candles went when the cake was cut; a slice that sprouted a new one contradicted that. The slice
+page is now: header, the wedge to spin, a small burst of confetti, the message, the call to action.
 
-Verified end to end headlessly: cut → real touch-tap lift → send back → three to a friend →
-persistence → the friend's slice page (candle lit, blow, done) → the sender's slice-back page.
+## 8. The end of the cake is no longer a dead end
+Giving away all eight is the most generous moment in the flow, so it hands straight back into the
+loop. **"You shared the whole cake 🎉"**, then a recap — *"8 slices, shared with Eddie, Nan and 6
+more — Eddie's cake went a long way"* — then **Send one back to Eddie** (hidden if already done),
+**Remind me for Eddie's birthday**, and **Send someone a cake**. Names are remembered per cake in
+`localStorage`. The contact shadow shrinks to nothing, since there's nothing left to cast it.
 
 ## docs/
-Build plan updated with Phase 4 status. Everything else as before.
+Growth doc updated with the calendar findings; feel spec updated for the candle-free slice.

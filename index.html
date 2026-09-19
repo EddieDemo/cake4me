@@ -33,11 +33,11 @@
         <button type="button" class="chip" data-tray="message" aria-selected="false">
           <span class="ic" aria-hidden="true">✎</span>Message
         </button>
-        <button type="button" class="chip" data-tray="candles" aria-selected="false">
-          <span class="ic" aria-hidden="true">🕯</span><span id="chip-n">30</span>
-        </button>
         <button type="button" class="chip" data-tray="cake" aria-selected="false">
           <span class="ic" aria-hidden="true">◍</span>Cake
+        </button>
+        <button type="button" class="chip" data-tray="candles" aria-selected="false">
+          <span class="ic" aria-hidden="true">🕯</span><span id="chip-n">30</span>
         </button>
         <button type="button" class="chip" data-tray="colours" aria-selected="false">
           <span class="ic" aria-hidden="true">✿</span>Colours
@@ -154,12 +154,21 @@
             <p class="hint" id="slice-hint">&nbsp;</p>
           </div>
           <p class="hint" id="slices-left"></p>
+          <!-- All slices gone: the recap, and straight back into the loop -->
+          <div class="vstate" id="vs-finished" hidden>
+            <p class="hint" id="finished-sub"></p>
+            <a class="primary" id="finished-back" href="./">Send one back</a>
+            <div class="actions">
+              <button type="button" class="link" id="finished-remind">Remind me for their birthday</button>
+              <a class="link-cta" id="finished-send" href="./?src=slice">Send someone a cake</a>
+            </div>
+          </div>
         </div>
 
         <!-- Slice recipient -->
         <div class="vstate" id="vs-slice" hidden>
           <p class="lead" id="slice-msg"></p>
-          <p class="hint" id="slice-blow-hint">Blow out the candle, or spin it</p>
+          <p class="hint" id="slice-blow-hint">Spin it round</p>
         </div>
         <div class="vstate" id="vs-slice-done" hidden>
           <p class="lead" id="slice-done-lead"></p>
@@ -179,7 +188,8 @@
         <span>Their date</span>
         <input type="date" id="remind-date">
       </label>
-      <button type="button" class="primary" id="remind-yes">Yes, remind me</button>
+      <button type="button" class="primary" id="remind-yes">Yes, add to my calendar</button>
+      <a class="modal-alt" id="remind-google" href="#" target="_blank" rel="noopener">Use Google Calendar instead</a>
       <button type="button" class="modal-later" id="remind-later">Maybe next time</button>
     </div>
   </div>

@@ -607,3 +607,9 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 
 /* `display:block` on .primary beats the hidden attribute — same trap as the swatch rows. */
 .primary[hidden] { display: none; }
+
+.modal-alt { display: block; font-size: 0.9rem; color: var(--ink); text-decoration: underline; margin-bottom: 0.4rem; }
+.modal-alt[hidden] { display: none; }
+#vs-finished { margin-top: 0.4rem; }
+#vs-finished .primary { display: inline-block; text-align: center; text-decoration: none; max-width: 300px; }
+#vs-finished .primary[hidden] { display: none; }

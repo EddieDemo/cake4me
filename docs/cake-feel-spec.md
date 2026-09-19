@@ -136,7 +136,7 @@ Goal: it is a gift, small but complete. This page carries the business.
 
 **Arrival (~1.5s).** Plate slides in from the right, `soft` 450ms, `plate` sound. Wedge already on it, filling visible on the cut faces. One candle, lit. Header: "**Hollie** sent you a slice of her birthday cake 🎂" `soft` 450ms.
 
-**Blow.** Same mechanic, one candle, mic or swipe. Flame leans, goes out, single `puff`, one tiny smoke wisp. A small burst of confetti (30 pieces).
+**Blow.** ~~One candle~~ — dropped (19 Sept): the candles went when the cake was cut, and a slice that sprouts a new one contradicts that. A slice arrives, a small burst of confetti (40 pieces) lands on it, and it can be spun. No blow step.
 
 **Message.** The original message pipes onto the frosting, same as the cake.
 
