@@ -143,14 +143,19 @@
   // there's frame-time headroom — dropping back if there isn't.
   var PIXEL = {
     floor: 1,
-    ceil: 4,                     // 4K/5K desktop panels and future phones
-    start: 2,
-    goodMs: 8,                   // climb when the frame's own work averages under this
-    badMs: 15,                   // drop above it
-    dropFrac: 0.12,              // …or when more than this fraction of frames were late
+    ceil: 3,                     // start at the device's ratio, up to this
+    lateMs: 22,                  // a frame slower than this (≈45fps) counts as late
+    dropFrac: 0.20,              // drop a step when more than this fraction of frames were late
+    climbFrac: 0.04,             // climb a step when fewer than this were late, and CPU cost is low
+    goodMs: 8,
     step: 0.5,
-    checkMs: 1200                // how often to reassess
+    checkMs: 1200,
+    graceMs: 1500                // ignore the first window: first paint, font load, texture upload
   };
+  // Strategy: START HIGH, DROP ON EVIDENCE. The previous "start at 2 and climb" never climbed on
+  // iPhones: lateness was judged against the display's fastest interval, and on a 120Hz
+  // ProMotion panel a rock-steady 60fps read as every frame being late. A moment of stutter in
+  // the first second is far less bad than permanent blur.
   // Why not frame interval: requestAnimationFrame is locked to the display, so on a 60Hz
   // screen every frame reports ~16.7ms however cheap it was to draw. Measured that way the
   // ratio could never climb — which is exactly what happened on iPhones from v0.15 to v0.23.
@@ -304,7 +309,7 @@
   var canvas = document.getElementById('cake');
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
   var deviceDPR = window.devicePixelRatio || 1;
-  var pixelRatio = Math.min(deviceDPR, PIXEL.start);
+  var pixelRatio = Math.min(deviceDPR, PIXEL.ceil);
   renderer.setPixelRatio(pixelRatio);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setClearColor(0x000000, 0);
@@ -1001,22 +1006,32 @@
   var FREE_MARGIN = 22;                       // px of breathing room above and below the cake
   var free = { top: 0, bottom: 0 };           // eased, in canvas px
   var freeTarget = { top: 0, bottom: 0 };
-  var OBSTRUCTORS = '.chiprow, .tray:not([hidden]), #viewer-foot .vstate:not([hidden]) > *, #linkpanel:not([hidden]) .sheet-scroll > *, .slice-head:not([hidden]), .lid-label, #builder:not([hidden]) > .primary';
+  // Bottom-edge UI and top-edge UI are known by ROLE. Sorting elements by which half of
+  // the screen their centre fell in — the first version — broke the moment a tall tray
+  // pushed the chip row above the midpoint: the chips were counted as a top edge, the free
+  // space collapsed to a sliver, and the cake was scaled into it, behind the UI.
+  var TOP_UI = '.slice-head:not([hidden]), .lid-label';
+  var BOTTOM_UI = '#builder:not([hidden]) .chiprow, #builder:not([hidden]) .tray:not([hidden]), #builder:not([hidden]) > .primary, ' +
+                  '#viewer-foot:not([hidden]) .vstate:not([hidden]) > *, #linkpanel:not([hidden]) .sheet-scroll > *';
+  var FREE_MIN = 140;                          // px: below this the cake is too small to mean anything
+  function rendered(el) {
+    if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return false;
+    var b = el.getBoundingClientRect();
+    return b.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  }
   function measureFree() {
     var r = canvas.getBoundingClientRect(), vh = r.height || 1;
-    var top = 0, bottom = vh;
-    var els = document.querySelectorAll(OBSTRUCTORS);
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
-      if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;  // not rendered
-      var b = el.getBoundingClientRect();
-      if (b.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
-      var cy = (b.top + b.bottom) / 2 - r.top;
-      if (cy < vh / 2) top = Math.max(top, b.bottom - r.top);
-      else bottom = Math.min(bottom, b.top - r.top);
+    var top = 0, bottom = vh, i, b;
+    var tops = document.querySelectorAll(TOP_UI);
+    for (i = 0; i < tops.length; i++) if (rendered(tops[i])) { b = tops[i].getBoundingClientRect(); top = Math.max(top, b.bottom - r.top); }
+    var bots = document.querySelectorAll(BOTTOM_UI);
+    for (i = 0; i < bots.length; i++) if (rendered(bots[i])) { b = bots[i].getBoundingClientRect(); bottom = Math.min(bottom, b.top - r.top); }
+    top += FREE_MARGIN; bottom -= FREE_MARGIN;
+    if (bottom - top < FREE_MIN) {             // squeezed: keep a minimum, centred on what's left
+      var mid = (top + bottom) / 2;
+      top = mid - FREE_MIN / 2; bottom = mid + FREE_MIN / 2;
     }
-    freeTarget.top = Math.min(top + FREE_MARGIN, vh * 0.45);
-    freeTarget.bottom = Math.max(bottom - FREE_MARGIN, vh * 0.55);
+    freeTarget.top = top; freeTarget.bottom = bottom;
   }
   var lastMeasure = 0;
 
@@ -1035,25 +1050,25 @@
   var running = false;
 
   // Frame-time sampling for the adaptive pixel ratio.
-  var costAccum = 0, costCount = 0, lateCount = 0, fpsSince = 0, lastFrameAt = 0, baseInterval = 1000;
+  var costAccum = 0, costCount = 0, lateCount = 0, fpsSince = 0, lastFrameAt = 0, bootAt = performance.now();
+  var lastLateFrac = 0;
   function tunePixelRatio(now, costMs) {
-    // Render cost is what the frame actually did; lateness is whether the display waited.
-    if (lastFrameAt) {
-      var interval = now - lastFrameAt;
-      if (interval < baseInterval) baseInterval = Math.max(6, interval);      // learn the display's cadence
-      if (interval > baseInterval * 1.6) lateCount++;
-    }
+    // Lateness against a FIXED budget: a steady 60fps is the goal, and a frame under ~22ms is
+    // fine whatever the display could do. Judging against the fastest interval ever seen
+    // scored 60fps on a 120Hz screen as a failure.
+    if (lastFrameAt && now - lastFrameAt > PIXEL.lateMs) lateCount++;
     lastFrameAt = now;
     costAccum += costMs; costCount++;
     if (now - fpsSince < PIXEL.checkMs) return;
     var avgCost = costAccum / Math.max(1, costCount);
-    var lateFrac = lateCount / Math.max(1, costCount);
+    var lateFrac = lastLateFrac = lateCount / Math.max(1, costCount);
     costAccum = 0; costCount = 0; lateCount = 0; fpsSince = now;
+    if (now - bootAt < PIXEL.graceMs) return;                                 // first paint isn't evidence
     var target = pixelRatio;
     var ceiling = Math.min(deviceDPR, PIXEL.ceil);
-    if ((avgCost > PIXEL.badMs || lateFrac > PIXEL.dropFrac * 2) && pixelRatio > PIXEL.floor) {
+    if (lateFrac > PIXEL.dropFrac && pixelRatio > PIXEL.floor) {
       target = Math.max(PIXEL.floor, pixelRatio - PIXEL.step);
-    } else if (avgCost < PIXEL.goodMs && lateFrac < PIXEL.dropFrac && pixelRatio < ceiling) {
+    } else if (lateFrac < PIXEL.climbFrac && avgCost < PIXEL.goodMs && pixelRatio < ceiling) {
       target = Math.min(ceiling, pixelRatio + PIXEL.step);
     }
     if (target !== pixelRatio) {
@@ -2980,7 +2995,7 @@
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
-    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil), baseIntervalMs: +baseInterval.toFixed(1) }; },
+    quality: function () { return { pixelRatio: pixelRatio, devicePixelRatio: deviceDPR, ceiling: Math.min(deviceDPR, PIXEL.ceil), lateFrac: +lastLateFrac.toFixed(2) }; },
     PIXEL: PIXEL,
     cut: function () { return cut ? { left: slicesLeft(), lifted: !!cut.lifted, sentBack: cut.sentBack, total: cut.total } : null; },
     startCut: startCut, liftFirst: function () { if (!cut) return; var w = cut.wedges.filter(function (x) { return x.visible && x.userData.tier === topRemainingTier(); })[0]; if (w) liftWedge(w); },
