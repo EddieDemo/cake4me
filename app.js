@@ -362,15 +362,21 @@
     var g = c.getContext('2d');
     // Core stays strong out to ~0.62 of the radius (that's where the cake's own footprint
     // ends), then falls away, so what you actually see is a soft ring hugging the base.
+    // Transparent BLACK, not a warm tint: compositing black at alpha a is a multiply by
+    // (1 − a), so the disc can only darken what's under it. The old warm brown was lighter
+    // than a dark floor and showed as a halo around the cake with every light off.
     var grad = g.createRadialGradient(64, 64, 2, 64, 64, 62);
-    grad.addColorStop(0.00, 'rgba(70,45,40,0.46)');
-    grad.addColorStop(0.62, 'rgba(70,45,40,0.40)');
-    grad.addColorStop(0.76, 'rgba(70,45,40,0.18)');
-    grad.addColorStop(0.90, 'rgba(70,45,40,0.05)');
-    grad.addColorStop(1.00, 'rgba(70,45,40,0)');
+    grad.addColorStop(0.00, 'rgba(0,0,0,0.34)');
+    grad.addColorStop(0.62, 'rgba(0,0,0,0.30)');
+    grad.addColorStop(0.76, 'rgba(0,0,0,0.13)');
+    grad.addColorStop(0.90, 'rgba(0,0,0,0.04)');
+    grad.addColorStop(1.00, 'rgba(0,0,0,0)');
     g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
     var t = new THREE.CanvasTexture(c); t.__shared = true; return t;
   })();
+  // Multiply blending: the disc darkens whatever is under it and can never add light — on a
+  // cream floor it deepens the base, on a black floor it stays black. As a painted decal it
+  // showed as a faint halo around the cake when every light was off.
   var contactShadow = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })
@@ -571,6 +577,7 @@
 
     fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
     rebuildLandings(cfg);
+    if (window.CakeLook) CakeLook.adopt(built);
     FRAME.cake = cakeFrame(cfg.t);
     if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg.t); }
     candleLight.position.set(0, y + 0.9, 0);
@@ -1773,6 +1780,7 @@
   confetti.instanceColor.setUsage(THREE.DynamicDrawUsage);
   confetti.count = 0;
   confetti.frustumCulled = false;
+  if (window.CakeLook) CakeLook.adopt(confetti);
   scene.add(confetti);
   var confettiPieces = [];           // { p, v, rot, rv, phase, resting }
   var confettiActive = 0;            // how many are still moving
@@ -2162,6 +2170,7 @@
         var idx = ti * WEDGES_PER_TIER + i;
         w.userData.index = idx; w.userData.tier = ti; w.userData.i = i;
         if (st.gone.indexOf(idx) >= 0) w.visible = false;
+        if (window.CakeLook) CakeLook.adopt(w);
         cutGroup.add(w);
         cut.wedges.push(w);
       }
@@ -2245,6 +2254,7 @@
     // Small plate arrives from the side
     var plate = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.08, 48), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
     plate.position.set(target.x + dir.z * 3, 0.04, target.z - dir.x * 3);
+    if (window.CakeLook) CakeLook.adopt(plate);
     cutGroup.add(plate); cut.plate = plate;
     // The wedge's own centroid direction, so it lands centred on the plate
     var thMid = (w.userData.i + 0.5) * Math.PI * 2 / WEDGES_PER_TIER;
@@ -2366,9 +2376,10 @@
     w.rotation.y = Math.PI - thMid;                          // centroid now points to -z (away)
     var cr = tier.r * 0.62;
     w.position.set(0, 0, cr);                                 // pull it back to the centre
+    if (window.CakeLook) CakeLook.adopt(w);
     cutGroup.add(w);
     var plate = new THREE.Mesh(new THREE.CylinderGeometry(tier.r * 0.78, tier.r * 0.78, 0.08, 64), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
-    plate.position.y = 0.04; cutGroup.add(plate);
+    plate.position.y = 0.04; if (window.CakeLook) CakeLook.adopt(plate); cutGroup.add(plate);
     var rim = new THREE.Mesh(new THREE.TorusGeometry(tier.r * 0.74, 0.045, 10, 96),
       new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex, roughness: 0.5 }));
     rim.rotation.x = Math.PI / 2; rim.position.y = 0.09; cutGroup.add(rim);
@@ -3098,6 +3109,7 @@
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     look: window.CakeLook ? CakeLook.LOOK : null,
     relight: updateRoomLights,
+    renderer: renderer,               // for cake.renderer.info.programs — count should not grow after load
     relook: function () {
       if (!window.CakeLook) return;
       CakeLook.rebuild(renderer, scene, key);

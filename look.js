@@ -228,11 +228,13 @@
       // shadow as a real lack of direct light, which is what a shadow is.
     }
   }
-  // Give every mesh that arrives (cake, candles, box, wedges, confetti…) shadow flags once.
-  // Called on an interval from the frame loop; a few hundred objects, trivially cheap.
-  function tick(scene) {
-    if (!LOOK.shadows) return;
-    scene.traverse(function (o) {
+  // Give a mesh (or a subtree) its shadow flags. Call this AT CREATION, before the first
+  // draw: a mesh's shadow flags are part of its shader's signature, so flagging it a frame
+  // later meant every new mesh compiled its shader twice — the second time with the full
+  // PCSS filter, right when the user was tapping. That was the "freeze" on cutting a slice.
+  function adopt(root) {
+    if (!LOOK.shadows || !root) return root;
+    root.traverse(function (o) {
       if (o.userData.__look || o.userData.__shadowed) return;
       if (o.isSprite) { o.userData.__shadowed = true; return; }
       if (o.isMesh || o.isInstancedMesh) {
@@ -242,6 +244,46 @@
         o.userData.__shadowed = true;
       }
     });
+    return root;
+  }
+  // Safety net for anything that wasn't adopted at creation. Interval-driven from the frame loop.
+  function tick(scene) { adopt(scene); }
+
+  // ---------- shader warm-up ----------
+  // Three compiles a material's shader on its first draw, and the PCSS variant is heavy. So
+  // one tiny mesh per shader variant the app ever uses lives permanently under the floor —
+  // inside the shadow frustum, hidden by the floor — and every program (including the
+  // shadow-depth variants) compiles on the very first frame instead of mid-gesture.
+  function warmUp(scene) {
+    var g = new THREE.Group(); g.name = 'shader-warmup'; g.position.y = -0.6;
+    var tiny = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+    // Texture ENCODING is part of the shader signature. The app's canvas textures are sRGB, so
+    // the warm-up's must be too, or these compile the wrong variant and the real one still
+    // compiles mid-gesture.
+    var c = document.createElement('canvas'); c.width = c.height = 2;
+    var tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    var variants = [
+      new THREE.MeshStandardMaterial({ roughness: 0.6 }),                                   // frosting, cap, box, plate
+      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex }),                         // filling faces (map)
+      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex, emissiveMap: tex }),       // message band (map + emissiveMap)
+      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex, side: THREE.DoubleSide }), // cut faces (double-sided)
+      new THREE.MeshStandardMaterial({ roughness: 0.6, side: THREE.DoubleSide }),           // ribbon band
+      new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.5 }),  // fading pieces
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5 }),                     // seams
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })       // contact disc
+    ];
+    variants.forEach(function (m) {
+      var mesh = new THREE.Mesh(tiny, m); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
+    });
+    var inst = new THREE.InstancedMesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.6, vertexColors: true }), 1);
+    inst.castShadow = true; inst.receiveShadow = true; inst.setMatrixAt(0, new THREE.Matrix4());
+    inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(3), 3);   // confetti: per-instance colour is a variant too
+    g.add(inst);
+    var candles = new THREE.InstancedMesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.45 }), 1);
+    candles.castShadow = true; candles.receiveShadow = true; candles.setMatrixAt(0, new THREE.Matrix4()); g.add(candles);
+    g.traverse(function (o) { o.userData.__look = true; });
+    scene.add(g);
+    return g;
   }
 
   // ---------- flame halo ----------
@@ -272,10 +314,12 @@
     return haloMat;
   }
 
+  var warmed = false;
   function apply(renderer, scene, key) {
     applyToneMapping(renderer);
     applyEnvironment(renderer, scene);
     applyShadows(renderer, scene, key);
+    if (!warmed) { warmUp(scene); warmed = true; }
     scene.traverse(function (o) {
       var m = o.material; if (!m) return;
       (Array.isArray(m) ? m : [m]).forEach(function (mm) { mm.needsUpdate = true; });
@@ -291,6 +335,6 @@
     LOOK.halo.enabled = !on;
     apply(renderer, scene, key);
   }
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor,
+  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();
