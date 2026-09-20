@@ -1,15 +1,22 @@
-# Cake — v0.52 (any colour for the key and the spot)
+# Cake — v0.53 (one frosting shell)
 
-Both the Key and Spot tabs gain a **colour picker** (the phone's native one) beneath the warmth
-slider. Picking a colour overrides warmth; **use warmth** hands control back to kelvin. The label
-says which is in charge.
+The "lid" is gone. Each tier's cap is now the **same colour and radius** as its sides, with no
+underside lip and no tuck in the sponge: the wall runs straight up into a single rounded top edge.
+The overhang and the lighter tint were early tricks to suggest icing on a flat-shaded cylinder;
+with real lighting, they read as a lid on a tin. The ribbon is now the only thing that breaks the
+shell, which is the right job for it. The cap remains separate geometry only because the side
+carries the message texture and the top doesn't; the wedges inherit everything.
 
-- `LOOK.keyHex` and `LOOK.spot.hex`: a 24-bit colour, or **−1 = use kelvin** (the default).
-- Two numbers appended to the lighting field (18 and 19), so existing 17-number strings decode
-  with the colours still coming from warmth. Round-trip verified; legacy strings verified.
+`shapes.js`: `capOverhang` 0, `capUnder` removed, the under-cap and lip occlusion terms removed
+(no crease to occlude). `app.js`: the seven `lighten(frosting, 0.12)` cap colours are now `frosting`.
 
-The reason the slider stays the default: every point on the warmth line is a light that exists in
-the world, and most of the colour space is lighting that reads as a mistake (light colour multiplies
-surface colour — a green key on pink frosting is mud). Where a full colour earns its place is the
-spot and the product's future moods: a pink spot on a white cake, red and green for Christmas, a
-cold blue rim for Midnight.
+## Two regressions caught on the way, both fixed
+- **Every route change was recompiling every shader.** Since v0.49 each route re-installs the PCSS
+  patch, and `install()` bumped the global cache key even when nothing changed — 14 programs became
+  26 across one navigation. `install()`/`uninstall()` are now idempotent: identical settings are a
+  no-op.
+- **Two variants had slipped past the warm-compile:** the double-sided ribbon band and the smoke
+  wisp (whose canvas texture is linear-encoded, unlike the flames'). Both added.
+
+Verified: **16 programs at load, 16 after the whole journey**, from both a builder start and a cold
+viewer link.

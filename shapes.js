@@ -8,6 +8,13 @@
    so a tier, and a wedge of a tier, come from the same profile with a
    different sweep angle.
 
+   Frosting is ONE SHELL (v0.53): the cap is the same colour and radius as
+   the sponge, with no underside lip and no tuck, so the wall runs straight
+   up into a single rounded top edge. The earlier overhanging, lighter cap
+   was drawn to suggest icing on a flat-shaded cylinder; with real lighting
+   it read as a lid on a tin. The cap stays separate geometry only because
+   the side carries the message texture and the top doesn't.
+
    Why: with soft lighting in place, what still says "shape, not cake" is
    the silhouette. Cylinders have perfectly sharp 90° edges; a baked sponge
    bulges slightly and rounds at the rim, frosting pools where it meets
@@ -36,16 +43,13 @@
   var P = {
     bulge: 0.018,        // sponge: fraction of r wider at mid-height
     baseFillet: 0.10,    // sponge: rounded base, world units
-    capOverhang: 0.08,   // cap sticks out past the sponge by this
+    capOverhang: 0.0,    // one shell: the cap is flush with the sponge
     capRim: 0.14,        // cap: radius of the rounded top edge
-    capUnder: 0.03,      // cap: how far the underside curls back in
     arcSteps: 5,         // points per rounded corner
     // Baked ambient occlusion (0 = black, 1 = untouched)
     ao: {
       base: 0.55,        // darkness right at a tier's foot, where it meets what it sits on
       baseReach: 0.28,   // world units the foot darkening fades over, up the wall
-      underCap: 0.62,    // the sponge's top tuck, in the shadow of the cap's overhang
-      capLip: 0.50,      // the cap's underside lip
       seat: 0.55,        // a tier's top surface directly under the tier above
       seatReach: 0.42    // how far out from the upper tier's edge the ring fades
     }
@@ -65,11 +69,9 @@
     var f = Math.min(P.baseFillet, bodyH * 0.25);
     // base: from the axis-side inset up through a fillet to the wall
     arc(r - f, f, f, -Math.PI / 2, 0, P.arcSteps, pts);          // (r-f,0) → (r,f)
-    // wall with a gentle bulge
+    // wall with a gentle bulge, running straight into the cap
     pts.push(new THREE.Vector2(r * (1 + P.bulge), bodyH * 0.5));
-    // top: small inward tuck so the cap's underside lip has something to sit on
-    pts.push(new THREE.Vector2(r, bodyH - 0.04));
-    pts.push(new THREE.Vector2(r - 0.02, bodyH));
+    pts.push(new THREE.Vector2(r, bodyH));
     return pts;
   }
 
@@ -77,11 +79,8 @@
     var pts = [];
     var ro = r + P.capOverhang;                 // outer radius
     var rim = Math.min(P.capRim, capH * 0.9);
-    // underside lip: from under the sponge edge out to the rim, curling up
-    pts.push(new THREE.Vector2(r - P.capUnder, 0));
-    pts.push(new THREE.Vector2(ro - 0.03, 0));
-    pts.push(new THREE.Vector2(ro, 0.03));
-    // wall up to where the rounded rim begins
+    // the wall continues from the sponge at the same radius, up to the rounded rim
+    pts.push(new THREE.Vector2(ro, 0));
     pts.push(new THREE.Vector2(ro, capH - rim));
     // rounded rim: quarter arc from (ro, capH-rim) to (ro-rim, capH)
     arc(ro - rim, capH - rim, rim, 0, Math.PI / 2, P.arcSteps, pts);
@@ -105,26 +104,18 @@
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   }
-  // Sponge: dark at the foot, fading up the wall; a little dark again under the cap.
+  // Sponge: dark at the foot, fading up the wall. (No under-cap term: one shell, no crease.)
   function bodyAO(r, bodyH) {
     var A = P.ao;
-    return function (rr, y) {
-      var foot = lerp(A.base, 1, smooth(y / A.baseReach));
-      var under = lerp(1, A.underCap, smooth((y - (bodyH - 0.14)) / 0.14));
-      return Math.min(foot, under);
-    };
+    return function (rr, y) { return lerp(A.base, 1, smooth(y / A.baseReach)); };
   }
-  // Cap: the underside lip is occluded by the sponge and the overhang; the top is open,
-  // except for a ring where the tier above sits (occluderR, if any).
+  // Cap: open, except for a ring on the top where the tier above sits (occluderR, if any).
   function capAO(r, capH, occluderR) {
-    var A = P.ao, ro = r + P.capOverhang;
+    var A = P.ao;
     return function (rr, y) {
-      var lip = lerp(A.capLip, 1, smooth(y / 0.05));                     // y=0 lip → 1 by y=0.05
-      if (!occluderR || y < capH - 0.02) return lip;
-      // top face: covered under the tier above, fading out from its edge
+      if (!occluderR || y < capH - 0.02) return 1;
       var d = rr - occluderR;
-      var seat = d <= 0 ? A.seat : lerp(A.seat, 1, smooth(d / A.seatReach));
-      return Math.min(lip, seat);
+      return d <= 0 ? A.seat : lerp(A.seat, 1, smooth(d / A.seatReach));
     };
   }
 

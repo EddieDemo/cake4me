@@ -148,8 +148,13 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   `vertexColors`. Analytic, noise-free, free at runtime. The bright streaks at every tier junction
   were the hemisphere's ground bounce lighting the new downward-facing fillets — light that can't
   physically reach a crease. The ground bounce was also turned down (#f0d6bd → #b8a48f).
+- **One frosting shell (v0.53).** The cap used to overhang the sponge by 0.08 and be 12% lighter —
+  both early tricks to suggest icing on a flat-shaded cylinder — and with real lighting it read as a
+  lid on a tin. Now the cap is the same colour and radius as the sides, with no lip or tuck: the wall
+  runs straight into one rounded top edge, and the ribbon is the only thing that breaks the shell.
+  The cap stays separate geometry only because the side carries the message and the top doesn't.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
-  contact-hardening (done) → lit floor (done) → baked AO (done) →
+  contact-hardening (done) → lit floor (done) → baked AO (done) → one shell (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.

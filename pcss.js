@@ -38,6 +38,7 @@
 
   var original = THREE.ShaderChunk.shadowmap_pars_fragment;
   var version = 0;
+  var currentGlsl = null;      // what's installed right now, so a repeat install is a no-op
 
   // Every material's program is cached by parameters that don't include chunk text, so a
   // patched chunk would never reach an already-compiled material. A global cache key that
@@ -129,8 +130,13 @@
       spotLightSize: 0.5, spotNear: 1, spotFar: 60
     };
     for (var k in opts) if (opts.hasOwnProperty(k) && opts[k] !== undefined) o[k] = opts[k];
+    var code = glsl(o);
+    // Idempotent: re-installing identical settings must NOT bump the cache key, or every route
+    // change recompiles every material for nothing (14 programs became 26 across one navigation).
+    if (code === currentGlsl) return o;
+    currentGlsl = code;
     var shader = original;
-    shader = shader.replace('#ifdef USE_SHADOWMAP', '#ifdef USE_SHADOWMAP' + glsl(o));
+    shader = shader.replace('#ifdef USE_SHADOWMAP', '#ifdef USE_SHADOWMAP' + code);
     // Route the lookup through PCSS just inside getShadow's frustum test.
     shader = shader.replace('#if defined( SHADOWMAP_TYPE_PCF )',
       '#ifdef PCSS_ON\n\t\t\treturn pcss( shadowMap, shadowCoord, shadowRadius );\n\t\t#endif\n\t\t#if defined( SHADOWMAP_TYPE_PCF )');
@@ -139,6 +145,8 @@
     return o;
   }
   function uninstall() {
+    if (currentGlsl === null) return;
+    currentGlsl = null;
     THREE.ShaderChunk.shadowmap_pars_fragment = original;
     version++;
   }

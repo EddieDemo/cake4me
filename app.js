@@ -485,8 +485,10 @@
 
     // vertexColors: the lathe geometry carries baked ambient occlusion as a grey per vertex.
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
-    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
+    // Same colour as the sides (v0.53): one frosting shell. The cap is separate geometry only
+    // because the side carries the message texture and the top doesn't.
+    var capMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, frosting, false);
     frostingMat.__shared = capMat.__shared = true;   // reused across meshes within this build
     var localShared = [frostingMat, capMat];
 
@@ -2193,8 +2195,8 @@
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
-    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
+    var capMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, frosting, false);
     var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
     var msgMap = messageMesh && messageMesh.material[0] && messageMesh.material[0].map ? messageMesh.material[0].map : null;
 
@@ -2399,8 +2401,8 @@
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
-    nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
+    var capMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
+    nightGlow(frostingMat, frosting, false); nightGlow(capMat, frosting, false);
     var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
     var tiers = tierTops(cfg);
     var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
@@ -3057,7 +3059,7 @@
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
     var frosting = PALETTES.frosting[0].hex, filling = PALETTES.filling[7].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
+    var capMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
     var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
     var msgTex = makeMessageTexture('warm', INK_DARK, frosting, 2.2, 1.2);
     var msgMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: msgTex, vertexColors: true });
@@ -3069,6 +3071,8 @@
     tmp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 8), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 })));   // plate
     tmp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.16, depthWrite: false }))); // seams
     tmp.add(new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 4, 8), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5 })));      // plate rim
+    tmp.add(new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5, side: THREE.DoubleSide }))); // ribbon band (double-sided)
+    var smoke = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0.9, toneMapped: false })); tmp.add(smoke); // smoke wisp (linear-encoded texture)
     if (window.CakeLook) CakeLook.adopt(tmp);
     scene.add(tmp);
     // The box, the confetti mesh (count 0) and the floor already exist in the scene; the
