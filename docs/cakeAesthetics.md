@@ -164,8 +164,10 @@ In the order they'd matter for a cake:
    plaster. A cheap "wrap lighting" term — light bleeding slightly past the terminator into the
    shadow side with a warm tint — is most of the food-ness for almost nothing. The one that would
    make it look like cake.
-3. **Colour bleeding / GI.** Pink frosting should tint the floor beside it and the tier below. Real
-   GI is out of reach; a proxy is tinting the hemisphere's ground colour with the frosting colour.
+3. ~~**Colour bleeding / GI.**~~ — faked both ways, v0.51 (`LOOK.bleed`): the hemisphere's ground
+   colour becomes the lit floor paint (floor → cake), and a soft disc of frosting colour sits on the
+   floor around the cake, its opacity following the room's brightness (cake → floor). Strength and
+   reach on the Ambient tab; travels in the link as fields 16–17.
 4. **Environment reflections and tone mapping.** Built, switched off, waiting for glossy materials
    (glaze, satin ribbon, sugar work).
 5. **Real bloom.** Faked with halo sprites; a true post-process bloom would also glow the message

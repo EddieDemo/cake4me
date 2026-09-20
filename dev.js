@@ -42,6 +42,9 @@
     '.devlight .tabs button{flex:1;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:5px 0}',
     '.devlight .tabs button[aria-selected="true"]{background:#fff;color:#2a1c1c}',
     '.devlight section[hidden]{display:none}',
+    '.devlight .pick{display:flex;align-items:center;gap:8px;margin:6px 0 2px}',
+    '.devlight .pick input[type=color]{width:34px;height:26px;padding:0;border:0;background:transparent;border-radius:6px}',
+    '.devlight .pick span{flex:1;font-size:12px}.devlight .pick button{font:600 11px -apple-system,system-ui,sans-serif;color:#fff;background:rgba(255,255,255,.14);border:0;border-radius:6px;padding:4px 8px}',
     // a small toggle on the target bar: hides the lighting panel so the cake can be seen
     '.devtgl label{display:flex;align-items:center;gap:5px;padding:0 8px 0 6px;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;border-left:1px solid rgba(255,255,255,.18);margin-left:2px}',
     '.devtgl label input{margin:0;accent-color:#fff;width:14px;height:14px}',
@@ -78,12 +81,15 @@
     '<div class="tabs"><button data-tab="amb" aria-selected="true">Ambient</button><button data-tab="key" aria-selected="false">Key</button><button data-tab="spot" aria-selected="false">Spot</button></div>' +
     '<section id="dev-tab-amb">' +
       '<label>ambient <em id="dev-am">—</em></label><input type="range" id="dev-am-in" min="0" max="2" step="0.05">' +
+      '<label>colour bleed <em id="dev-bl">—</em></label><input type="range" id="dev-bl-in" min="0" max="1" step="0.05">' +
+      '<label>bleed reach <em id="dev-br">—</em></label><input type="range" id="dev-br-in" min="1" max="3" step="0.1">' +
     '</section>' +
     '<section id="dev-tab-key" hidden>' +
       '<label>strength <em id="dev-ky">—</em></label><input type="range" id="dev-ky-in" min="0" max="2" step="0.05">' +
       '<label>elevation <em id="dev-el">—</em></label><input type="range" id="dev-el-in" min="5" max="85" step="1">' +
       '<label>azimuth <em id="dev-az">—</em></label><input type="range" id="dev-az-in" min="-180" max="180" step="5">' +
       '<label>warmth <em id="dev-kk">—</em></label><input type="range" id="dev-kk-in" min="2500" max="9000" step="100">' +
+      '<div class="pick"><input type="color" id="dev-kc"><span id="dev-kc-lbl">colour: from warmth</span><button type="button" id="dev-kc-reset">use warmth</button></div>' +
       '<label>light size <em id="dev-ls">—</em></label><input type="range" id="dev-ls-in" min="0.1" max="1.5" step="0.05">' +
       '<div class="q" id="dev-q"><span>samples</span></div>' +
     '</section>' +
@@ -96,6 +102,7 @@
       '<label>cone <em id="dev-sp-a">—</em></label><input type="range" id="dev-sp-a-in" min="5" max="80" step="1">' +
       '<label>softness <em id="dev-sp-s">—</em></label><input type="range" id="dev-sp-s-in" min="0" max="1" step="0.05">' +
       '<label>warmth <em id="dev-sp-k">—</em></label><input type="range" id="dev-sp-k-in" min="2500" max="9000" step="100">' +
+      '<div class="pick"><input type="color" id="dev-sc"><span id="dev-sc-lbl">colour: from warmth</span><button type="button" id="dev-sc-reset">use warmth</button></div>' +
       '<label>light size <em id="dev-sp-ls">—</em></label><input type="range" id="dev-sp-ls-in" min="0.05" max="1.5" step="0.05">' +
     '</section>';
   Array.prototype.forEach.call(light.querySelectorAll('.tabs button'), function (b) {
@@ -115,6 +122,10 @@
     light.querySelector('#dev-ls').textContent = fmt(v, 0.6);
     light.querySelector('#dev-am-in').value = L.ambientScale;
     light.querySelector('#dev-am').textContent = fmt(L.ambientScale, 1);
+    light.querySelector('#dev-bl-in').value = L.bleed.strength;
+    light.querySelector('#dev-bl').textContent = fmt(L.bleed.strength, 0.5);
+    light.querySelector('#dev-br-in').value = L.bleed.reach;
+    light.querySelector('#dev-br').textContent = fmt(L.bleed.reach, 1.7);
     light.querySelector('#dev-ky-in').value = L.keyScale;
     light.querySelector('#dev-ky').textContent = fmt(L.keyScale, 1);
     light.querySelector('#dev-el-in').value = L.keyDir.elevation;
@@ -125,6 +136,13 @@
       light.querySelector('#dev-sp-' + f[0] + '-in').value = S[f[1]];
       light.querySelector('#dev-sp-' + f[0]).textContent = (+S[f[1]]).toFixed(f[2]) + f[3];
     });
+    // colour pickers: show the effective colour; label says whether it's overriding warmth
+    var kc = light.querySelector('#dev-kc'), kcl = light.querySelector('#dev-kc-lbl');
+    kc.value = '#' + (L.keyHex >= 0 ? L.keyHex : CakeLook.kelvinToColor(L.keyKelvin).getHex()).toString(16).padStart(6, '0');
+    kcl.textContent = L.keyHex >= 0 ? 'colour: ' + kc.value : 'colour: from warmth';
+    var sc = light.querySelector('#dev-sc'), scl = light.querySelector('#dev-sc-lbl');
+    sc.value = '#' + (L.spot.hex >= 0 ? L.spot.hex : CakeLook.kelvinToColor(L.spot.kelvin).getHex()).toString(16).padStart(6, '0');
+    scl.textContent = L.spot.hex >= 0 ? 'colour: ' + sc.value : 'colour: from warmth';
     light.querySelector('#dev-kk-in').value = L.keyKelvin;
     light.querySelector('#dev-kk').textContent = L.keyKelvin + 'K' + (L.keyKelvin === 5000 ? ' (default)' : '');
     light.querySelector('#dev-az-in').value = L.keyDir.azimuth;
@@ -151,6 +169,11 @@
     var el = light.querySelector('#dev-sp-' + f[0] + '-in');
     el.addEventListener('input', function () { if (!lookReady()) return; CakeLook.LOOK.spot[f[1]] = +el.value; cake.relight(); syncLight(); });
   });
+  // Colour pickers override warmth; "use warmth" puts kelvin back in charge. Live.
+  light.querySelector('#dev-kc').addEventListener('input', function (e) { if (!lookReady()) return; CakeLook.LOOK.keyHex = parseInt(e.target.value.slice(1), 16); cake.relight(); syncLight(); });
+  light.querySelector('#dev-kc-reset').addEventListener('click', function () { if (!lookReady()) return; CakeLook.LOOK.keyHex = -1; cake.relight(); syncLight(); });
+  light.querySelector('#dev-sc').addEventListener('input', function (e) { if (!lookReady()) return; CakeLook.LOOK.spot.hex = parseInt(e.target.value.slice(1), 16); cake.relight(); syncLight(); });
+  light.querySelector('#dev-sc-reset').addEventListener('click', function () { if (!lookReady()) return; CakeLook.LOOK.spot.hex = -1; cake.relight(); syncLight(); });
   // Spot light size is baked into the shader: on release, full relook (recompile).
   var spLs = light.querySelector('#dev-sp-ls-in');
   spLs.addEventListener('input', function () { light.querySelector('#dev-sp-ls').textContent = (+spLs.value).toFixed(2); });
@@ -163,7 +186,9 @@
    ['ky', function (v) { CakeLook.LOOK.keyScale = v; }],
    ['el', function (v) { CakeLook.LOOK.keyDir.elevation = v; }],
    ['az', function (v) { CakeLook.LOOK.keyDir.azimuth = v; }],
-   ['kk', function (v) { CakeLook.LOOK.keyKelvin = v; }]].forEach(function (pair) {
+   ['kk', function (v) { CakeLook.LOOK.keyKelvin = v; }],
+   ['bl', function (v) { CakeLook.LOOK.bleed.strength = v; }],
+   ['br', function (v) { CakeLook.LOOK.bleed.reach = v; }]].forEach(function (pair) {
     var el = light.querySelector('#dev-' + pair[0] + '-in');
     el.addEventListener('input', function () {
       if (!lookReady()) return;

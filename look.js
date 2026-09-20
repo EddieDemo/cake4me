@@ -98,6 +98,9 @@
     // Colour temperature of the key, in kelvin: 2700 is a tungsten lamp, 5000 a warm-ish
     // daylight, 8000 an overcast sky. Converted to RGB with the usual (Helland) fit.
     keyKelvin: 5000,
+    // Any colour, overriding kelvin when set. -1 = "use kelvin". Stored as a 24-bit int so it
+    // can ride in the lighting field; -1 there decodes back to "use kelvin".
+    keyHex: -1,
     // ---- A spot light: the lamp over the table ----
     // Off by default. A LOCAL light, so distance finally matters: bring it closer and the light
     // pools on the cake, the falloff shows across the tiers, and its shadow fans out with
@@ -108,10 +111,20 @@
       elevation: 62, azimuth: 30, distance: 9,     // degrees, degrees, world units
       angle: 32, softness: 0.45,                   // cone half-angle (deg), penumbra 0–1
       kelvin: 3400,
+      hex: -1,                                     // any colour; -1 = use kelvin
       castShadow: true, shadowMapSize: 1024,
       lightSize: 0.5,                              // world units: the size of the lamp. Contact-hardening softness.
       shadowFar: 60                                // fixed, so changing distance doesn't recompile
     },
+    // ---- Colour bleed: the targeted fake for global illumination ----
+    // Real GI (light bouncing between surfaces) is out of reach on a phone browser. This fakes
+    // the one bounce a viewer would miss, in both directions:
+    //   floor → cake: the hemisphere's ground colour becomes the lit floor paint, so the
+    //                 undersides of the tiers are warmed by whatever the cake sits on;
+    //   cake → floor: a soft disc of frosting colour on the floor around the cake, so the
+    //                 cake appears to tint its surroundings.
+    // `strength` 0 = off; `reach` = disc radius as a multiple of the bottom tier's.
+    bleed: { strength: 0.5, reach: 1.7 },
     // Dev-panel multipliers on the room (ambient) and the sun/window (key). 1 = as designed.
     // The product sets the base from the sender's backdrop; these let you explore around it.
     ambientScale: 1.0,
@@ -145,15 +158,58 @@
   }
   function lerp(a, b, t) { return a + (b - a) * t; }
   // Room light intensities for a given darkness.
-  function roomLights(d) {
+  // floorPaint (optional THREE.Color): the floor's paint, for the floor→cake bounce.
+  function roomLights(d, floorPaint) {
     var L = LOOK.lights, N = LOOK.night;
+    var ground = new THREE.Color(L.hemiGround).lerp(new THREE.Color(N.hemiGround), d);
+    if (floorPaint && LOOK.bleed.strength > 0) {
+      // The ground bounce IS the floor: pull its colour toward the paint, keeping the designed
+      // brightness so a white floor doesn't turn the room into a lightbox.
+      var gl = 0.2126 * ground.r + 0.7152 * ground.g + 0.0722 * ground.b;
+      var pl = Math.max(0.05, 0.2126 * floorPaint.r + 0.7152 * floorPaint.g + 0.0722 * floorPaint.b);
+      var tinted = floorPaint.clone().multiplyScalar(gl / pl);
+      ground.lerp(tinted, LOOK.bleed.strength);
+    }
     return {
       hemi: lerp(L.hemi, N.hemi, d) * LOOK.ambientScale,
       key: lerp(L.key, N.key, d) * LOOK.keyScale,
       fill: lerp(L.fill, N.fill, d) * LOOK.ambientScale,
       hemiSky: new THREE.Color(L.hemiSky).lerp(new THREE.Color(N.hemiSky), d),
-      hemiGround: new THREE.Color(L.hemiGround).lerp(new THREE.Color(N.hemiGround), d)
+      hemiGround: ground
     };
+  }
+
+  // The cake→floor disc. Owned here; app.js tells it the colour, radius and whether a cake is
+  // on the floor. A painted decal is honest for this one: it's ADDING bounced colour, and its
+  // opacity follows the room's brightness so it vanishes in the dark.
+  var bleedDisc = null, bleedTex = null;
+  function bleedDiscFor(scene) {
+    if (bleedDisc) return bleedDisc;
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var g = c.getContext('2d'), grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+    grad.addColorStop(0.00, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+    grad.addColorStop(1.00, 'rgba(255,255,255,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    bleedTex = new THREE.CanvasTexture(c); bleedTex.encoding = THREE.sRGBEncoding;
+    bleedDisc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: bleedTex, transparent: true, depthWrite: false, opacity: 0 }));
+    bleedDisc.rotation.x = -Math.PI / 2; bleedDisc.position.y = 0.0025; bleedDisc.renderOrder = -2;
+    bleedDisc.name = 'bleed-disc'; bleedDisc.userData.__look = true;
+    scene.add(bleedDisc);
+    return bleedDisc;
+  }
+  // colour: THREE.Color (the frosting); radius: bottom tier radius; lit: room brightness 0–1+;
+  // candle: candle light intensity (so a candlelit cake still bleeds a little in the dark).
+  function setBleed(scene, colour, radius, visible, lit, candle) {
+    var disc = bleedDiscFor(scene), B = LOOK.bleed;
+    disc.visible = !!visible && B.strength > 0;
+    if (!disc.visible) return;
+    var r = radius * B.reach;
+    disc.scale.set(r * 2, r * 2, 1);
+    disc.material.color.copy(colour);
+    var glow = Math.min(1, lit) + Math.min(0.5, (candle || 0) / 8);
+    disc.material.opacity = B.strength * 0.55 * glow;
   }
   // Kelvin → RGB (Tanner Helland's fit; good enough between 1000K and 12000K).
   function kelvinToColor(k, out) {
@@ -188,7 +244,7 @@
     spot.penumbra = S.softness;
     spot.distance = S.distance * 3;                 // reach: well past the cake
     spot.decay = 2;
-    kelvinToColor(S.kelvin, spot.color);
+    if (S.hex >= 0) spot.color.setHex(S.hex); else kelvinToColor(S.kelvin, spot.color);
     spot.castShadow = !!(S.enabled && S.castShadow && LOOK.shadows);
     if (spot.shadow) {
       if (spot.shadow.mapSize.x !== S.shadowMapSize) { spot.shadow.mapSize.set(S.shadowMapSize, S.shadowMapSize); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
@@ -408,7 +464,13 @@
     [function () { return LOOK.spot.angle; },        function (v) { LOOK.spot.angle = v; },        32,   1, 89, 1],
     [function () { return LOOK.spot.softness; },     function (v) { LOOK.spot.softness = v; },     0.45, 0, 1, 2],
     [function () { return LOOK.spot.kelvin; },       function (v) { LOOK.spot.kelvin = v; },       3400, 1500, 12000, 0],
-    [function () { return LOOK.spot.lightSize; },    function (v) { LOOK.spot.lightSize = v; },    0.5,  0.02, 3, 2]
+    [function () { return LOOK.spot.lightSize; },    function (v) { LOOK.spot.lightSize = v; },    0.5,  0.02, 3, 2],
+    // appended (v0.51): colour bleed. Older 15-number strings leave these at default.
+    [function () { return LOOK.bleed.strength; },    function (v) { LOOK.bleed.strength = v; },    0.5,  0, 1, 2],
+    [function () { return LOOK.bleed.reach; },       function (v) { LOOK.bleed.reach = v; },       1.7,  1, 3, 2],
+    // appended (v0.52): explicit colours. -1 = use kelvin. Older strings leave them at -1.
+    [function () { return LOOK.keyHex; },            function (v) { LOOK.keyHex = v; },            -1,   -1, 0xFFFFFF, 0],
+    [function () { return LOOK.spot.hex; },          function (v) { LOOK.spot.hex = v; },          -1,   -1, 0xFFFFFF, 0]
   ];
   function serializeLighting() {
     var allDefault = true, out = [];
@@ -437,6 +499,6 @@
   function resetLighting() { LIGHT_FIELDS.forEach(function (f) { f[1](f[2]); }); }
 
   window.CakeLook = {
-    serializeLighting: serializeLighting, applyLighting: applyLighting, resetLighting: resetLighting, apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
+    serializeLighting: serializeLighting, applyLighting: applyLighting, resetLighting: resetLighting, setBleed: setBleed, apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

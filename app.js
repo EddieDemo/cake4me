@@ -57,7 +57,8 @@
       { name: 'Sage',  hex: 0x9BBF9B },
       { name: 'Blue',  hex: 0x4FC3F7 },
       { name: 'Plum',  hex: 0x8E5A9B },
-      { name: 'Ink',   hex: 0x3B2A2A }
+      { name: 'Ink',   hex: 0x3B2A2A },
+      { name: 'White', hex: 0xFFFFFF }          // appended: indices in existing links are unchanged
     ],
     // Message colour. Index 0 keeps the old behaviour: dark or light picked from the
     // frosting's luminance. Everything after it is an explicit choice.
@@ -87,7 +88,8 @@
       { name: 'Mint',      floor: 0xCBE9DB, layers: [0xE4F6EE, 0xC2E6D6] },
       { name: 'Dusk',      floor: 0x453E6B, layers: [0x6E6597, 0x3B3560] },
       { name: 'Midnight',  floor: 0x161C33, layers: [0x24304A, 0x11162A] },
-      { name: 'Ink',       floor: 0x18131C, layers: [0x2A2430, 0x141018] }
+      { name: 'Ink',       floor: 0x18131C, layers: [0x2A2430, 0x141018] },
+      { name: 'White',     floor: 0xFFFFFF, layers: [0xFFFFFF, 0xF4F4F4] }   // appended: indices unchanged
     ]
   };
 
@@ -939,6 +941,16 @@
     var c = new THREE.Color(hex);
     return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   }
+  // The cake→floor colour bleed disc: frosting colour, sized to the bottom tier, off while the
+  // cake is boxed or gone.
+  function updateBleed() {
+    if (!window.CakeLook || !config) return;
+    var frosting = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
+    var r = (TIERS[config.t] || TIERS[1])[0].r;
+    var onFloor = !boxMode && built.visible !== false || !!cut;
+    var left = cut ? slicesLeft() + (cut.lifted ? 1 : 0) : 1;
+    CakeLook.setBleed(scene, new THREE.Color(frosting), r, onFloor && left > 0 && viewerMode !== 'slice', roomLit, candleLight.intensity);
+  }
   // At night the cake gets a faint self-glow so the shape never goes fully black, and the
   // message band a little more so the writing stays readable. Zero in daylight.
   // Materials that carry the night self-glow, with their full-strength intensity. The
@@ -967,15 +979,17 @@
   }
   var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow and the room lights.
   var darkness = 0;             // 0 daylight … 1 candlelit (look.js decides from bgLuminance)
+  var floorPaint = new THREE.Color(0xffebd2), roomLit = 1;
   function updateRoomLights() {
     if (!window.CakeLook) return;
     darkness = CakeLook.darknessFor(bgLuminance);
-    var R = CakeLook.roomLights(darkness);
+    var R = CakeLook.roomLights(darkness, floorPaint);
     if (ambientLight.isHemisphereLight) { ambientLight.intensity = R.hemi; ambientLight.color.copy(R.hemiSky); ambientLight.groundColor.copy(R.hemiGround); }
     else ambientLight.intensity = R.hemi;
     key.intensity = R.key; fill.intensity = R.fill;
     CakeLook.keyPosition(key.position);              // elevation / azimuth from the look
-    CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
+    if (CakeLook.LOOK.keyHex >= 0) key.color.setHex(CakeLook.LOOK.keyHex);
+    else CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
     var wasCasting = spot.castShadow, wasVisible = spot.visible;
     CakeLook.applySpot(spot);
     spot.target.position.set(0, config ? centreOfMass(config.t) : 0.8, 0);
@@ -987,8 +1001,10 @@
     candleLight.distance = CakeLook.LOOK.night.distance; candleLight.decay = CakeLook.LOOK.night.decay;
     if (window.CakeStage) {
       var kd = key.position.clone().normalize();
-      CakeStage.setBrightness(CakeLook.litFactor(R, kd, key.color));
+      roomLit = CakeLook.litFactor(R, kd, key.color);
+      CakeStage.setBrightness(roomLit);
     }
+    updateBleed();
   }
   function applyBackground(frostingHex, bgIndex) {
     var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];
@@ -1003,6 +1019,7 @@
     // The palette's two colours are now the SKY and the FLOOR PAINT. The floor is a real lit
     // plane (stage.js); the sky is the CSS gradient above the horizon. Both dim with the room.
     bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
+    floorPaint.copy(bottom);
     document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
     if (window.CakeStage) CakeStage.setColour('#' + bottom.getHexString());
     else {
@@ -1189,7 +1206,7 @@
       camY += (camTargetY - camY) * Math.min(1, dt * 5);
       frameRadius += (frameTarget - frameRadius) * Math.min(1, dt * 5);
     }
-    if (now - lastMeasure > 180) { lastMeasure = now; measureFree(); if (window.CakeLook) CakeLook.tick(scene); }
+    if (now - lastMeasure > 180) { lastMeasure = now; measureFree(); if (window.CakeLook) { CakeLook.tick(scene); updateBleed(); } }
     free.top += (freeTarget.top - free.top) * Math.min(1, dt * 6);
     free.bottom += (freeTarget.bottom - free.bottom) * Math.min(1, dt * 6);
     if (spinEnabled) updateSpin(now, dt);
