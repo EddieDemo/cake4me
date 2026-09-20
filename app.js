@@ -1474,7 +1474,8 @@
     pxPerRad: 400,                      // recomputed on resize so one swipe covers the lot
     swipeFraction: 0.8                  // of the canvas height = the whole range
   };
-  var TWIST = { min: -0.44, max: 0.44 };               // two-finger rotate → camera roll, ±25°
+  // Two-finger rotate → camera roll. Temporarily OFF (20 Sept): set `enabled: true` to restore.
+  var TWIST = { enabled: false, min: -0.44, max: 0.44 };   // ±25° when enabled
   var omega = SPIN.idle;        // free-spin angular velocity, rad/s (momentum)
   // The ambient turn is for the recipient's cake, which should feel alive. The sender is
   // working on theirs, and a thing that keeps turning while you're placing candles is a
@@ -1629,7 +1630,7 @@
       // cake because the camera always looks at the same point.
       if (count() >= 2) {
         var ang = twoAngle(), sp = twoSpan();
-        if (ang !== null && pinchPrev !== null) {
+        if (TWIST.enabled && ang !== null && pinchPrev !== null) {
           var d = ang - pinchPrev;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;

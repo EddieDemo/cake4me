@@ -137,7 +137,9 @@
   function body(r, bodyH, seg, phi0, phiLen) {
     var geo = new THREE.LatheGeometry(bodyProfile(r, bodyH), seg, phi0 || 0, phiLen || Math.PI * 2);
     heightUVs(geo, 0, bodyH);
-    geo.computeVertexNormals();
+    // No computeVertexNormals() here. LatheGeometry already computes normals and, for a full
+    // sweep, averages the duplicated first/last columns so the join is seamless; recomputing
+    // from the triangles gave each seam column a one-sided normal and a visible fold at 0°.
     bakeAO(geo, bodyAO(r, bodyH));
     // One material group covering everything, so a [message, frosting, frosting] material
     // array keeps working: index 0 is the whole side.
@@ -147,8 +149,7 @@
   // occluderR: radius of the tier sitting on this one (undefined for the top tier).
   function cap(r, capH, seg, phi0, phiLen, occluderR) {
     var geo = new THREE.LatheGeometry(capProfile(r, capH), seg, phi0 || 0, phiLen || Math.PI * 2);
-    geo.computeVertexNormals();
-    bakeAO(geo, capAO(r, capH, occluderR));
+    bakeAO(geo, capAO(r, capH, occluderR));                  // normals: see body()
     return geo;
   }
 
