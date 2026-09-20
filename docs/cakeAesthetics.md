@@ -153,8 +153,16 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   lid on a tin. Now the cap is the same colour and radius as the sides, with no lip or tuck: the wall
   runs straight into one rounded top edge, and the ribbon is the only thing that breaks the shell.
   The cap stays separate geometry only because the side carries the message and the top doesn't.
+- **Colour management (v0.55)** — `color.js`. r128 took a hex colour as if it were already linear
+  light, so every plain-coloured surface rendered lighter and less saturated than its swatch while
+  sRGB textures rendered true; the naked cake's plain sponge top next to its textured side made it
+  visible. The shim gives r128 the later ColorManagement behaviour (hex/CSS in and out are sRGB;
+  channels are linear). Luminance thresholds (auto ink, dark-bg, night ramp, contrast note) were
+  re-expressed in linear terms. The lighting defaults were left as tuned; the scene reads a shade
+  richer and darker, which is the true palette.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
-  contact-hardening (done) → lit floor (done) → baked AO (done) → one shell (done) →
+  contact-hardening (done) → lit floor (done) → baked AO (done) → one shell (done) → colour
+  management (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.

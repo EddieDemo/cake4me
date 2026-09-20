@@ -406,7 +406,7 @@
     var t = Math.max(0, Math.min(1, (camElev - CAM_ELEV_MIN) / 18));
     var discScale = (window.CakeLook && CakeLook.LOOK.shadows) ? CakeLook.LOOK.contactDiscScale : 1;
     if (window.CakeStage) discScale *= 0.7;                    // the lit floor carries the real shadow now
-    contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / 0.55)) * discScale;
+    contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / THREE.Color.srgbToLinear(0.55))) * discScale;
   }
   function fitShadow(radius) {
     shadowRadius = radius;
@@ -858,7 +858,7 @@
       g.fillStyle = 'rgba(0,0,0,0.22)';
       g.fillText(ln, W / 2 + size * 0.03, yy + size * 0.06);
       var inkLum = (function () { var c = new THREE.Color(ink); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; })();
-      g.fillStyle = inkLum < 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
+      g.fillStyle = inkLum < THREE.Color.srgbToLinear(0.5) ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
       g.fillText(ln, W / 2 - size * 0.02, yy - size * 0.03);
       g.fillStyle = ink;
       g.fillText(ln, W / 2, yy);
@@ -954,27 +954,6 @@
     t.encoding = THREE.sRGBEncoding;
     return t;
   }
-  function makeLayersTextureOLD(layers) {
-    var c = document.createElement('canvas');
-    c.width = 256; c.height = 256;
-    var g = c.getContext('2d');
-    g.fillStyle = hexCss(SPONGE);
-    g.fillRect(0, 0, 256, 256);
-    var bands = layers.length === 1 ? 2 : layers.length;   // single filling = two layers
-    var spongeH = 256 / ((bands + 1) + bands * 0.55);
-    var fillH = spongeH * 0.55;
-    var y = 256;
-    for (var i = 0; i < bands; i++) {
-      y -= spongeH + fillH;
-      g.fillStyle = hexCss(layers[layers.length === 1 ? 0 : i]);
-      g.fillRect(0, y, 256, fillH);
-    }
-    g.fillStyle = 'rgba(120,80,30,0.08)';                  // crumb
-    for (var k = 0; k < 400; k++) g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
-    var t = new THREE.CanvasTexture(c);
-    t.encoding = THREE.sRGBEncoding;
-    return t;
-  }
 
   // =====================================================================
   //  Colour helpers
@@ -1036,7 +1015,7 @@
   function pickInk(frostingHex, tcIndex) {
     var opt = PALETTES.text[clampIndex(tcIndex, PALETTES.text)];
     if (!opt.auto) return hexCss(opt.hex);
-    return luminance(frostingHex) > 0.42 ? INK_DARK : INK_LIGHT;
+    return luminance(frostingHex) > THREE.Color.srgbToLinear(0.42) ? INK_DARK : INK_LIGHT;   // luminance is linear now
   }
   // Rough WCAG-ish contrast between the message and the frosting it sits on.
   function inkContrast(inkCss, frostingHex) {
@@ -1088,7 +1067,8 @@
     // plane (stage.js); the sky is the CSS gradient above the horizon. Both dim with the room.
     bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
     floorPaint.copy(bottom);
-    document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
+    // bgLuminance is LINEAR now (color.js); 0.42 in sRGB terms is ≈0.15 linear.
+    document.body.classList.toggle('dark-bg', bgLuminance < THREE.Color.srgbToLinear(0.42));
     if (window.CakeStage) CakeStage.setColour('#' + bottom.getHexString());
     else {
       var root = document.documentElement.style;
@@ -1404,7 +1384,7 @@
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
     var rib = PALETTES.ribbon[clampIndex(config.rc, PALETTES.ribbon)].hex;
     // Only nudge it if a pale ribbon would vanish against a pale box.
-    if (luminance(rib) > 0.82 && luminance(lighten(frostingHex, 0.55)) > 0.75) rib = darken(rib, 0.32);
+    if (luminance(rib) > THREE.Color.srgbToLinear(0.82) && luminance(lighten(frostingHex, 0.55)) > THREE.Color.srgbToLinear(0.75)) rib = darken(rib, 0.32);   // linear luminance (color.js)
     ribbonMat.color.setHex(rib);
     var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
@@ -2146,7 +2126,7 @@
     boxMat.color.setHex(lighten(frostingHex, 0.55));
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
     var rib = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
-    if (luminance(rib) > 0.82 && luminance(lighten(frostingHex, 0.55)) > 0.75) rib = darken(rib, 0.32);
+    if (luminance(rib) > THREE.Color.srgbToLinear(0.82) && luminance(lighten(frostingHex, 0.55)) > THREE.Color.srgbToLinear(0.75)) rib = darken(rib, 0.32);   // linear luminance (color.js)
     ribbonMat.color.setHex(rib);
     var h = Math.max(2.9, cakeHeight() + 0.18);
     buildBox(h);
@@ -2895,7 +2875,8 @@
     var bgHex = draft.fr ? frosting : SPONGE;
     var ink = pickInk(bgHex, draft.tc);
     // Their cake, their call — but say so if it'll be hard to read.
-    note.textContent = inkContrast(ink, bgHex) < 2.2
+    // inkContrast is a real (linear-luminance) WCAG ratio now; 3:1 is the large-text minimum.
+    note.textContent = inkContrast(ink, bgHex) < 3.0
       ? 'Low contrast — this may be hard to read on the cake'
       : (draft.fr ? 'Auto picks dark or light to suit the frosting' : 'Auto picks dark or light to suit the sponge');
   }

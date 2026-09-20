@@ -145,7 +145,8 @@
       // message band gets a little more so the writing stays readable
       emissiveFrosting: 0.05, emissiveMessage: 0.14
     },
-    // Darkness ramps from 0 at this background luminance…
+    // Darkness ramps from 0 at this background luminance (sRGB terms; converted to linear
+    // in darknessFor, since color.js makes Color channels linear)…
     nightAbove: 0.55,
     // …to 1 at this one.
     nightBelow: 0.16
@@ -153,7 +154,8 @@
 
   // 0 = daylight room, 1 = candlelit room, from the backdrop's luminance.
   function darknessFor(bgLuminance) {
-    var t = (LOOK.nightAbove - bgLuminance) / (LOOK.nightAbove - LOOK.nightBelow);
+    var hi = THREE.Color.srgbToLinear(LOOK.nightAbove), lo = THREE.Color.srgbToLinear(LOOK.nightBelow);
+    var t = (hi - bgLuminance) / (hi - lo);
     return Math.max(0, Math.min(1, t));
   }
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -219,7 +221,7 @@
     if (t >= 66) b = 255; else if (t <= 19) b = 0; else b = 138.5177312231 * Math.log(t - 10) - 305.0447927307;
     var c = function (v) { return Math.max(0, Math.min(255, v)) / 255; };
     out = out || new THREE.Color();
-    return out.setRGB(c(r), c(g), c(b));
+    return out.setRGB(c(r), c(g), c(b)).convertSRGBToLinear();   // the fit is in sRGB terms
   }
   // Key light position from LOOK.keyDir (degrees). Distance is cosmetic for a directional
   // light; it only keeps the shadow camera's near plane sensible.
