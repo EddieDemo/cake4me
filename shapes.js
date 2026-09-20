@@ -191,5 +191,25 @@
     return geo;
   }
 
-  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, cutFace: cutFace };
+  // Radius of a profile at height y (piecewise linear between its points), so things that lie
+  // on the wall — a ribbon — can follow its bulge and fillets instead of assuming a cylinder.
+  function radiusAt(profile, y) {
+    if (y <= profile[0].y) return profile[0].x;
+    for (var i = 1; i < profile.length; i++) {
+      var a = profile[i - 1], b = profile[i];
+      if (y <= b.y) { var t = (b.y - a.y) > 1e-6 ? (y - a.y) / (b.y - a.y) : 0; return a.x + (b.x - a.x) * t; }
+    }
+    return profile[profile.length - 1].x;
+  }
+  // A strip lying ON the wall: inner face on the wall, outer face `thick` out, closed top and
+  // bottom. Samples the wall so it stays flush across a bulge or a groove.
+  function bandGeometry(r, bodyH, scheme, y0, width, thick, seg) {
+    var prof = bodyProfile(r, bodyH, scheme), pts = [], n = 8;
+    for (var i = 0; i <= n; i++) { var y = y0 + width * i / n; pts.push(new THREE.Vector2(radiusAt(prof, y) + thick, y)); }
+    for (var j = n; j >= 0; j--) { var yy = y0 + width * j / n; pts.push(new THREE.Vector2(radiusAt(prof, yy) - 0.012, yy)); }
+    pts.push(new THREE.Vector2(radiusAt(prof, y0) + thick, y0));
+    var geo = new THREE.LatheGeometry(pts, seg);
+    return geo;
+  }
+  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry };
 })();

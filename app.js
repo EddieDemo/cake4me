@@ -18,7 +18,28 @@
   // rb: 0 none · 1 every tier · 2 = legacy (upper tiers only, which is what links before v0.57
   // showed). Missing → 2 so old links look exactly as they did; a fresh draft starts at 0.
   var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0, lt: '', ly: 3, fr: 1, rb: 2 };
-  var RIBBON = { h: 0.30, proud: 0.07, lift: 0.22 };   // taller and a touch prouder than the old band
+  // Ribbon geometry: a strip lying ON the cake — inner face at the cake's radius, a hair thick,
+  // bottom edge just above the base fillet. Width comes per tier from the settings below.
+  var RIBBON = { thick: 0.02, lift: 0.16, widthMin: 0.12, widthStep: 0.05, steps: 8 };
+  function ribbonWidth(step) { return RIBBON.widthMin + RIBBON.widthStep * Math.max(0, Math.min(RIBBON.steps - 1, step | 0)); }
+  // Per-tier ribbon settings, three characters per tier: on (0/1), colour index, width step.
+  // "rt" is the live array of {on, c, w}; "rbt" is its string form in the link.
+  function parseRibbons(str, legacyRb, legacyRc) {
+    var out = [], clean = String(str || '').replace(/[^0-9]/g, '');
+    for (var i = 0; i < 3; i++) {
+      if (clean.length >= (i + 1) * 3) {
+        out.push({ on: clean[i * 3] === '1', c: clampInt(+clean[i * 3 + 1], 0, PALETTES.ribbon.length - 1, 0), w: clampInt(+clean[i * 3 + 2], 0, RIBBON.steps - 1, 4) });
+      } else {
+        // No per-tier data: derive from the older rb/rc fields so old links look as they did.
+        var on = legacyRb === 1 || (legacyRb === 2 && i > 0);
+        out.push({ on: on, c: clampInt(legacyRc, 0, PALETTES.ribbon.length - 1, 0), w: 4 });
+      }
+    }
+    return out;
+  }
+  function serializeRibbons(rt) {
+    return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
+  }
   var FROST_T = 0.08;            // frosting thickness: a naked sponge is this much smaller than the shell
   var FILL_T = 0.09;             // filling thickness, world units — the same whatever the layer count
   var NAKED_CAP_H = 0.12;        // a naked tier's top disc is thin, so no filling hides inside it
@@ -213,7 +234,7 @@
     return Math.max(lo, Math.min(hi, v));
   }
   function normalize(c) {
-    return {
+    var out = {
       v: SCHEMA_VERSION,
       to: cleanText(c.to, MAX_NAME),
       from: cleanText(c.from, MAX_NAME),
@@ -238,13 +259,21 @@
       lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200),
       ly: clampInt(c.ly, 2, 4, 3),          // sponge layers (fillings = ly − 1)
       fr: clampInt(c.fr, 0, 1, 1),          // frosting: 0 none (naked), 1 smooth
-      rb: clampInt(c.rb, 0, 2, 2)           // ribbon: 0 none, 1 all tiers, 2 legacy upper-only
+      rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
+      rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9)   // per-tier ribbons (v0.58); wins when present
     };
+    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4) }; })
+                                       : parseRibbons(out.rbt, out.rb, out.rc);
+    out.rbt = serializeRibbons(out.rt);
+    // Legacy summary kept in step with the per-tier truth (the bow, older readers).
+    var firstOn = out.rt.filter(function (t) { return t.on; })[0];
+    out.rb = firstOn ? 1 : 0; if (firstOn) out.rc = firstOn.c;
+    return out;
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -253,7 +282,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -481,6 +510,7 @@
 
   function build(cfg, opts) {
     markHeavy();
+    if (!cfg.rt) cfg = normalize(cfg);                   // the per-tier ribbon array is derived; make sure it's there
     built.visible = true;
     var prevN = (config && config.t === cfg.t) ? (config.n | 0) : 0;
     var prevT = config ? config.t : null;
@@ -572,13 +602,17 @@
         tg.add(core);
       }
 
-      // Ribbon round the base of the tier: every tier (rb 1), upper tiers only (legacy 2), or none.
-      if (cfg.rb === 1 || (cfg.rb === 2 && i > 0)) {
+      // Ribbon: per tier — on/off, colour and width of its own. A strip lying on the cake:
+      // inner face at the cake's radius, a hair thick, closed top and bottom so the edge catches light.
+      var rt = cfg.rt[i];
+      if (rt && rt.on) {
+        var rw = ribbonWidth(rt.w);
+        // Follows the wall (its bulge, its grooves) so it sits flush the whole way round.
         var ribbon = new THREE.Mesh(
-          new THREE.CylinderGeometry(rr + RIBBON.proud, rr + RIBBON.proud, RIBBON.h, CYL_SEG, 1, true),
-          new THREE.MeshStandardMaterial({ color: ribbonHex, roughness: 0.5, side: THREE.DoubleSide })
+          CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, rw, RIBBON.thick, CYL_SEG),
+          new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide })
         );
-        ribbon.position.y = y + RIBBON.lift;
+        ribbon.position.y = y;
         tg.add(ribbon);
       }
 
@@ -2776,7 +2810,8 @@
         b.style.background = hexCssStr(item.hex);
       }
       b.addEventListener('click', function () {
-        draft[key] = i;
+        if (key === 'rc') { draft.rt[ribbonTier].c = i; draft = normalize(draft); }   // per tier
+        else draft[key] = i;
         syncSwatches(container, i);
         if (key === 'fc' || key === 'tc') refreshAutoSwatch();
         updateColourNote();
@@ -2824,7 +2859,7 @@
     syncSwatches(els.swFc, draft.fc);
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
-    syncSwatches(els.swRc, draft.rc);
+    // ribbon swatches: see syncRibbon (per tier)
     syncSwatches(els.swTc, draft.tc);
     syncSwatches(els.swBg, draft.bg);
     syncFrosting();
@@ -2878,10 +2913,19 @@
     ['tiers', 'sponge', 'frosting'].forEach(function (x) { var el = $('ck-' + x); if (el) el.hidden = (x !== k); });
     setTimeout(resize, 0);
   }
+  var ribbonTier = 0;                                  // which tier the Ribbon controls edit
   function syncRibbon() {
-    var on = draft.rb !== 0;
-    var box = $('f-ribbon'); if (box) box.checked = on;
-    var opts = $('ribbon-opts'); if (opts) opts.classList.toggle('dim', !on);
+    var tiers = TIERS[draft.t].length;
+    if (ribbonTier >= tiers) ribbonTier = 0;
+    Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) {
+      b.hidden = i >= tiers; b.classList.toggle('on', i === ribbonTier);
+    });
+    var rt = draft.rt[ribbonTier];
+    var box = $('f-ribbon'); if (box) box.checked = !!rt.on;
+    var opts = $('ribbon-opts'); if (opts) opts.classList.toggle('dim', !rt.on);
+    syncSwatches(els.swRc, rt.c);
+    var rw = $('f-rw'); if (rw) rw.value = rt.w;
+    var out = $('rw-out'); if (out) out.textContent = ribbonWidth(rt.w).toFixed(2);
   }
   function syncFrosting() {
     syncRibbon();
@@ -2956,8 +3000,15 @@
     Array.prototype.forEach.call($('layers').children, function (b) {
       b.addEventListener('click', function () { draft.ly = +b.getAttribute('data-ly'); syncFrosting(); build(draft); });
     });
+    Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) {
+      b.addEventListener('click', function () { ribbonTier = i; syncRibbon(); });
+    });
     $('f-ribbon').addEventListener('change', function (e) {
-      draft.rb = e.target.checked ? 1 : 0;              // the builder never writes the legacy value
+      draft.rt[ribbonTier].on = e.target.checked; draft = normalize(draft);
+      syncRibbon(); build(draft);
+    });
+    $('f-rw').addEventListener('input', function (e) {
+      draft.rt[ribbonTier].w = +e.target.value; draft = normalize(draft);
       syncRibbon(); build(draft);
     });
     setCakeTab('tiers');
@@ -3246,7 +3297,7 @@
       document.body.classList.add('mode-builder');
       var pre = readEditHash();
       if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
-      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.fr = 0; draft.rb = 0; }   // a new cake starts naked, no ribbon
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.fr = 0; draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked, no ribbons
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
@@ -3282,6 +3333,7 @@
       var next = {};
       for (var k in config) next[k] = config[k];
       for (var j in partial) next[j] = partial[j];
+      if ('rbt' in partial) delete next.rt;              // an explicit ribbon string beats the live per-tier array
       if (draft && !document.body.classList.contains('mode-viewer')) { draft = normalize(next); syncForm(); }
       build(next, { showMessage: showMessage });
     },

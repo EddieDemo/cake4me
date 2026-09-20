@@ -68,9 +68,17 @@
           <input id="f-n" type="range" min="0" max="100" value="30">
           <div class="tray-head sub"><span>Candle colour</span></div>
           <div class="swatches" id="sw-cc" data-c="cc"></div>
-          <label class="toggle" style="margin-top:12px"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon</span></label>
+          <div class="tray-head sub" style="margin-top:12px"><span>Ribbon</span></div>
+          <div class="seg small" id="ribbon-tiers">
+            <button type="button" data-tier="0" class="on">Tier 1</button>
+            <button type="button" data-tier="1">Tier 2</button>
+            <button type="button" data-tier="2">Tier 3</button>
+          </div>
+          <label class="toggle"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon on this tier</span></label>
           <div id="ribbon-opts" class="dim">
             <div class="swatches" id="sw-rc" data-c="rc"></div>
+            <div class="tray-head sub"><span>Width</span><output id="rw-out">0.32</output></div>
+            <input id="f-rw" type="range" min="0" max="7" step="1" value="4">
           </div>
         </div>
 

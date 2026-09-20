@@ -628,3 +628,7 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .toggle input:checked + .knob { background:#3b2a2a; }
 .toggle input:checked + .knob::after { left:21px; }
 #frost-opts.dim, #ribbon-opts.dim { opacity:.35; pointer-events:none; }
+
+.seg.small { margin: 4px 0 8px; }
+.seg.small button { padding: 6px 0; font-size: 0.85rem; }
+.seg.small button[hidden] { display: none; }

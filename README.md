@@ -1,33 +1,28 @@
-# Cake — v0.57
+# Cake — v0.58 (ribbons: flush, and per tier)
 
-## 1. Sky and floor
-Not acne after all — headless matched them exactly at default lighting. The mismatch appeared only
-under settings the analytic estimate couldn't track (a low key, a hex-coloured key, the spot). So
-the estimate is gone: **`stage.js` now measures.** On every relight it renders a 2×2 probe of the
-far floor straight down, with the fog pushed out of the way, reads the pixel back and uses that
-exact colour for the CSS backdrop and the fog. And the fog is much wider — it starts just behind the
-cake and finishes 48 units out — so the floor fades into the sky rather than meeting it at a band.
-Verified with a low warm hex-coloured key and the spot on: no line.
+## 1. Flush
+The old ribbon was an open cylinder standing 0.07 off the sponge with no thickness — a hoop. It's
+now a real **band**: a lathe with its inner face on the wall, a hair (0.02) thick, closed top and
+bottom so the edge catches light. And it **follows the wall's profile** — `CakeShapes.bandGeometry`
+samples the body profile at eight heights — so it hugs the frosted tier's bulge and crosses a naked
+tier's grooves without lifting off. (The first version assumed a straight radius and the bulging
+wall swallowed everything but the bottom edge.)
 
-## 2. Filling thickness and spacing
-Fillings are a constant **0.09 world units** whatever the layer count, sponge layers are all equal,
-and the layout runs over the whole tier so the top sponge runs up into the cap. A naked tier's cap
-is now thin (0.12) so no filling can hide inside it. Because the layout is in world units, textures
-and materials are now **per tier** (`tierMaterials(cfg, tier)`), and the cut faces map the same
-layout over the full tier height.
+## 2. Per tier
+Each tier has its own **on/off, colour and width**. In the Decorate tray the Ribbon section starts
+with tier pills (Tier 1 · 2 · 3, only as many as the cake has); the toggle, the swatches and a
+**width slider** (0.12–0.47 world units in eight steps, default 0.32) edit the selected tier.
 
-## 3. Layers as geometry
-Each filling is an **inset groove** in the lathe profile (0.045 in, 0.025 chamfers), so a naked cake
-reads as stacked discs with something squeezed between them, and the baked occlusion darkens the
-groove. Wedges and cut faces follow the same profile. Filling types later change the profile as well
-as the colour: jam inset and glossy, cream proud and matte.
+## Schema
+`rbt` appended: three characters per tier — on (0/1), colour index, width step — nine characters
+for a Showstopper. It wins when present. `rb` and `rc` stay as a legacy summary: a link without
+`rbt` derives per-tier settings from them, so every existing link looks exactly as it did (verified:
+an old rb=2/rc=3 link decodes to ribbons on tiers 2 and 3 in colour 3). New links write both; the
+summary is kept in step with the per-tier truth, and the box bow uses the first tier that has a
+ribbon.
 
-## 4. Ribbons
-A **Ribbon** toggle in the Candles tray, which is now the **Decorate** chip (candles and ribbon now;
-sprinkles and toppers later). Off by default. One ribbon per tier round the base — a Classic gets one
-too — taller (0.30) and a touch prouder (0.07) than the old band. Schema `rb` appended: 0 none,
-1 every tier, 2 = legacy upper-tiers-only, which is what a missing field means so every existing
-link looks exactly as it did. The builder never writes 2.
+The live `rt` array is the runtime truth; `rbt` only enters via decode (or an explicit
+`cake.set({rbt})`, which now clears the array so the string is honoured).
 
-Verified: layer counts 2/3/4; the toggle round-trips; legacy decode; a recipient cutting a naked
-four-layer grooved cake; 20 shader programs at load, 20 after the journey.
+Verified: two different ribbons on tiers 1 and 3 round-trip through a link; a recipient opens and
+cuts it; 20 shader programs at load, 20 after.
