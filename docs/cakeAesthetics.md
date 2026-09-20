@@ -133,8 +133,17 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   Poisson filter of that width. Default shadow type is now `PCSS`; VSM and PCFSoft remain as options,
   and a live switch recompiles every material via a global program-cache key. Costs ~39 texture taps
   per shadowed pixel; the dev overlay is the arbiter on old phones.
+- **A lit floor (v0.37)** — `stage.js`. The backdrop used to be a CSS gradient behind a transparent
+  canvas with the shadow as a tinted decal on an invisible plane; on a dark backdrop the "shadow"
+  could be lighter than the floor, which light can't do. The background palette's two colours are
+  now the SKY and the FLOOR PAINT: a real 400-unit plane lit by the same hemisphere and key as the
+  cake, receiving the PCSS shadow as a genuine absence of direct light. Fog in the lit-floor colour
+  dissolves the plane into the CSS sky before the horizon; both dim with the room. Lights retuned so
+  paint × (ambient + direct) lands near the paint in daylight. The dev panel's ambient and key
+  sliders are the whole rig: ambient scales everything, key sets shadow depth, light size sets
+  softness.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
-  contact-hardening (done) →
+  contact-hardening (done) → lit floor (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.

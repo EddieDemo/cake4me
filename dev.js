@@ -30,11 +30,13 @@
     '.devtgl button{font:600 13px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:8px;padding:6px 10px}',
     '.devtgl button[aria-pressed="true"]{background:#fff;color:#2a1c1c}',
     // light-size slider: sits under the target toggle
-    '.devlight{position:fixed;top:calc(max(8px,env(safe-area-inset-top)) + 44px);right:8px;z-index:9999;width:190px;',
+    '.devlight{position:fixed;top:calc(max(8px,env(safe-area-inset-top)) + 44px);right:8px;z-index:9999;width:200px;',
     'background:rgba(20,12,12,.72);border-radius:10px;padding:7px 10px 8px;font:600 12px -apple-system,system-ui,sans-serif;color:#fff}',
-    '.devlight label{display:flex;justify-content:space-between;margin-bottom:4px}.devlight em{font-style:normal;opacity:.85;font-variant-numeric:tabular-nums}',
-    '.devlight input{width:100%;margin:0;accent-color:#fff}',
-    '.devlight .q{display:flex;gap:2px;margin-top:6px}.devlight .q button{flex:1;font:600 11px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:4px 0}',
+    '.devlight label{display:flex;justify-content:space-between;margin:6px 0 3px}.devlight label:first-child{margin-top:0}',
+    '.devlight em{font-style:normal;opacity:.85;font-variant-numeric:tabular-nums}',
+    '.devlight input{width:100%;margin:0;accent-color:#fff;display:block}',
+    '.devlight .q{display:flex;gap:2px;margin-top:4px;align-items:center}.devlight .q span{font-size:11px;opacity:.75;margin-right:6px}',
+    '.devlight .q button{flex:1;font:600 11px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:4px 0}',
     '.devlight .q button[aria-pressed="true"]{background:#fff;color:#2a1c1c}'
   ].join('');
   document.head.appendChild(css);
@@ -56,16 +58,28 @@
   // crisp. maxRadius (the penumbra cap) follows it under the hood so it never clips the effect at
   // small sizes and never lets a far shadow dissolve at large ones. Applied on RELEASE, because the
   // value is baked into the shader and every change recompiles all materials (a brief hitch).
+  // The panel is the whole lighting rig for a clay render:
+  //   ambient  — the room's brightness; floor, cake and sky dim together (live)
+  //   key      — the sun/window; sets highlight strength and shadow DEPTH (live)
+  //   light size — the softness of the shadow's far edge (on release: recompiles)
+  //   samples  — shadow filter quality vs cost (not a look control)
   var light = document.createElement('div'); light.className = 'devlight';
-  light.innerHTML = '<label>light size <em id="dev-ls">—</em></label>' +
-    '<input type="range" id="dev-ls-in" min="0.1" max="1.5" step="0.05">' +
-    '<div class="q" id="dev-q"></div>';
+  light.innerHTML =
+    '<label>ambient <em id="dev-am">—</em></label><input type="range" id="dev-am-in" min="0" max="2" step="0.05">' +
+    '<label>key light <em id="dev-ky">—</em></label><input type="range" id="dev-ky-in" min="0" max="2" step="0.05">' +
+    '<label>light size <em id="dev-ls">—</em></label><input type="range" id="dev-ls-in" min="0.1" max="1.5" step="0.05">' +
+    '<div class="q" id="dev-q"><span>samples</span></div>';
   function lookReady() { return window.CakeLook && window.cake && cake.relook; }
+  function fmt(v, def) { return v.toFixed(2) + (Math.abs(v - def) < 0.001 ? ' (default)' : ''); }
   function syncLight() {
     if (!lookReady()) return;
-    var v = CakeLook.LOOK.pcss.lightSize;
+    var L = CakeLook.LOOK, v = L.pcss.lightSize;
     light.querySelector('#dev-ls-in').value = v;
-    light.querySelector('#dev-ls').textContent = v.toFixed(2) + (Math.abs(v - 0.6) < 0.001 ? ' (default)' : '');
+    light.querySelector('#dev-ls').textContent = fmt(v, 0.6);
+    light.querySelector('#dev-am-in').value = L.ambientScale;
+    light.querySelector('#dev-am').textContent = fmt(L.ambientScale, 1);
+    light.querySelector('#dev-ky-in').value = L.keyScale;
+    light.querySelector('#dev-ky').textContent = fmt(L.keyScale, 1);
     Array.prototype.forEach.call(light.querySelectorAll('#dev-q button'), function (b) {
       b.setAttribute('aria-pressed', String(+b.textContent === CakeLook.LOOK.pcss.samples));
     });
@@ -82,6 +96,16 @@
   var slider = light.querySelector('#dev-ls-in');
   slider.addEventListener('input', function () { light.querySelector('#dev-ls').textContent = (+slider.value).toFixed(2); });
   slider.addEventListener('change', function () { applyLight(+slider.value); });
+  // Ambient and key are plain intensities: live, no recompile.
+  [['am', 'ambientScale'], ['ky', 'keyScale']].forEach(function (pair) {
+    var el = light.querySelector('#dev-' + pair[0] + '-in');
+    el.addEventListener('input', function () {
+      if (!lookReady()) return;
+      CakeLook.LOOK[pair[1]] = +el.value;
+      cake.relight();
+      syncLight();
+    });
+  });
   [9, 13, 17].forEach(function (n) {
     var b = document.createElement('button'); b.textContent = n;
     b.addEventListener('click', function () { if (!lookReady()) return; CakeLook.LOOK.pcss.samples = n; cake.relook(); syncLight(); });

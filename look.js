@@ -45,8 +45,6 @@
     },
     shadowRadius: 9,               // VSM blur radius (in shadow-map texels)
     shadowBlurSamples: 12,
-    shadowOpacity: 0.18,           // the cast shadow on the floor
-    shadowColour: '#5a3c2e',       // warm-dark, not black: real shadows are tinted by the room
     shadowBias: -0.0002,
     shadowNormalBias: 0.03,
     // Ortho frustum around the whole scene (Showstopper + box + a lifted slice).
@@ -84,10 +82,16 @@
     // A HEMISPHERE light replaces the flat white ambient: a cool sky tone from above and a warm
     // bounce from below fill the shadow side with colour instead of grey, which softens the
     // lit-to-shadow step — the other half of what made v0.28 look cel-shaded.
+    // Retuned (v0.37) for a LIT floor: the floor's paint colour × (ambient + direct) should land
+    // close to the paint colour in daylight, so Cream renders as cream rather than clipping white.
     lights: {
-      hemiSky: '#e9f0ff', hemiGround: '#f0d6bd', hemi: 0.62,
-      key: 0.82, fill: 0.22
+      hemiSky: '#e9f0ff', hemiGround: '#f0d6bd', hemi: 0.55,
+      key: 0.62, fill: 0.20
     },
+    // Dev-panel multipliers on the room (ambient) and the sun/window (key). 1 = as designed.
+    // The product sets the base from the sender's backdrop; these let you explore around it.
+    ambientScale: 1.0,
+    keyScale: 1.0,
 
     // ---- Candlelight as the light source ----
     // On a dark background the room goes dim and the flames light the cake. The candle point
@@ -120,10 +124,20 @@
   function roomLights(d) {
     var L = LOOK.lights, N = LOOK.night;
     return {
-      hemi: lerp(L.hemi, N.hemi, d), key: lerp(L.key, N.key, d), fill: lerp(L.fill, N.fill, d),
+      hemi: lerp(L.hemi, N.hemi, d) * LOOK.ambientScale,
+      key: lerp(L.key, N.key, d) * LOOK.keyScale,
+      fill: lerp(L.fill, N.fill, d) * LOOK.ambientScale,
       hemiSky: new THREE.Color(L.hemiSky).lerp(new THREE.Color(N.hemiSky), d),
       hemiGround: new THREE.Color(L.hemiGround).lerp(new THREE.Color(N.hemiGround), d)
     };
+  }
+  // How much light an upward-facing floor receives under these lights (≈1 in daylight).
+  // Hemisphere: an up normal sees the sky colour at full weight. Key: cos of its elevation.
+  function litFactor(R, keyDir, keyColour) {
+    var skyL = 0.2126 * R.hemiSky.r + 0.7152 * R.hemiSky.g + 0.0722 * R.hemiSky.b;
+    var kL = keyColour ? (0.2126 * keyColour.r + 0.7152 * keyColour.g + 0.0722 * keyColour.b) : 1;
+    var cos = keyDir ? Math.max(0, keyDir.y) : 0.74;
+    return R.hemi * skyL + R.key * cos * kL;
   }
   // Candle light intensity for a lit count and darkness (flicker applied by the caller).
   function candleIntensity(lit, d) {
@@ -176,7 +190,6 @@
   }
 
   // ---------- shadows ----------
-  var ground = null;
   function applyShadows(renderer, scene, key) {
     renderer.shadowMap.enabled = !!LOOK.shadows;
     var type = LOOK.shadowType;
@@ -204,18 +217,8 @@
       key.shadow.bias = LOOK.shadowBias; key.shadow.normalBias = LOOK.shadowNormalBias;
       key.shadow.radius = LOOK.shadowRadius; key.shadow.blurSamples = LOOK.shadowBlurSamples;
       if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }   // resize/type change takes effect
-      if (!ground) {
-        // The floor only exists to catch the cast shadow; ShadowMaterial is invisible otherwise.
-        ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: LOOK.shadowOpacity }));
-        ground.rotation.x = -Math.PI / 2; ground.position.y = 0.0015; ground.receiveShadow = true; ground.name = 'shadow-ground';
-        ground.userData.__look = true;
-        scene.add(ground);
-      }
-      ground.material.opacity = LOOK.shadowOpacity;
-      ground.material.color.set(LOOK.shadowColour);
-      ground.visible = true;
-    } else if (ground) {
-      ground.visible = false;
+      // No shadow-catching plane any more: the stage's lit floor (stage.js) receives the
+      // shadow as a real lack of direct light, which is what a shadow is.
     }
   }
   // Give every mesh that arrives (cake, candles, box, wedges, confetti…) shadow flags once.
@@ -281,6 +284,6 @@
     LOOK.halo.enabled = !on;
     apply(renderer, scene, key);
   }
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency,
+  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

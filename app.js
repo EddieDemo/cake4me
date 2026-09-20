@@ -343,6 +343,8 @@
   scene.add(fill);
   // The look (shadows, optional environment and tone mapping) lives in look.js.
   if (window.CakeLook) CakeLook.apply(renderer, scene, key);
+  // The stage (lit floor, fog, sky) lives in stage.js.
+  if (window.CakeStage) CakeStage.attach(scene);
   var candleLight = new THREE.PointLight(0xffb36b, 0, 8, 2);
   scene.add(candleLight);
 
@@ -380,6 +382,7 @@
   function updateShadow() {
     var t = Math.max(0, Math.min(1, (camElev - CAM_ELEV_MIN) / 18));
     var discScale = (window.CakeLook && CakeLook.LOOK.shadows) ? CakeLook.LOOK.contactDiscScale : 1;
+    if (window.CakeStage) discScale *= 0.7;                    // the lit floor carries the real shadow now
     contactShadow.material.opacity = (0.12 + 0.88 * t) * (0.18 + 0.82 * Math.min(1, bgLuminance / 0.55)) * discScale;
   }
   function fitShadow(radius) {
@@ -948,6 +951,10 @@
     else ambientLight.intensity = R.hemi;
     key.intensity = R.key; fill.intensity = R.fill;
     candleLight.distance = CakeLook.LOOK.night.distance; candleLight.decay = CakeLook.LOOK.night.decay;
+    if (window.CakeStage) {
+      var kd = key.position.clone().normalize();
+      CakeStage.setBrightness(CakeLook.litFactor(R, kd, key.color));
+    }
   }
   function applyBackground(frostingHex, bgIndex) {
     var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];
@@ -959,12 +966,16 @@
       top = new THREE.Color(opt.layers[0]);
       bottom = new THREE.Color(opt.layers[1]);
     }
-    var root = document.documentElement.style;
-    root.setProperty('--sky-top', '#' + top.getHexString());
-    root.setProperty('--sky-bottom', '#' + bottom.getHexString());
+    // The palette's two colours are now the SKY and the FLOOR PAINT. The floor is a real lit
+    // plane (stage.js); the sky is the CSS gradient above the horizon. Both dim with the room.
     bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
-    // A dark shadow on a dark backdrop is just a smudge; fade it out as the floor darkens.
     document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
+    if (window.CakeStage) CakeStage.setColours('#' + top.getHexString(), '#' + bottom.getHexString());
+    else {
+      var root = document.documentElement.style;
+      root.setProperty('--sky-top', '#' + top.getHexString());
+      root.setProperty('--sky-bottom', '#' + bottom.getHexString());
+    }
     updateRoomLights();
   }
 
@@ -1185,6 +1196,7 @@
     updateSmoke(dt);
     updateConfetti(dt, t);
     updateRipple(now);
+    if (window.CakeStage) CakeStage.update(camera.position.length());
     renderer.render(scene, camera);
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
     else tunePixelRatio(now, performance.now() - frameStart);
@@ -1442,6 +1454,10 @@
   };
   var TWIST = { min: -0.44, max: 0.44 };               // two-finger rotate → camera roll, ±25°
   var omega = SPIN.idle;        // free-spin angular velocity, rad/s (momentum)
+  // The ambient turn is for the recipient's cake, which should feel alive. The sender is
+  // working on theirs, and a thing that keeps turning while you're placing candles is a
+  // nuisance — so in the builder the resting rate is zero: it only moves when dragged.
+  function idleRate() { return document.body.classList.contains('mode-builder') ? 0 : SPIN.idle; }
   var dragW = 0;                // the thumb's own angular velocity right now, rad/s
   var tiltX = 0;                // held tilt (X), radians, clamped to TILT
   var bankZ = 0;                // held twist (Z), radians, clamped to TWIST — two-finger gesture
@@ -1480,7 +1496,7 @@
     // This runs while dragging too: the cake keeps its momentum under your thumb,
     // the way brushing a spinning turntable does. Hold it still long enough and
     // friction bleeds the speed away, so a press-and-hold still settles it.
-    var target = SPIN.idle;
+    var target = idleRate();
     var diff = omega - target;
     var step = SPIN.friction * dt;
     if (Math.abs(diff) <= step) omega = target;
@@ -3068,6 +3084,7 @@
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     look: window.CakeLook ? CakeLook.LOOK : null,
+    relight: updateRoomLights,
     relook: function () {
       if (!window.CakeLook) return;
       CakeLook.rebuild(renderer, scene, key);
