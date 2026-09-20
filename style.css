@@ -627,4 +627,4 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .toggle .knob::after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:10px; background:#fff; transition:left .2s; }
 .toggle input:checked + .knob { background:#3b2a2a; }
 .toggle input:checked + .knob::after { left:21px; }
-#frost-opts.dim { opacity:.35; pointer-events:none; }
+#frost-opts.dim, #ribbon-opts.dim { opacity:.35; pointer-events:none; }

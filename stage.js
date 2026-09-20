@@ -18,13 +18,20 @@
    honest.
 
    Owns: the floor mesh, the fog, the CSS sky variables.
-   Knows nothing about cakes, candles or palettes — it takes two colours
-   (sky, floor) and a brightness estimate.
+   Knows nothing about cakes, candles or palettes — it takes a paint colour
+   and measures the rest.
+
+   The sky colour is MEASURED, not estimated (v0.57): a 2×2 probe render of
+   the far floor, straight down, with the fog pushed out of the way, read
+   back and used for both the CSS backdrop and the fog. An analytic guess
+   drifted as soon as the key went low or a colour picker came into play;
+   a measurement can't. It runs on relight, not per frame.
 
    API (window.CakeStage):
      attach(scene)                        create the floor and fog once
-     setColours(skyHex, floorHex)         the sender's choice of backdrop
-     setBrightness(litFactor)             how much light the lit floor gets (≈1 daylight)
+     setColour(floorHex)                  the sender's choice of backdrop
+     calibrate(renderer, scene)           measure the far floor and set the sky + fog to it
+     setBrightness(litFactor)             fallback estimate, used until the first calibrate
      update(cameraDistance)               keep the fog just past the cake, every frame
      floor                                the mesh (receives shadows; never casts)
    ===================================================================== */
@@ -34,12 +41,14 @@
 
   var S = {
     size: 400,            // world units; the horizon is fogged long before the edge
-    fogNearPast: 6,       // fog starts this far beyond the camera-to-cake distance…
-    fogFarPast: 34        // …and is total this far beyond it
+    fogNearPast: 3.5,     // fog starts this far beyond the camera-to-cake distance (just behind the cake)…
+    fogFarPast: 48        // …and is total this far beyond it: a long, gentle fade, not a band
   };
 
   var scene = null, floor = null, fog = null;
   var floorCol = new THREE.Color(0xffe7ce), lit = 1;
+  var measured = null;                  // THREE.Color, linear: the far floor as actually rendered
+  var probeRT = null, probeCam = null, probeBuf = new Uint8Array(4 * 4);
 
   function attach(sc) {
     scene = sc;
@@ -72,7 +81,7 @@
   function refresh() {
     if (!floor) return;
     floor.material.color.copy(floorCol);
-    var horizon = litFloor();
+    var horizon = measured || litFloor();
     fog.color.copy(horizon);
     // The backdrop IS the lit floor, top to bottom.
     var root = document.documentElement.style;
@@ -80,7 +89,35 @@
     root.setProperty('--sky-bottom', '#' + horizon.getHexString());
   }
 
-  function setColour(floorHex) { floorCol.set(floorHex); refresh(); }
+  function setColour(floorHex) { floorCol.set(floorHex); measured = null; refresh(); }
+
+  // Render the far floor into a 2×2 target and read it back. Straight down from high up at a
+  // point well outside the shadow frustum and any local light's reach, so what comes back is
+  // "floor paint under the room's lights" — exactly what the sky should be. The fog is pushed
+  // out of range for the render (uniforms only; no shader change) and restored after.
+  function calibrate(renderer, scene) {
+    if (!floor || !fog || !renderer) return;
+    if (!probeRT) {
+      probeRT = new THREE.WebGLRenderTarget(2, 2, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+      probeCam = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.1, 100);
+      probeCam.position.set(0, 20, -60); probeCam.lookAt(0, 0, -60);
+    }
+    var near = fog.near, far = fog.far;
+    fog.near = 1e6; fog.far = 1e6 + 1;
+    var shadowAuto = renderer.shadowMap.autoUpdate;
+    renderer.shadowMap.autoUpdate = false;                       // the far floor is outside the frustum anyway
+    var prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(probeRT);
+    renderer.render(scene, probeCam);
+    renderer.readRenderTargetPixels(probeRT, 0, 0, 2, 2, probeBuf);
+    renderer.setRenderTarget(prev);
+    renderer.shadowMap.autoUpdate = shadowAuto;
+    fog.near = near; fog.far = far;
+    // The target holds output-encoded (sRGB) bytes; setRGB is linear by contract, so decode.
+    measured = measured || new THREE.Color();
+    measured.setRGB(probeBuf[0] / 255, probeBuf[1] / 255, probeBuf[2] / 255).convertSRGBToLinear();
+    refresh();
+  }
   function setBrightness(litFactor) { lit = litFactor; refresh(); }
   function update(cameraDistance) {
     if (!fog) return;
@@ -88,6 +125,6 @@
     fog.far = cameraDistance + S.fogFarPast;
   }
 
-  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, update: update, S: S,
+  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, calibrate: calibrate, update: update, S: S,
                        get floor() { return floor; } };
 })();

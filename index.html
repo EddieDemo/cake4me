@@ -37,7 +37,7 @@
           <span class="ic" aria-hidden="true">◍</span>Cake
         </button>
         <button type="button" class="chip" data-tray="candles" aria-selected="false">
-          <span class="ic" aria-hidden="true">🕯</span><span id="chip-n">30</span>
+          <span class="ic" aria-hidden="true">🎀</span>Decorate
         </button>
         <button type="button" class="chip" data-tray="backdrop" aria-selected="false">
           <span class="ic" aria-hidden="true">🖼</span>Backdrop</button>
@@ -62,13 +62,16 @@
           <p class="tray-note" id="colour-note">&nbsp;</p>
         </div>
 
+        <!-- Decorate: candles and ribbon now; sprinkles and toppers later -->
         <div class="tray" id="tray-candles" hidden>
           <div class="tray-head"><span>Candles</span><output id="n-out" for="f-n">30</output></div>
           <input id="f-n" type="range" min="0" max="100" value="30">
           <div class="tray-head sub"><span>Candle colour</span></div>
           <div class="swatches" id="sw-cc" data-c="cc"></div>
-          <div class="tray-head sub"><span>Ribbon</span></div>
-          <div class="swatches" id="sw-rc" data-c="rc"></div>
+          <label class="toggle" style="margin-top:12px"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon</span></label>
+          <div id="ribbon-opts" class="dim">
+            <div class="swatches" id="sw-rc" data-c="rc"></div>
+          </div>
         </div>
 
         <!-- Cake: made in the order a cake is made — tiers, then the sponge, then frosting -->

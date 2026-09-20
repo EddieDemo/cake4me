@@ -64,14 +64,31 @@
     return out;
   }
 
-  function bodyProfile(r, bodyH) {
+  // `scheme` (optional, naked cakes): { fills: [[y0, y1], …] } in world units from the tier's
+  // base. Each filling becomes a slight inset groove with softly chamfered sponge edges, so a
+  // naked cake reads as stacked discs with something squeezed between them.
+  P.groove = { inset: 0.045, chamfer: 0.025 };
+  function bodyProfile(r, bodyH, scheme) {
     var pts = [];
     var f = Math.min(P.baseFillet, bodyH * 0.25);
     // base: from the axis-side inset up through a fillet to the wall
     arc(r - f, f, f, -Math.PI / 2, 0, P.arcSteps, pts);          // (r-f,0) → (r,f)
-    // wall with a gentle bulge, running straight into the cap
-    pts.push(new THREE.Vector2(r * (1 + P.bulge), bodyH * 0.5));
-    pts.push(new THREE.Vector2(r, bodyH));
+    if (scheme && scheme.fills && scheme.fills.length) {
+      var G = P.groove;
+      scheme.fills.forEach(function (fb) {
+        var y0 = fb[0], y1 = fb[1];
+        if (y1 > bodyH - 0.01) return;                             // a filling inside the cap: the cap hides it
+        pts.push(new THREE.Vector2(r, y0 - G.chamfer));
+        pts.push(new THREE.Vector2(r - G.inset, y0));
+        pts.push(new THREE.Vector2(r - G.inset, y1));
+        pts.push(new THREE.Vector2(r, y1 + G.chamfer));
+      });
+      pts.push(new THREE.Vector2(r, bodyH));
+    } else {
+      // frosted shell: wall with a gentle bulge, running straight into the cap
+      pts.push(new THREE.Vector2(r * (1 + P.bulge), bodyH * 0.5));
+      pts.push(new THREE.Vector2(r, bodyH));
+    }
     return pts;
   }
 
@@ -104,10 +121,20 @@
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   }
-  // Sponge: dark at the foot, fading up the wall. (No under-cap term: one shell, no crease.)
-  function bodyAO(r, bodyH) {
-    var A = P.ao;
-    return function (rr, y) { return lerp(A.base, 1, smooth(y / A.baseReach)); };
+  // Sponge: dark at the foot, fading up the wall; darker inside each filling groove.
+  function bodyAO(r, bodyH, scheme) {
+    var A = P.ao, fills = (scheme && scheme.fills) || [];
+    return function (rr, y) {
+      var v = lerp(A.base, 1, smooth(y / A.baseReach));
+      for (var i = 0; i < fills.length; i++) {
+        var y0 = fills[i][0], y1 = fills[i][1], c = P.groove.chamfer;
+        if (y >= y0 - c && y <= y1 + c) {
+          var edge = Math.min(y - (y0 - c), (y1 + c) - y) / c;    // 0 at the lips, 1 inside
+          v = Math.min(v, lerp(1, 0.72, smooth(edge)));
+        }
+      }
+      return v;
+    };
   }
   // Cap: open, except for a ring on the top where the tier above sits (occluderR, if any).
   function capAO(r, capH, occluderR) {
@@ -125,13 +152,13 @@
     uv.needsUpdate = true;
   }
 
-  function body(r, bodyH, seg, phi0, phiLen) {
-    var geo = new THREE.LatheGeometry(bodyProfile(r, bodyH), seg, phi0 || 0, phiLen || Math.PI * 2);
+  function body(r, bodyH, seg, phi0, phiLen, scheme) {
+    var geo = new THREE.LatheGeometry(bodyProfile(r, bodyH, scheme), seg, phi0 || 0, phiLen || Math.PI * 2);
     heightUVs(geo, 0, bodyH);
     // No computeVertexNormals() here. LatheGeometry already computes normals and, for a full
     // sweep, averages the duplicated first/last columns so the join is seamless; recomputing
     // from the triangles gave each seam column a one-sided normal and a visible fold at 0°.
-    bakeAO(geo, bodyAO(r, bodyH));
+    bakeAO(geo, bodyAO(r, bodyH, scheme));
     // One material group covering everything, so a [message, frosting, frosting] material
     // array keeps working: index 0 is the whole side.
     geo.clearGroups(); geo.addGroup(0, Infinity, 0);
@@ -147,8 +174,8 @@
   // The tier's outline (sponge + cap) as a flat shape, for a wedge's cut face. A plain
   // rectangle no longer matches a bulged, rounded tier. UVs normalised to 0–1 so the
   // filling-layers texture maps the same way it did on the rectangle.
-  function cutFace(r, bodyH, capH) {
-    var outline = bodyProfile(r, bodyH).concat(
+  function cutFace(r, bodyH, capH, scheme) {
+    var outline = bodyProfile(r, bodyH, scheme).concat(
       capProfile(r, capH).map(function (p) { return new THREE.Vector2(p.x, p.y + bodyH); })
     );
     var shape = new THREE.Shape();

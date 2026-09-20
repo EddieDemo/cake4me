@@ -160,9 +160,18 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   channels are linear). Luminance thresholds (auto ink, dark-bg, night ramp, contrast note) were
   re-expressed in linear terms. The lighting defaults were left as tuned; the scene reads a shade
   richer and darker, which is the true palette.
+- **Measured sky (v0.57)** — `stage.js` no longer estimates the lit-floor colour; it renders a 2×2
+  probe of the far floor on every relight and uses the result for the CSS backdrop and the fog. The
+  analytic guess drifted once the key went low or a colour picker came in. Fog widened (3.5 → 48
+  units past the cake) so the floor fades gently into the sky instead of a band.
+- **Layers as geometry (v0.57)** — fillings are a constant 0.09 world units with equal sponge layers
+  (`layerScheme`), laid out over the whole tier so the top layer runs into a thin naked cap; each
+  filling is an inset groove with chamfered sponge edges in the lathe profile, with occlusion baked
+  into the groove. Filling types (jam inset and glossy, cream proud and matte) will change the
+  profile as well as the colour.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
   contact-hardening (done) → lit floor (done) → baked AO (done) → one shell (done) → colour
-  management (done) →
+  management (done) → measured sky + layer geometry (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.
