@@ -82,7 +82,10 @@
     if (!floor) return;
     floor.material.color.copy(floorCol);
     var horizon = measured || litFloor();
-    fog.color.copy(horizon);
+    // r128 applies fog AFTER output encoding (fog_fragment follows encodings_fragment), so the
+    // fog colour must be given in SCREEN (sRGB) space, not linear — or the far floor renders
+    // darker and more saturated than the sky and the plane's edge shows as a line.
+    fog.color.copy(horizon).convertLinearToSRGB();
     // The backdrop IS the lit floor, top to bottom.
     var root = document.documentElement.style;
     root.setProperty('--sky-top', '#' + horizon.getHexString());
@@ -99,6 +102,9 @@
     if (!floor || !fog || !renderer) return;
     if (!probeRT) {
       probeRT = new THREE.WebGLRenderTarget(2, 2, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+      // A render target isn't output-encoded unless told to; encode it like the screen so the
+      // bytes we read back mean the same thing the viewer sees.
+      probeRT.texture.encoding = THREE.sRGBEncoding;
       probeCam = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.1, 100);
       probeCam.position.set(0, 20, -60); probeCam.lookAt(0, 0, -60);
     }

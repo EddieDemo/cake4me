@@ -37,8 +37,12 @@
 
   var _tmp = null;
   function srgbCopy(c) { _tmp = _tmp || new THREE.Color(); _tmp.r = c.r; _tmp.g = c.g; _tmp.b = c.b; return _tmp.convertLinearToSRGB(); }
+  // getHexString and getStyle must NOT go through the patched getHex/r,g,b twice. Three's
+  // getHexString calls this.getHex() internally, so it's re-derived from the ORIGINAL getHex on
+  // an already-converted copy — otherwise the conversion ran twice (a Midnight sky came out
+  // pale slate).
   P.getHex = function () { return _getHex.call(srgbCopy(this)); };
-  P.getHexString = function () { return _getHexString.call(srgbCopy(this)); };
+  P.getHexString = function () { return ('000000' + _getHex.call(srgbCopy(this)).toString(16)).slice(-6); };
   P.getStyle = function () { return _getStyle.call(srgbCopy(this)); };
 
   // sRGB→linear for a single 0..1 channel or a luminance threshold written in sRGB terms.

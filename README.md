@@ -1,28 +1,25 @@
-# Cake — v0.58 (ribbons: flush, and per tier)
+# Cake — v0.59 (sky and floor, for real)
 
-## 1. Flush
-The old ribbon was an open cylinder standing 0.07 off the sponge with no thickness — a hoop. It's
-now a real **band**: a lathe with its inner face on the wall, a hair (0.02) thick, closed top and
-bottom so the edge catches light. And it **follows the wall's profile** — `CakeShapes.bandGeometry`
-samples the body profile at eight heights — so it hugs the frosted tier's bulge and crosses a naked
-tier's grooves without lifting off. (The first version assumed a straight radius and the bulging
-wall swallowed everything but the bottom edge.)
+Three colour-space mistakes, all mine, all fixed. The sky and the floor now agree to within a
+couple of levels on every backdrop, including Midnight, and the floor plane's far edge no longer
+shows as a line.
 
-## 2. Per tier
-Each tier has its own **on/off, colour and width**. In the Decorate tray the Ribbon section starts
-with tier pills (Tier 1 · 2 · 3, only as many as the cake has); the toggle, the swatches and a
-**width slider** (0.12–0.47 world units in eight steps, default 0.32) edit the selected tier.
+1. **The probe read back the wrong space.** An offscreen render target isn't output-encoded unless
+   told to, so the bytes were linear and I decoded them as sRGB — too dark. `probeRT.texture.encoding
+   = sRGBEncoding` makes the readback mean what the viewer sees.
+2. **Fog is applied in screen space in r128.** `fog_fragment` comes *after* `encodings_fragment`
+   (checked in the vendored build), so the fog colour must be handed over already converted to
+   sRGB. Handing it linear drew the far floor darker and more saturated than the sky — the band in
+   your screenshots.
+3. **The colour shim converted hex strings twice.** Three's `getHexString` calls `getHex` internally;
+   I had patched both, so the linear→sRGB conversion ran twice for strings. Barely visible on light
+   colours, dramatic on dark ones (Midnight's sky came out pale slate). Every CSS sky variable since
+   v0.55 was a little too bright because of it. `getHexString` is now derived from the *original*
+   `getHex` on an already-converted copy; `#161c33` round-trips as `#161c33`.
 
-## Schema
-`rbt` appended: three characters per tier — on (0/1), colour index, width step — nine characters
-for a Showstopper. It wins when present. `rb` and `rc` stay as a legacy summary: a link without
-`rbt` derives per-tier settings from them, so every existing link looks exactly as it did (verified:
-an old rb=2/rc=3 link decodes to ribbons on tiers 2 and 3 in colour 3). New links write both; the
-summary is kept in step with the per-tier truth, and the box bow uses the first tier that has a
-ribbon.
+Verified: Midnight top-of-canvas (19,20,31) vs near floor (24,21,31) vs CSS `#0f111d`; Sky and
+Cream within two levels; no errors.
 
-The live `rt` array is the runtime truth; `rbt` only enters via decode (or an explicit
-`cake.set({rbt})`, which now clears the array so the string is honoured).
-
-Verified: two different ribbons on tiers 1 and 3 round-trip through a link; a recipient opens and
-cuts it; 20 shader programs at load, 20 after.
+A consequence worth knowing: Midnight is properly dark now rather than slate — that's the true
+palette under the night lighting. If it reads too dark on the phone, the night ambient in
+`LOOK.night.hemi` is the knob.
