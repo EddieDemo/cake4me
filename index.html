@@ -39,9 +39,8 @@
         <button type="button" class="chip" data-tray="candles" aria-selected="false">
           <span class="ic" aria-hidden="true">🕯</span><span id="chip-n">30</span>
         </button>
-        <button type="button" class="chip" data-tray="colours" aria-selected="false">
-          <span class="ic" aria-hidden="true">✿</span>Colours
-        </button>
+        <button type="button" class="chip" data-tray="backdrop" aria-selected="false">
+          <span class="ic" aria-hidden="true">🖼</span>Backdrop</button>
       </div>
 
       <div class="trays" id="trays">
@@ -58,38 +57,65 @@
             <input id="f-m" type="text" maxlength="80" autocomplete="off" placeholder="Happy birthday!">
             <span class="count" id="m-count">0 / 80</span>
           </label>
+          <div class="tray-head sub"><span>Writing colour</span></div>
+          <div class="swatches" id="sw-tc" data-c="tc"></div>
+          <p class="tray-note" id="colour-note">&nbsp;</p>
         </div>
 
         <div class="tray" id="tray-candles" hidden>
           <div class="tray-head"><span>Candles</span><output id="n-out" for="f-n">30</output></div>
           <input id="f-n" type="range" min="0" max="100" value="30">
+          <div class="tray-head sub"><span>Candle colour</span></div>
+          <div class="swatches" id="sw-cc" data-c="cc"></div>
+          <div class="tray-head sub"><span>Ribbon</span></div>
+          <div class="swatches" id="sw-rc" data-c="rc"></div>
         </div>
 
+        <!-- Cake: made in the order a cake is made — tiers, then the sponge, then frosting -->
         <div class="tray" id="tray-cake" hidden>
-          <div class="tiers" id="tiers">
-            <button type="button" class="tier" data-t="1"><strong>Classic</strong><span>£4.49 · 8 slices</span></button>
-            <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
-            <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
+          <div class="subtabs" id="caketabs">
+            <button type="button" data-k="tiers" class="on">Tiers</button>
+            <button type="button" data-k="sponge">Sponge</button>
+            <button type="button" data-k="frosting">Frosting</button>
+          </div>
+          <div id="ck-tiers">
+            <div class="tiers" id="tiers">
+              <button type="button" class="tier" data-t="1"><strong>Classic</strong><span>£4.49 · 8 slices</span></button>
+              <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
+              <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
+            </div>
+          </div>
+          <div id="ck-sponge" hidden>
+            <div class="tray-head sub"><span>Filling</span></div>
+            <div class="swatches" id="sw-ic" data-c="ic"></div>
+            <div class="tray-head sub"><span>Layers</span><output id="ly-out">3</output></div>
+            <div class="seg" id="layers">
+              <button type="button" data-ly="2">2</button>
+              <button type="button" data-ly="3" class="on">3</button>
+              <button type="button" data-ly="4">4</button>
+            </div>
+          </div>
+          <div id="ck-frosting" hidden>
+            <label class="toggle"><input type="checkbox" id="f-frost"><span class="knob"></span><span class="tlabel">Frost the cake</span></label>
+            <div id="frost-opts" class="dim">
+              <div class="tray-head sub"><span>Colour</span></div>
+              <div class="swatches" id="sw-fc" data-c="fc"></div>
+              <div class="tray-head sub"><span>Style</span></div>
+              <div class="seg" id="frost-style">
+                <button type="button" class="on" data-fr="1">Smooth</button>
+                <button type="button" disabled>Drip</button>
+                <button type="button" disabled>Rustic</button>
+                <button type="button" disabled>Semi-naked</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="tray" id="tray-colours" hidden>
-          <div class="subtabs" id="subtabs">
-            <button type="button" data-c="fc" class="on">Frosting</button>
-            <button type="button" data-c="ic">Filling</button>
-            <button type="button" data-c="cc">Candles</button>
-            <button type="button" data-c="rc">Ribbon</button>
-            <button type="button" data-c="tc">Text</button>
-            <button type="button" data-c="bg">Background</button>
-          </div>
-          <div class="swatches" id="sw-fc" data-c="fc"></div>
-          <div class="swatches" id="sw-ic" data-c="ic" hidden></div>
-          <div class="swatches" id="sw-cc" data-c="cc" hidden></div>
-          <div class="swatches" id="sw-rc" data-c="rc" hidden></div>
-          <div class="swatches" id="sw-tc" data-c="tc" hidden></div>
-          <div class="swatches" id="sw-bg" data-c="bg" hidden></div>
-          <p class="tray-note" id="colour-note">&nbsp;</p>
+        <div class="tray" id="tray-backdrop" hidden>
+          <div class="tray-head sub"><span>Backdrop</span></div>
+          <div class="swatches" id="sw-bg" data-c="bg"></div>
         </div>
+
       </div>
 
       <button type="button" class="primary" id="get-link">Get my link · <span id="cta-price">£4.49</span></button>

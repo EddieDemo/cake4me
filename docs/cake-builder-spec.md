@@ -1,3 +1,11 @@
+> **Update (v0.54, 20 Sept 2026): the Quick builder now makes the cake in the order a cake is made.**
+> The Cake chip's tray has three sub-tabs — **Tiers · Sponge · Frosting** — and a new cake starts
+> **naked** (sponge with its filling lines showing). Sponge: filling colour and a 2/3/4 layer count.
+> Frosting: a "Frost the cake" toggle (off by default), colour, and a style row (Smooth now; Drip,
+> Rustic and Semi-naked reserved). The old Colours tray is dissolved: candle colour and ribbon live
+> in Candles, writing colour in Message, background on its own **Backdrop** chip. Schema: `ly`
+> (sponge layers) and `fr` (frosting type, 0 = none) appended; older links decode as frosted.
+
 # Cake — Builder Spec: Quick and Detailed
 
 The next stage of Cake4.me: a **Quick** cake generator (seed-placed decoration, two minutes) and a **Detailed** builder (hand-piped, hand-placed, an afternoon if they want it). Written 16 Sept 2026 from Eddie's notes plus discussion. Companion to `cake-build-plan.md` (phases 0–7, the sending product) and `cake-feel-spec.md`.

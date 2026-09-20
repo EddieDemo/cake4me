@@ -1,22 +1,38 @@
-# Cake — v0.53 (one frosting shell)
+# Cake — v0.54 (sponge first, then frosting)
 
-The "lid" is gone. Each tier's cap is now the **same colour and radius** as its sides, with no
-underside lip and no tuck in the sponge: the wall runs straight up into a single rounded top edge.
-The overhang and the lighter tint were early tricks to suggest icing on a flat-shaded cylinder;
-with real lighting, they read as a lid on a tin. The ribbon is now the only thing that breaks the
-shell, which is the right job for it. The cap remains separate geometry only because the side
-carries the message texture and the top doesn't; the wedges inherit everything.
+The builder now makes a cake in the order a cake is made. The signed-off UI, implemented:
 
-`shapes.js`: `capOverhang` 0, `capUnder` removed, the under-cap and lip occlusion terms removed
-(no crease to occlude). `app.js`: the seven `lighten(frosting, 0.12)` cap colours are now `frosting`.
+## The Cake chip has three sub-tabs
+- **Tiers** — the tier picker, as before.
+- **Sponge** — filling colour and a **2 / 3 / 4 layers** picker. The layer count drives the filling
+  stripes on the naked sides *and* on every cut face.
+- **Frosting** — a **"Frost the cake"** toggle (off by default: a new cake starts naked), the
+  frosting colour, and a style row: Smooth now, with Drip, Rustic and Semi-naked reserved.
 
-## Two regressions caught on the way, both fixed
-- **Every route change was recompiling every shader.** Since v0.49 each route re-installs the PCSS
-  patch, and `install()` bumped the global cache key even when nothing changed — 14 programs became
-  26 across one navigation. `install()`/`uninstall()` are now idempotent: identical settings are a
-  no-op.
-- **Two variants had slipped past the warm-compile:** the double-sided ribbon band and the smoke
-  wisp (whose canvas texture is linear-encoded, unlike the flames'). Both added.
+## Colours dissolved into their homes
+Candle colour and ribbon in **Candles**; writing colour (and its contrast note) in **Message**; the
+background on its own **Backdrop** chip. The Colours chip is gone.
 
-Verified: **16 programs at load, 16 after the whole journey**, from both a builder start and a cold
-viewer link.
+## The naked cake
+A tier without frosting is the sponge itself: drawn `FROST_T` (0.08) smaller than the shell, wearing
+its filling stripes round the side and a plain crumb top, matte. The message is piped straight onto
+the sponge — the message texture now paints the stripes as its background instead of a flat frosting
+colour. Wedges and the slice page match, because one function (`tierMaterials`) now builds the
+materials for the whole cake, the cut and the slice, so the three can't disagree.
+
+## The moment
+Toggling frosting on rebuilds the cake and fades the shell in over the sponge with a tiny settle in
+scale (`frostOn`). A clipping-plane "pour" would need its own shader variant; it's parked for the
+textures pass.
+
+## Schema
+`ly` (sponge layers, 2–4, default 3) and `fr` (frosting type, 0 none / 1 smooth) appended after
+`lt`. `fr` **defaults to 1 on decode**, so every link made before this build is still a frosted cake;
+only the builder's fresh draft starts at 0.
+
+Verified end to end: layer count changes the stripes; toggle round-trips through the link; a
+recipient opens, cuts and slices a naked cake; a legacy 14-field link decodes as frosted with 3
+layers; 16 shader programs at load, 16 after the journey.
+
+## docs/
+Builder spec updated with the new structure.
