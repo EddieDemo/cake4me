@@ -38,6 +38,10 @@
     '.devlight .q{display:flex;gap:2px;margin-top:4px;align-items:center}.devlight .q span{font-size:11px;opacity:.75;margin-right:6px}',
     '.devlight .q button{flex:1;font:600 11px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:4px 0}',
     '.devlight .q button[aria-pressed="true"]{background:#fff;color:#2a1c1c}',
+    '.devlight .tabs{display:flex;gap:2px;margin:-2px -4px 6px;background:rgba(255,255,255,.08);border-radius:8px;padding:2px}',
+    '.devlight .tabs button{flex:1;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:5px 0}',
+    '.devlight .tabs button[aria-selected="true"]{background:#fff;color:#2a1c1c}',
+    '.devlight section[hidden]{display:none}',
     // a small toggle on the target bar: hides the lighting panel so the cake can be seen
     '.devtgl label{display:flex;align-items:center;gap:5px;padding:0 8px 0 6px;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;border-left:1px solid rgba(255,255,255,.18);margin-left:2px}',
     '.devtgl label input{margin:0;accent-color:#fff;width:14px;height:14px}',
@@ -67,12 +71,41 @@
   //   key      — the sun/window; sets highlight strength and shadow DEPTH (live)
   //   light size — the softness of the shadow's far edge (on release: recompiles)
   //   samples  — shadow filter quality vs cost (not a look control)
+  // Two tabs. Ambient: the room. Key: the window — strength, where it is (elevation, azimuth),
+  // how big it is (light size → penumbra) and the shadow filter quality.
   var light = document.createElement('div'); light.className = 'devlight';
   light.innerHTML =
-    '<label>ambient <em id="dev-am">—</em></label><input type="range" id="dev-am-in" min="0" max="2" step="0.05">' +
-    '<label>key light <em id="dev-ky">—</em></label><input type="range" id="dev-ky-in" min="0" max="2" step="0.05">' +
-    '<label>light size <em id="dev-ls">—</em></label><input type="range" id="dev-ls-in" min="0.1" max="1.5" step="0.05">' +
-    '<div class="q" id="dev-q"><span>samples</span></div>';
+    '<div class="tabs"><button data-tab="amb" aria-selected="true">Ambient</button><button data-tab="key" aria-selected="false">Key</button><button data-tab="spot" aria-selected="false">Spot</button></div>' +
+    '<section id="dev-tab-amb">' +
+      '<label>ambient <em id="dev-am">—</em></label><input type="range" id="dev-am-in" min="0" max="2" step="0.05">' +
+    '</section>' +
+    '<section id="dev-tab-key" hidden>' +
+      '<label>strength <em id="dev-ky">—</em></label><input type="range" id="dev-ky-in" min="0" max="2" step="0.05">' +
+      '<label>elevation <em id="dev-el">—</em></label><input type="range" id="dev-el-in" min="5" max="85" step="1">' +
+      '<label>azimuth <em id="dev-az">—</em></label><input type="range" id="dev-az-in" min="-180" max="180" step="5">' +
+      '<label>warmth <em id="dev-kk">—</em></label><input type="range" id="dev-kk-in" min="2500" max="9000" step="100">' +
+      '<label>light size <em id="dev-ls">—</em></label><input type="range" id="dev-ls-in" min="0.1" max="1.5" step="0.05">' +
+      '<div class="q" id="dev-q"><span>samples</span></div>' +
+    '</section>' +
+    '<section id="dev-tab-spot" hidden>' +
+      '<label><span><input type="checkbox" id="dev-sp-on" style="vertical-align:-2px;margin-right:6px">on</span><em id="dev-sp-note">contact-hardened</em></label>' +
+      '<label>strength <em id="dev-sp-i">—</em></label><input type="range" id="dev-sp-i-in" min="0" max="6" step="0.1">' +
+      '<label>elevation <em id="dev-sp-el">—</em></label><input type="range" id="dev-sp-el-in" min="5" max="89" step="1">' +
+      '<label>azimuth <em id="dev-sp-az">—</em></label><input type="range" id="dev-sp-az-in" min="-180" max="180" step="5">' +
+      '<label>distance <em id="dev-sp-d">—</em></label><input type="range" id="dev-sp-d-in" min="3" max="20" step="0.5">' +
+      '<label>cone <em id="dev-sp-a">—</em></label><input type="range" id="dev-sp-a-in" min="5" max="80" step="1">' +
+      '<label>softness <em id="dev-sp-s">—</em></label><input type="range" id="dev-sp-s-in" min="0" max="1" step="0.05">' +
+      '<label>warmth <em id="dev-sp-k">—</em></label><input type="range" id="dev-sp-k-in" min="2500" max="9000" step="100">' +
+      '<label>light size <em id="dev-sp-ls">—</em></label><input type="range" id="dev-sp-ls-in" min="0.05" max="1.5" step="0.05">' +
+    '</section>';
+  Array.prototype.forEach.call(light.querySelectorAll('.tabs button'), function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(light.querySelectorAll('.tabs button'), function (x) { x.setAttribute('aria-selected', String(x === b)); });
+      light.querySelector('#dev-tab-amb').hidden = b.dataset.tab !== 'amb';
+      light.querySelector('#dev-tab-key').hidden = b.dataset.tab !== 'key';
+      light.querySelector('#dev-tab-spot').hidden = b.dataset.tab !== 'spot';
+    });
+  });
   function lookReady() { return window.CakeLook && window.cake && cake.relook; }
   function fmt(v, def) { return v.toFixed(2) + (Math.abs(v - def) < 0.001 ? ' (default)' : ''); }
   function syncLight() {
@@ -84,6 +117,18 @@
     light.querySelector('#dev-am').textContent = fmt(L.ambientScale, 1);
     light.querySelector('#dev-ky-in').value = L.keyScale;
     light.querySelector('#dev-ky').textContent = fmt(L.keyScale, 1);
+    light.querySelector('#dev-el-in').value = L.keyDir.elevation;
+    light.querySelector('#dev-el').textContent = Math.round(L.keyDir.elevation) + '°' + (Math.abs(L.keyDir.elevation - 47.5) < 0.6 ? ' (default)' : '');
+    var S = L.spot;
+    light.querySelector('#dev-sp-on').checked = !!S.enabled;
+    [['i','intensity',1,''],['el','elevation',0,'°'],['az','azimuth',0,'°'],['d','distance',1,''],['a','angle',0,'°'],['s','softness',2,''],['k','kelvin',0,'K'],['ls','lightSize',2,'']].forEach(function (f) {
+      light.querySelector('#dev-sp-' + f[0] + '-in').value = S[f[1]];
+      light.querySelector('#dev-sp-' + f[0]).textContent = (+S[f[1]]).toFixed(f[2]) + f[3];
+    });
+    light.querySelector('#dev-kk-in').value = L.keyKelvin;
+    light.querySelector('#dev-kk').textContent = L.keyKelvin + 'K' + (L.keyKelvin === 5000 ? ' (default)' : '');
+    light.querySelector('#dev-az-in').value = L.keyDir.azimuth;
+    light.querySelector('#dev-az').textContent = Math.round(L.keyDir.azimuth) + '°' + (Math.abs(L.keyDir.azimuth + 38.7) < 2.6 ? ' (default)' : '');
     Array.prototype.forEach.call(light.querySelectorAll('#dev-q button'), function (b) {
       b.setAttribute('aria-pressed', String(+b.textContent === CakeLook.LOOK.pcss.samples));
     });
@@ -97,15 +142,32 @@
     cake.relook();
     syncLight();
   }
+  // Spot: all live. Turning it on/off recompiles materials (a light that casts shadows is
+  // part of every shader's signature) — one brief hitch, the same as toggling shadows.
+  light.querySelector('#dev-sp-on').addEventListener('change', function (e) {
+    if (!lookReady()) return; CakeLook.LOOK.spot.enabled = e.target.checked; cake.relight(); syncLight();
+  });
+  [['i','intensity'],['el','elevation'],['az','azimuth'],['d','distance'],['a','angle'],['s','softness'],['k','kelvin']].forEach(function (f) {
+    var el = light.querySelector('#dev-sp-' + f[0] + '-in');
+    el.addEventListener('input', function () { if (!lookReady()) return; CakeLook.LOOK.spot[f[1]] = +el.value; cake.relight(); syncLight(); });
+  });
+  // Spot light size is baked into the shader: on release, full relook (recompile).
+  var spLs = light.querySelector('#dev-sp-ls-in');
+  spLs.addEventListener('input', function () { light.querySelector('#dev-sp-ls').textContent = (+spLs.value).toFixed(2); });
+  spLs.addEventListener('change', function () { if (!lookReady()) return; CakeLook.LOOK.spot.lightSize = +spLs.value; cake.relook(); syncLight(); });
   var slider = light.querySelector('#dev-ls-in');
   slider.addEventListener('input', function () { light.querySelector('#dev-ls').textContent = (+slider.value).toFixed(2); });
   slider.addEventListener('change', function () { applyLight(+slider.value); });
-  // Ambient and key are plain intensities: live, no recompile.
-  [['am', 'ambientScale'], ['ky', 'keyScale']].forEach(function (pair) {
+  // Ambient, key strength and key direction are plain light properties: live, no recompile.
+  [['am', function (v) { CakeLook.LOOK.ambientScale = v; }],
+   ['ky', function (v) { CakeLook.LOOK.keyScale = v; }],
+   ['el', function (v) { CakeLook.LOOK.keyDir.elevation = v; }],
+   ['az', function (v) { CakeLook.LOOK.keyDir.azimuth = v; }],
+   ['kk', function (v) { CakeLook.LOOK.keyKelvin = v; }]].forEach(function (pair) {
     var el = light.querySelector('#dev-' + pair[0] + '-in');
     el.addEventListener('input', function () {
       if (!lookReady()) return;
-      CakeLook.LOOK[pair[1]] = +el.value;
+      pair[1](+el.value);
       cake.relight();
       syncLight();
     });

@@ -15,6 +15,14 @@
 
    The map must be a plain depth map (PCF type), not VSM: VSM stores moments.
 
+   Two kinds of shadow map. The key's is ORTHOGRAPHIC (parallel rays, linear
+   depth, constant search radius). A spot's is PERSPECTIVE (diverging rays,
+   non-linear depth, search and penumbra radii that scale with distance from
+   the light). getShadow() doesn't say which it's sampling, so we borrow the
+   otherwise-unused `shadowRadius` uniform as a flag: 0 = orthographic,
+   > 0 = perspective, with the value being tan(half-cone) so the shader can
+   convert world sizes to map UV at any depth. look.js sets both.
+
    Tuning is by defines baked into the shader, so changes need a recompile.
    install() bumps a global program-cache key so every material recompiles on
    the next frame — no page reload needed when tuning from the console.
@@ -49,6 +57,10 @@
       '#define PCSS_FAR ' + o.far.toFixed(4),
       '#define PCSS_MAX_UV ' + o.maxRadius.toFixed(5),            // penumbra cap, in shadow-map UV
       '#define PCSS_N ' + (o.samples | 0),
+      // Perspective (spot) maps
+      '#define PCSS_SPOT_LIGHT_SIZE ' + o.spotLightSize.toFixed(4),
+      '#define PCSS_SPOT_NEAR ' + o.spotNear.toFixed(4),
+      '#define PCSS_SPOT_FAR ' + o.spotFar.toFixed(4),
       '',
       'vec2 pcssDisk[PCSS_N];',
       'void pcssInitDisk( const in vec2 seed ) {',
@@ -79,18 +91,33 @@
       '  }',
       '  return lit / ( 2.0 * float( PCSS_N ) );',
       '}',
-      'float pcss( sampler2D map, const in vec4 coord ) {',
+      // Perspective depth: the map stores NDC z in 0..1; recover distance from the light.
+      'float pcssSpotDist( const in float z ) {',
+      '  float zc = z * 2.0 - 1.0;',
+      '  return ( 2.0 * PCSS_SPOT_NEAR * PCSS_SPOT_FAR ) / ( PCSS_SPOT_FAR + PCSS_SPOT_NEAR - zc * ( PCSS_SPOT_FAR - PCSS_SPOT_NEAR ) );',
+      '}',
+      'float pcss( sampler2D map, const in vec4 coord, const in float tanHalf ) {',
       '  vec2 uv = coord.xy; float zR = coord.z;',
       '  pcssInitDisk( uv );',
-      // For a directional light the blocker search region is simply the light's footprint.
-      '  float searchUV = PCSS_LIGHT_SIZE / PCSS_FRUSTUM_W;',
-      '  float zB = pcssBlocker( map, uv, zR, searchUV );',
-      '  if ( zB < 0.0 ) return 1.0;',                             // nothing in the way: fully lit, and cheap
-      // Similar triangles: penumbra width = lightSize × (dReceiver − dBlocker) / dBlocker.
-      '  float dR = pcssDist( zR ), dB = max( pcssDist( zB ), 0.001 );',
-      '  float penumbraW = PCSS_LIGHT_SIZE * ( dR - dB ) / dB;',
-      '  float radiusUV = min( penumbraW / PCSS_FRUSTUM_W, PCSS_MAX_UV );',
-      '  return pcssFilter( map, uv, zR, radiusUV );',
+      '  if ( tanHalf <= 0.0 ) {',
+      // ---- orthographic (the key): parallel rays, linear depth, constant search radius ----
+      '    float searchUV = PCSS_LIGHT_SIZE / PCSS_FRUSTUM_W;',
+      '    float zB = pcssBlocker( map, uv, zR, searchUV );',
+      '    if ( zB < 0.0 ) return 1.0;',
+      '    float dR = pcssDist( zR ), dB = max( pcssDist( zB ), 0.001 );',
+      '    float penumbraW = PCSS_LIGHT_SIZE * ( dR - dB ) / dB;',
+      '    return pcssFilter( map, uv, zR, min( penumbraW / PCSS_FRUSTUM_W, PCSS_MAX_UV ) );',
+      '  } else {',
+      // ---- perspective (a spot): the map's world width grows with distance, 2·d·tan(half-cone) ----
+      '    float dR = pcssSpotDist( zR );',
+      '    float mapW = 2.0 * dR * tanHalf;',                      // world width of the map at the receiver's depth
+      '    float searchUV = PCSS_SPOT_LIGHT_SIZE / mapW;',
+      '    float zB = pcssBlocker( map, uv, zR, searchUV );',
+      '    if ( zB < 0.0 ) return 1.0;',
+      '    float dB = max( pcssSpotDist( zB ), 0.001 );',
+      '    float penumbraW = PCSS_SPOT_LIGHT_SIZE * ( dR - dB ) / dB;',
+      '    return pcssFilter( map, uv, zR, min( penumbraW / mapW, PCSS_MAX_UV ) );',
+      '  }',
       '}',
       ''
     ].join('\n');
@@ -98,14 +125,15 @@
 
   function install(opts) {
     var o = {
-      lightSize: 2.4, frustumWidth: 13, near: 1, far: 40, samples: 13, maxRadius: 0.04
+      lightSize: 0.6, frustumWidth: 13, near: 1, far: 40, samples: 13, maxRadius: 0.035,
+      spotLightSize: 0.5, spotNear: 1, spotFar: 60
     };
     for (var k in opts) if (opts.hasOwnProperty(k) && opts[k] !== undefined) o[k] = opts[k];
     var shader = original;
     shader = shader.replace('#ifdef USE_SHADOWMAP', '#ifdef USE_SHADOWMAP' + glsl(o));
     // Route the lookup through PCSS just inside getShadow's frustum test.
     shader = shader.replace('#if defined( SHADOWMAP_TYPE_PCF )',
-      '#ifdef PCSS_ON\n\t\t\treturn pcss( shadowMap, shadowCoord );\n\t\t#endif\n\t\t#if defined( SHADOWMAP_TYPE_PCF )');
+      '#ifdef PCSS_ON\n\t\t\treturn pcss( shadowMap, shadowCoord, shadowRadius );\n\t\t#endif\n\t\t#if defined( SHADOWMAP_TYPE_PCF )');
     THREE.ShaderChunk.shadowmap_pars_fragment = shader;
     version++;
     return o;

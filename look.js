@@ -84,9 +84,33 @@
     // lit-to-shadow step — the other half of what made v0.28 look cel-shaded.
     // Retuned (v0.37) for a LIT floor: the floor's paint colour × (ambient + direct) should land
     // close to the paint colour in daylight, so Cream renders as cream rather than clipping white.
+    // v0.44: tuned on the phone — a brighter, airier room with lighter shadows (was 0.55 / 0.62 /
+    // 0.20, i.e. the old values × 1.2 and × 0.8). Baked in as the design values so the dev
+    // panel's multipliers still mean "as designed" at 1.0.
     lights: {
-      hemiSky: '#e9f0ff', hemiGround: '#b8a48f', hemi: 0.55,   // ground bounce turned down (v0.41): one window's worth, not a lightbox
-      key: 0.62, fill: 0.20
+      hemiSky: '#e9f0ff', hemiGround: '#b8a48f', hemi: 0.66,
+      key: 0.50, fill: 0.24
+    },
+    // Where the key light comes from. Directional, so only the direction matters: elevation
+    // (low and raking → long shadows; high → short) and azimuth (which side of the room the
+    // window is on). The defaults reproduce the original hand-placed position (−4, 7, 5).
+    keyDir: { elevation: 47.5, azimuth: -38.7, distance: 9.5 },
+    // Colour temperature of the key, in kelvin: 2700 is a tungsten lamp, 5000 a warm-ish
+    // daylight, 8000 an overcast sky. Converted to RGB with the usual (Helland) fit.
+    keyKelvin: 5000,
+    // ---- A spot light: the lamp over the table ----
+    // Off by default. A LOCAL light, so distance finally matters: bring it closer and the light
+    // pools on the cake, the falloff shows across the tiers, and its shadow fans out with
+    // perspective. Casts a plain soft shadow: the PCSS patch assumes the key's parallel map.
+    spot: {
+      enabled: false,
+      intensity: 1.6,
+      elevation: 62, azimuth: 30, distance: 9,     // degrees, degrees, world units
+      angle: 32, softness: 0.45,                   // cone half-angle (deg), penumbra 0–1
+      kelvin: 3400,
+      castShadow: true, shadowMapSize: 1024,
+      lightSize: 0.5,                              // world units: the size of the lamp. Contact-hardening softness.
+      shadowFar: 60                                // fixed, so changing distance doesn't recompile
     },
     // Dev-panel multipliers on the room (ambient) and the sun/window (key). 1 = as designed.
     // The product sets the base from the sender's backdrop; these let you explore around it.
@@ -100,7 +124,7 @@
     // lights step down with the background's darkness. Blowing the candles out visibly dims
     // the cake; relighting brings it back. Free drama that was being thrown away.
     night: {
-      hemi: 0.20, key: 0.26, fill: 0.10,     // the room, at full darkness
+      hemi: 0.24, key: 0.21, fill: 0.12,     // the room, at full darkness (scaled with the day set, v0.44)
       hemiSky: '#8fa4d6', hemiGround: '#6b5a52',
       // candle light: intensity = base + perSqrt·√lit, boosted by darkness
       candleBase: 0.12, candlePerSqrt: 0.30, candleBoost: 2.4, distance: 11, decay: 2,
@@ -130,6 +154,51 @@
       hemiSky: new THREE.Color(L.hemiSky).lerp(new THREE.Color(N.hemiSky), d),
       hemiGround: new THREE.Color(L.hemiGround).lerp(new THREE.Color(N.hemiGround), d)
     };
+  }
+  // Kelvin → RGB (Tanner Helland's fit; good enough between 1000K and 12000K).
+  function kelvinToColor(k, out) {
+    var t = Math.max(1000, Math.min(12000, k)) / 100, r, g, b;
+    if (t <= 66) { r = 255; g = 99.4708025861 * Math.log(t) - 161.1195681661; }
+    else { r = 329.698727446 * Math.pow(t - 60, -0.1332047592); g = 288.1221695283 * Math.pow(t - 60, -0.0755148492); }
+    if (t >= 66) b = 255; else if (t <= 19) b = 0; else b = 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+    var c = function (v) { return Math.max(0, Math.min(255, v)) / 255; };
+    out = out || new THREE.Color();
+    return out.setRGB(c(r), c(g), c(b));
+  }
+  // Key light position from LOOK.keyDir (degrees). Distance is cosmetic for a directional
+  // light; it only keeps the shadow camera's near plane sensible.
+  function keyPosition(out) {
+    var e = LOOK.keyDir.elevation * Math.PI / 180, a = LOOK.keyDir.azimuth * Math.PI / 180, d = LOOK.keyDir.distance;
+    out = out || new THREE.Vector3();
+    return out.set(d * Math.cos(e) * Math.sin(a), d * Math.sin(e), d * Math.cos(e) * Math.cos(a));
+  }
+  function spotPosition(out) {
+    var S = LOOK.spot, e = S.elevation * Math.PI / 180, a = S.azimuth * Math.PI / 180, d = S.distance;
+    out = out || new THREE.Vector3();
+    return out.set(d * Math.cos(e) * Math.sin(a), d * Math.sin(e), d * Math.cos(e) * Math.cos(a));
+  }
+  // Apply LOOK.spot to a THREE.SpotLight (position, cone, colour, shadow).
+  function applySpot(spot) {
+    if (!spot) return;
+    var S = LOOK.spot;
+    spot.visible = !!S.enabled;
+    spot.intensity = S.intensity;
+    spotPosition(spot.position);
+    spot.angle = S.angle * Math.PI / 180;
+    spot.penumbra = S.softness;
+    spot.distance = S.distance * 3;                 // reach: well past the cake
+    spot.decay = 2;
+    kelvinToColor(S.kelvin, spot.color);
+    spot.castShadow = !!(S.enabled && S.castShadow && LOOK.shadows);
+    if (spot.shadow) {
+      if (spot.shadow.mapSize.x !== S.shadowMapSize) { spot.shadow.mapSize.set(S.shadowMapSize, S.shadowMapSize); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
+      spot.shadow.camera.near = 1; spot.shadow.camera.far = S.shadowFar;
+      spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.03;
+      // Under PCSS, shadow.radius > 0 flags a perspective map and carries tan(half-cone), so the
+      // shader can turn world sizes into map UV at any depth. (SpotLightShadow's fov = 2·angle.)
+      spot.shadow.radius = (LOOK.shadowType === 'PCSS') ? Math.tan(spot.angle) : LOOK.shadowRadius;
+      spot.shadow.camera.updateProjectionMatrix();
+    }
   }
   // How much light an upward-facing floor receives under these lights (≈1 in daylight).
   // Hemisphere: an up normal sees the sky colour at full weight. Key: cos of its elevation.
@@ -205,7 +274,8 @@
       if (type === 'PCSS' && LOOK.shadows) {
         var e0 = LOOK.shadowExtent;
         CakePCSS.install({ lightSize: LOOK.pcss.lightSize, samples: LOOK.pcss.samples, maxRadius: LOOK.pcss.maxRadius,
-                           frustumWidth: e0.half * 2, near: e0.near, far: e0.far });
+                           frustumWidth: e0.half * 2, near: e0.near, far: e0.far,
+                           spotLightSize: LOOK.spot.lightSize, spotNear: 1, spotFar: LOOK.spot.shadowFar });
       } else {
         CakePCSS.uninstall();
       }
@@ -222,7 +292,8 @@
       cam.left = -e.half; cam.right = e.half; cam.top = e.top; cam.bottom = e.bottom; cam.near = e.near; cam.far = e.far;
       cam.updateProjectionMatrix();
       key.shadow.bias = LOOK.shadowBias; key.shadow.normalBias = LOOK.shadowNormalBias;
-      key.shadow.radius = LOOK.shadowRadius; key.shadow.blurSamples = LOOK.shadowBlurSamples;
+      // Under PCSS, shadow.radius is repurposed as the projection flag: 0 = orthographic (the key).
+      key.shadow.radius = (type === 'PCSS') ? 0 : LOOK.shadowRadius; key.shadow.blurSamples = LOOK.shadowBlurSamples;
       if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }   // resize/type change takes effect
       // No shadow-catching plane any more: the stage's lit floor (stage.js) receives the
       // shadow as a real lack of direct light, which is what a shadow is.
@@ -317,6 +388,6 @@
     LOOK.halo.enabled = !on;
     apply(renderer, scene, key);
   }
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor,
+  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

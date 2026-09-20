@@ -341,6 +341,10 @@
   var key = new THREE.DirectionalLight(0xfff1dd, LI.key);
   key.position.set(-4, 7, 5);
   scene.add(key);
+  // The spot: off unless the look says otherwise. Aimed at the cake's centre.
+  var spot = new THREE.SpotLight(0xffffff, 0, 30, Math.PI / 6, 0.5, 2);
+  spot.visible = false; spot.target.position.set(0, 0.8, 0);
+  scene.add(spot); scene.add(spot.target);
   var fill = new THREE.DirectionalLight(0xdcefff, LI.fill);
   fill.position.set(5, 3, -2);
   scene.add(fill);
@@ -967,6 +971,16 @@
     if (ambientLight.isHemisphereLight) { ambientLight.intensity = R.hemi; ambientLight.color.copy(R.hemiSky); ambientLight.groundColor.copy(R.hemiGround); }
     else ambientLight.intensity = R.hemi;
     key.intensity = R.key; fill.intensity = R.fill;
+    CakeLook.keyPosition(key.position);              // elevation / azimuth from the look
+    CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
+    var wasCasting = spot.castShadow, wasVisible = spot.visible;
+    CakeLook.applySpot(spot);
+    spot.target.position.set(0, config ? centreOfMass(config.t) : 0.8, 0);
+    // A light that starts or stops casting changes every material's shader; recompile once, now.
+    if (spot.castShadow !== wasCasting || spot.visible !== wasVisible) {
+      scene.traverse(function (o) { var m = o.material; if (!m) return; (Array.isArray(m) ? m : [m]).forEach(function (mm) { mm.needsUpdate = true; }); });
+      markHeavy();
+    }
     candleLight.distance = CakeLook.LOOK.night.distance; candleLight.decay = CakeLook.LOOK.night.decay;
     if (window.CakeStage) {
       var kd = key.position.clone().normalize();
