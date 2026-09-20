@@ -17,7 +17,7 @@
   // frosted cakes; the BUILDER starts a fresh cake at fr = 0 (naked) — see newDraft().
   // rb: 0 none · 1 every tier · 2 = legacy (upper tiers only, which is what links before v0.57
   // showed). Missing → 2 so old links look exactly as they did; a fresh draft starts at 0.
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0, lt: '', ly: 3, fr: 1, rb: 2 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 1, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0, lt: '', ly: 3, fr: 1, rb: 2 };
   // Ribbon geometry: a strip lying ON the cake — inner face at the cake's radius, a hair thick,
   // bottom edge just above the base fillet. Width comes per tier from the settings below.
   var RIBBON = { thick: 0.02, lift: 0.16, widthMin: 0.12, widthStep: 0.05, steps: 8 };
@@ -176,7 +176,7 @@
   // Tier proportions are the sender's (v0.60): per tier a width step and a height step, each
   // 0–9. Missing → the classic table above, so older links are untouched. Radius runs 0.9–2.7,
   // height 0.6–2.0. An upper tier can never be wider than the one below it minus a ledge.
-  var SHAPE = { rMin: 0.9, rMax: 2.7, hMin: 0.6, hMax: 2.0, steps: 10, ledge: 0.3 };
+  var SHAPE = { rMin: 0.9, rMax: 2.7, hMin: 0.6, hMax: 2.0, steps: 10, ledge: 0 };   // ledge 0: a tier may be exactly as wide as the one below
   function stepToR(st) { return SHAPE.rMin + (SHAPE.rMax - SHAPE.rMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
   function stepToH(st) { return SHAPE.hMin + (SHAPE.hMax - SHAPE.hMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
   function rToStep(r) { return Math.round((r - SHAPE.rMin) / (SHAPE.rMax - SHAPE.rMin) * (SHAPE.steps - 1)); }
@@ -548,9 +548,10 @@
   function build(cfg, opts) {
     markHeavy();
     cfg = normalize(cfg);                                // derived arrays (rt, sh) must match the tier count; always normalise
+    var keepMessageMap = (opts && opts.keepMessage && messageMesh && messageMesh.material[0] && messageMesh.material[0].map) ? messageMesh.material[0].map : null;
+    if (keepMessageMap) keepMessageMap.__shared = true;   // survives the clear below
     built.visible = true;
-    var prevN = (config && config.t === cfg.t) ? (config.n | 0) : 0;
-    var prevT = config ? config.t : null;
+    var prevN = config ? (config.n | 0) : 0;            // only NEW candles pop in — a tier switch doesn't re-pop them
     config = cfg;
     if (opts && typeof opts.showMessage === 'boolean') showMessage = opts.showMessage;
     clearGroup(built);
@@ -561,7 +562,6 @@
     spawn = null;
     var animate = !(opts && opts.animate === false) && !reduceMotion;
     var candleFrom = animate ? Math.min(prevN, MAX_CANDLES) : Infinity;   // candles with index ≥ this pop in
-    var tierDrop = animate && prevT !== null && prevT !== cfg.t && cfg.t === 2;
 
     var tiers = tiersFor(cfg);
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
@@ -595,10 +595,15 @@
       var sideMat = frostingMat;
       if (tier === messageTier && cfg.m && showMessage) {
         // Frosting colour is baked into the canvas so light ink stays light on dark cakes.
+        // During a slider drag (opts.keepMessage) the previous band texture is kept and only
+        // redrawn on release: the text scales a hair with the tier for a moment, and the tab
+        // doesn't churn a 16MB canvas per frame.
+        var keptMap = (opts && opts.keepMessage && keepMessageMap) ? keepMessageMap : null;
         sideMat = new THREE.MeshStandardMaterial({
           color: 0xffffff, roughness: naked ? 0.95 : 0.62,
-          map: makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH, naked ? sponge : null), vertexColors: true
+          map: keptMap || makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH, naked ? sponge : null), vertexColors: true
         });
+        if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
         nightGlow(sideMat, 0xffffff, true);
       }
       // Rounded lathe profiles (shapes.js): a slight bulge, a rounded base, a rounded rim.
@@ -621,7 +626,7 @@
 
       // Cut faces (dev cut-away): two planes showing sponge + filling layers
       if (cfg.cutaway) {
-        var faceMat = TM.face;
+        var faceMat = TM.face();
         faceMat.__shared = true; localShared.push(faceMat);
         [0, open].forEach(function (theta) {
           var face = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme), faceMat);
@@ -667,18 +672,13 @@
     surfaces.reverse();
     placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom);
 
-    if (tierDrop && tierGroups[1]) {
-      var top = tierGroups[1];
-      top.position.y = 3.2;
-      tween({ duration: 450, ease: EASE.lift,
-        update: function (k) { top.position.y = 3.2 * (1 - k); },
-        done: function () {
-          tween({ duration: 160, ease: EASE.pop, update: function (k) { top.scale.y = 0.94 + 0.06 * k; } });
-        } });
-    }
+    // (A "top tier drops in" animation used to live here. It had been dead since the builder
+    // began mutating its config in place, came back to life when v0.60 made the tier switch
+    // produce a fresh config, and was unwanted. Removed for good.)
 
     // Materials created for this build are "shared" only until the next build.
     localShared.forEach(function (m) { m.__shared = false; });
+    if (keepMessageMap) keepMessageMap.__shared = false;
 
     fitShadow(tiersFor(cfg)[0].r);
     rebuildLandings(cfg);
@@ -903,6 +903,7 @@
   // =====================================================================
   // `sponge` (optional): { layers, count } — paint the naked sponge's stripes as the background
   // instead of a flat frosting colour, so the message is piped straight onto the cake.
+  var msgCanvas = null;
   function makeMessageTexture(text, ink, frostingHex, radius, bodyH, sponge) {
     text = String(text).slice(0, MAX_MSG);
     var circumference = 2 * Math.PI * radius;
@@ -911,9 +912,13 @@
     // round the cylinder), so even 4096 wide costs little memory.
     var W = deviceDPR >= 2 ? 4096 : 2048;
     var H = Math.max(96, Math.round(W * (bodyH / circumference)));   // square pixels on the cylinder
-    var c = document.createElement('canvas');
-    c.width = W; c.height = H;
+    // One persistent canvas, redrawn: at 4096 wide this is ~16MB, and allocating a fresh one on
+    // every rebuild was what made Safari reload the tab under a slider drag. There is only ever
+    // one live message band, so a single element serves every build (and the warm-up).
+    var c = msgCanvas || (msgCanvas = document.createElement('canvas'));
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     var g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
     if (sponge) paintLayers(g, W, H, sponge.layers, sponge.scheme, sponge.span);
     else { g.fillStyle = hexCss(frostingHex); g.fillRect(0, 0, W, H); }
 
@@ -1074,7 +1079,14 @@
       cap = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
     }
     nightGlow(side, naked ? SPONGE : frosting, false); nightGlow(cap, naked ? SPONGE : frosting, false);
-    var face = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling, scheme, tier.h), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
+    // The cut-face material is made on demand: only the cut, the slice page and the dev cut-away
+    // use it, and creating it eagerly leaked three textures per build (one per tier) — dozens of
+    // times a second while a shape slider was being dragged. Safari reloaded the tab for memory.
+    var faceMat = null;
+    function face() {
+      if (!faceMat) faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling, scheme, tier.h), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
+      return faceMat;
+    }
     return { side: side, cap: cap, face: face, frosting: frosting, filling: filling, naked: naked,
              scheme: naked ? scheme : null, capH: capH, bodyH: bodyH,
              sponge: naked ? { layers: filling, scheme: scheme, span: bodyH } : null };
@@ -2295,7 +2307,7 @@
   // Materials are per tier (tierMaterials): pass `TM` for the tier, or nothing to make them here.
   function makeWedge(tier, i, cfg, TM, msgMap) {
     TM = TM || tierMaterials(cfg, tier);
-    var frostingMat = TM.side, capMat = TM.cap, faceMat = TM.face, scheme = TM.scheme, capH = TM.capH;
+    var frostingMat = TM.side, capMat = TM.cap, faceMat = TM.face(), scheme = TM.scheme, capH = TM.capH;
     var N = WEDGES_PER_TIER, theta0 = i * Math.PI * 2 / N, len = Math.PI * 2 / N;
     var g = new THREE.Group();
     var bodyH = TM.bodyH;
@@ -2955,6 +2967,15 @@
     w.max = maxStep; w.value = Math.min(st.r, maxStep); h.value = st.h;
     $('sw-out').textContent = (stepToR(st.r) * 2).toFixed(1); $('sh-out').textContent = stepToH(st.h).toFixed(1);
   }
+  // Sliders fire many times per second; rebuilding the cake on every tick is wasted work and,
+  // on a phone, memory pressure. Coalesce: at most one rebuild per animation frame.
+  var buildPending = false, buildOpts = null;
+  function scheduleBuild(opts) {
+    buildOpts = opts || null;
+    if (buildPending) return;
+    buildPending = true;
+    requestAnimationFrame(function () { buildPending = false; var o = buildOpts; buildOpts = null; build(draft, o || undefined); });
+  }
   var ribbonTier = 0;                                  // which tier the Ribbon controls edit
   function syncRibbon() {
     var tiers = tiersFor(draft).length;
@@ -2964,12 +2985,14 @@
     });
     $('f-sw').addEventListener('input', function (e) {
       draft.sh[shapeTier].r = +e.target.value; draft = normalize(draft);   // normalize re-clamps the tiers above
-      syncShape(); syncRibbon(); build(draft);
+      syncShape(); syncRibbon(); scheduleBuild({ keepMessage: true });
     });
     $('f-sh').addEventListener('input', function (e) {
       draft.sh[shapeTier].h = +e.target.value; draft = normalize(draft);
-      syncShape(); build(draft);
+      syncShape(); scheduleBuild({ keepMessage: true });
     });
+    // On release, one full rebuild so the message band is redrawn for the final shape.
+    ['f-sw', 'f-sh'].forEach(function (id) { $(id).addEventListener('change', function () { scheduleBuild(); }); });
     $('shape-reset').addEventListener('click', function () {
       draft.sh = classicShape(draft.t); draft = normalize(draft);
       syncShape(); build(draft);
@@ -3064,7 +3087,7 @@
     });
     $('f-rw').addEventListener('input', function (e) {
       draft.rt[ribbonTier].w = +e.target.value; draft = normalize(draft);
-      syncRibbon(); build(draft);
+      syncRibbon(); scheduleBuild();
     });
 
 
@@ -3089,7 +3112,7 @@
       draft.n = clampInt(els.n.value, 0, MAX_CANDLES, 0);
       els.nOut.textContent = draft.n;
       updateCta();
-      build(draft, { showMessage: true });
+      scheduleBuild();
     });
 
     Array.prototype.forEach.call(els.tiers.children, function (b) {
