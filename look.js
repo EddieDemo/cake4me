@@ -388,6 +388,55 @@
     LOOK.halo.enabled = !on;
     apply(renderer, scene, key);
   }
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
+  // ---------- lighting as data ----------
+  // The lighting is part of the cake the sender saw, so it travels in the link. A fixed-order
+  // list of numbers; `''` when everything is at its default so an unlit cake's link doesn't
+  // grow. Ranges are clamped on the way back in — a malformed field is ignored, never fatal.
+  var LIGHT_FIELDS = [
+    // [getter, setter, default, min, max, decimals]
+    [function () { return LOOK.ambientScale; },      function (v) { LOOK.ambientScale = v; },      1,    0, 3, 2],
+    [function () { return LOOK.keyScale; },          function (v) { LOOK.keyScale = v; },          1,    0, 3, 2],
+    [function () { return LOOK.keyDir.elevation; },  function (v) { LOOK.keyDir.elevation = v; },  47.5, 1, 89, 1],
+    [function () { return LOOK.keyDir.azimuth; },    function (v) { LOOK.keyDir.azimuth = v; },    -38.7, -180, 180, 1],
+    [function () { return LOOK.keyKelvin; },         function (v) { LOOK.keyKelvin = v; },         5000, 1500, 12000, 0],
+    [function () { return LOOK.pcss.lightSize; },    function (v) { LOOK.pcss.lightSize = v; },    0.6,  0.02, 3, 2],
+    [function () { return LOOK.spot.enabled ? 1 : 0; }, function (v) { LOOK.spot.enabled = v >= 0.5; }, 0, 0, 1, 0],
+    [function () { return LOOK.spot.intensity; },    function (v) { LOOK.spot.intensity = v; },    1.6,  0, 20, 2],
+    [function () { return LOOK.spot.elevation; },    function (v) { LOOK.spot.elevation = v; },    62,   1, 89, 1],
+    [function () { return LOOK.spot.azimuth; },      function (v) { LOOK.spot.azimuth = v; },      30,   -180, 180, 1],
+    [function () { return LOOK.spot.distance; },     function (v) { LOOK.spot.distance = v; },     9,    1, 40, 1],
+    [function () { return LOOK.spot.angle; },        function (v) { LOOK.spot.angle = v; },        32,   1, 89, 1],
+    [function () { return LOOK.spot.softness; },     function (v) { LOOK.spot.softness = v; },     0.45, 0, 1, 2],
+    [function () { return LOOK.spot.kelvin; },       function (v) { LOOK.spot.kelvin = v; },       3400, 1500, 12000, 0],
+    [function () { return LOOK.spot.lightSize; },    function (v) { LOOK.spot.lightSize = v; },    0.5,  0.02, 3, 2]
+  ];
+  function serializeLighting() {
+    var allDefault = true, out = [];
+    LIGHT_FIELDS.forEach(function (f) {
+      var v = +f[0]().toFixed(f[5]);
+      if (Math.abs(v - f[2]) > 1e-9) allDefault = false;
+      out.push(String(v));
+    });
+    return allDefault ? '' : out.join('~');
+  }
+  // Returns true if anything was applied. Unknown or malformed → nothing changes.
+  function applyLighting(str) {
+    if (!str) return false;
+    var parts = String(str).split('~');
+    if (parts.length < 6) return false;
+    var applied = false;
+    LIGHT_FIELDS.forEach(function (f, i) {
+      if (i >= parts.length) return;
+      var v = parseFloat(parts[i]);
+      if (!isFinite(v)) return;
+      f[1](Math.max(f[3], Math.min(f[4], v)));
+      applied = true;
+    });
+    return applied;
+  }
+  function resetLighting() { LIGHT_FIELDS.forEach(function (f) { f[1](f[2]); }); }
+
+  window.CakeLook = {
+    serializeLighting: serializeLighting, applyLighting: applyLighting, resetLighting: resetLighting, apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

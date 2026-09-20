@@ -13,7 +13,7 @@
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0 };
+  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 30, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0, lt: '' };
   var PRICES = { 1: '£4.49', 2: '£9.99', 3: '£24.99' };
   var SLICES = { 1: 8, 2: 16, 3: 24 };
 
@@ -213,13 +213,16 @@
       // Appended after rc. Missing on older links → 0 (Auto), which is what they did.
       tc: clampInt(c.tc, 0, PALETTES.text.length - 1, 0),
       // Appended after tc. Missing on older links → 0 (Birthday), which is what they were.
-      o: clampInt(c.o, 0, OCCASIONS.length - 1, 0)
+      o: clampInt(c.o, 0, OCCASIONS.length - 1, 0),
+      // Lighting, appended after o: the room the sender lit the cake in (look.js serialises
+      // it; '' means "as designed"). Only digits, '.', '-' and '~' survive.
+      lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200)
     };
   }
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -228,7 +231,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -2877,6 +2880,8 @@
 
     els.getLink.addEventListener('click', function () {
       if (draft.o === OCCASION_UNCHOSEN) draft.o = OCCASION_FALLBACK;
+      // The lighting the sender is looking at right now is part of the cake.
+      draft.lt = window.CakeLook ? CakeLook.serializeLighting() : '';
       draft = normalize(draft);
       syncOccasions();
       config = draft;
@@ -3069,6 +3074,17 @@
     els.builder.classList.remove('away');
     var fromLink = readHash();
     var sl = fromLink ? readSliceHash() : null;
+    // Lighting travels with the cake. Apply it before anything is built so the shadow shader
+    // (which bakes the two light sizes) and the material warm-up see the final state; a
+    // recipient must never pay a shader compile mid-gesture. No field → as designed.
+    if (window.CakeLook) {
+      var pre0 = readEditHash();
+      var lt = fromLink ? fromLink.lt : (pre0 ? pre0.lt : '');
+      CakeLook.resetLighting();
+      CakeLook.applyLighting(lt);
+      CakeLook.rebuild(renderer, scene, key);
+      updateRoomLights();
+    }
     // Reset Phase 4 state on any route
     while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]);
     cut = null; slice = null; viewerMode = 'cake';
@@ -3128,7 +3144,7 @@
     wireViewer();
     route();
     warmCompile();
-    window.addEventListener('hashchange', route);
+    window.addEventListener('hashchange', function () { route(); warmCompile(); });
     frame();
   }
   if (document.fonts && document.fonts.load) {
