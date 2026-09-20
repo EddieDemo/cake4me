@@ -75,16 +75,19 @@
     // Background gradients. Index 0 is the legacy behaviour (derived from the frosting),
     // kept so every link sent before v0.16 renders exactly as it did. Everything else is
     // a deliberate choice, because a backdrop that matches the cake washes it out.
+    // One paint colour each. The world is a single featureless plane (stage.js), so the
+    // "sky" is the same paint receding into the distance — there is no second colour.
+    // (`layers` is kept for the swatch preview: a slightly lighter top hints at depth.)
     background: [
       { name: 'Match the cake', auto: true },
-      { name: 'Cream',     layers: [0xFFF6E9, 0xFFE7CE] },
-      { name: 'Warm grey', layers: [0xF2EFEA, 0xDCD6CE] },
-      { name: 'Blush',     layers: [0xFFEDF2, 0xF7D9E3] },
-      { name: 'Sky',       layers: [0xDFF1FF, 0xBFDFF5] },
-      { name: 'Mint',      layers: [0xE4F6EE, 0xC2E6D6] },
-      { name: 'Dusk',      layers: [0x6E6597, 0x3B3560] },
-      { name: 'Midnight',  layers: [0x24304A, 0x11162A] },
-      { name: 'Ink',       layers: [0x2A2430, 0x141018] }
+      { name: 'Cream',     floor: 0xFFEBD2, layers: [0xFFF6E9, 0xFFE7CE] },
+      { name: 'Warm grey', floor: 0xE1DBD2, layers: [0xF2EFEA, 0xDCD6CE] },
+      { name: 'Blush',     floor: 0xF9DDE6, layers: [0xFFEDF2, 0xF7D9E3] },
+      { name: 'Sky',       floor: 0xC9E3F7, layers: [0xDFF1FF, 0xBFDFF5] },
+      { name: 'Mint',      floor: 0xCBE9DB, layers: [0xE4F6EE, 0xC2E6D6] },
+      { name: 'Dusk',      floor: 0x453E6B, layers: [0x6E6597, 0x3B3560] },
+      { name: 'Midnight',  floor: 0x161C33, layers: [0x24304A, 0x11162A] },
+      { name: 'Ink',       floor: 0x18131C, layers: [0x2A2430, 0x141018] }
     ]
   };
 
@@ -922,12 +925,17 @@
   }
   // At night the cake gets a faint self-glow so the shape never goes fully black, and the
   // message band a little more so the writing stays readable. Zero in daylight.
+  // Materials that carry the night self-glow, with their full-strength intensity. The
+  // per-frame loop scales them by how many candles are lit (see updateFlames).
+  var glowMats = [];
   function nightGlow(mat, hex, isMessage) {
     if (!window.CakeLook) return;
     var N = CakeLook.LOOK.night;
     mat.emissive = new THREE.Color(hex);
-    mat.emissiveIntensity = darkness * (isMessage ? N.emissiveMessage : N.emissiveFrosting);
+    mat.emissiveIntensity = 0;                        // starts dark; the flames bring it up
     if (isMessage && mat.map) mat.emissiveMap = mat.map;
+    glowMats.push({ m: mat, base: isMessage ? N.emissiveMessage : N.emissiveFrosting });
+    if (glowMats.length > 64) glowMats.splice(0, glowMats.length - 64);   // old builds' materials fall away
   }
   function pickInk(frostingHex, tcIndex) {
     var opt = PALETTES.text[clampIndex(tcIndex, PALETTES.text)];
@@ -963,14 +971,14 @@
       top = new THREE.Color(frostingHex).lerp(new THREE.Color(0xffffff), 0.72);
       bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(frostingHex), 0.15);
     } else {
-      top = new THREE.Color(opt.layers[0]);
-      bottom = new THREE.Color(opt.layers[1]);
+      bottom = new THREE.Color(opt.floor || opt.layers[1]);
+      top = bottom;
     }
     // The palette's two colours are now the SKY and the FLOOR PAINT. The floor is a real lit
     // plane (stage.js); the sky is the CSS gradient above the horizon. Both dim with the room.
     bgLuminance = 0.2126 * bottom.r + 0.7152 * bottom.g + 0.0722 * bottom.b;
     document.body.classList.toggle('dark-bg', bgLuminance < 0.42);
-    if (window.CakeStage) CakeStage.setColours('#' + top.getHexString(), '#' + bottom.getHexString());
+    if (window.CakeStage) CakeStage.setColour('#' + bottom.getHexString());
     else {
       var root = document.documentElement.style;
       root.setProperty('--sky-top', '#' + top.getHexString());
@@ -1192,6 +1200,11 @@
       var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
       // Ease toward it so each extinguished wave reads as a wave of dimming, not a step.
       candleLight.intensity += (target * (0.92 + 0.08 * Math.sin(t * 7)) - candleLight.intensity) * Math.min(1, dt * 6);
+      // The cake's night self-glow follows the candles too.
+      if (window.CakeLook && glowMats.length) {
+        var gf = CakeLook.glowFactor(flames.length ? lit / flames.length : 0, darkness) * CakeLook.LOOK.ambientScale;
+        for (var gi = 0; gi < glowMats.length; gi++) glowMats[gi].m.emissiveIntensity += (glowMats[gi].base * gf - glowMats[gi].m.emissiveIntensity) * Math.min(1, dt * 6);
+      }
     }
     updateSmoke(dt);
     updateConfetti(dt, t);

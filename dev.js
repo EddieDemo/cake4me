@@ -37,7 +37,11 @@
     '.devlight input{width:100%;margin:0;accent-color:#fff;display:block}',
     '.devlight .q{display:flex;gap:2px;margin-top:4px;align-items:center}.devlight .q span{font-size:11px;opacity:.75;margin-right:6px}',
     '.devlight .q button{flex:1;font:600 11px -apple-system,system-ui,sans-serif;color:#fff;background:transparent;border:0;border-radius:6px;padding:4px 0}',
-    '.devlight .q button[aria-pressed="true"]{background:#fff;color:#2a1c1c}'
+    '.devlight .q button[aria-pressed="true"]{background:#fff;color:#2a1c1c}',
+    // a small toggle on the target bar: hides the lighting panel so the cake can be seen
+    '.devtgl label{display:flex;align-items:center;gap:5px;padding:0 8px 0 6px;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;border-left:1px solid rgba(255,255,255,.18);margin-left:2px}',
+    '.devtgl label input{margin:0;accent-color:#fff;width:14px;height:14px}',
+    '.devlight[hidden]{display:none}'
   ].join('');
   document.head.appendChild(css);
   var fps = document.createElement('div'); fps.className = 'devfps';
@@ -111,6 +115,21 @@
     b.addEventListener('click', function () { if (!lookReady()) return; CakeLook.LOOK.pcss.samples = n; cake.relook(); syncLight(); });
     light.querySelector('#dev-q').appendChild(b);
   });
+
+  // Show/hide the lighting panel. Persisted, so it stays out of the way once you've tuned.
+  var showLight = true;
+  try { showLight = localStorage.getItem('cake.dev.light') !== '0'; } catch (e) {}
+  var lightToggle = document.createElement('label');
+  lightToggle.innerHTML = '<input type="checkbox" id="dev-light-vis"> light';
+  var lightBox = lightToggle.querySelector('input');
+  lightBox.checked = showLight;
+  lightBox.addEventListener('change', function () {
+    showLight = lightBox.checked;
+    light.hidden = !showLight;
+    try { localStorage.setItem('cake.dev.light', showLight ? '1' : '0'); } catch (e) {}
+  });
+  tgl.appendChild(lightToggle);
+  light.hidden = !showLight;
 
   function mount() {
     document.body.appendChild(fps); document.body.appendChild(tgl); document.body.appendChild(light);

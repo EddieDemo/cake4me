@@ -140,10 +140,17 @@
     return R.hemi * skyL + R.key * cos * kL;
   }
   // Candle light intensity for a lit count and darkness (flicker applied by the caller).
+  // Exactly zero with no flames: the base term only exists once something is burning.
   function candleIntensity(lit, d) {
     var N = LOOK.night;
-    return (N.candleBase + N.candlePerSqrt * Math.sqrt(Math.max(0, lit))) * (1 + N.candleBoost * d);
+    lit = Math.max(0, lit);
+    if (lit <= 0) return 0;
+    return (N.candleBase * Math.min(1, lit) + N.candlePerSqrt * Math.sqrt(lit)) * (1 + N.candleBoost * d);
   }
+  // The cake's faint self-glow at night. It stands in for the candlelight bouncing around
+  // inside the frosting, so it follows the candles: full with them lit, nothing with them out.
+  // (It used to follow the backdrop, which made the cake glow in a room with no light at all.)
+  function glowFactor(litFraction, d) { return d * Math.max(0, Math.min(1, litFraction)); }
 
   // ---------- environment (optional) ----------
   function rgba(h, a) {
@@ -284,6 +291,6 @@
     LOOK.halo.enabled = !on;
     apply(renderer, scene, key);
   }
-  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor,
+  window.CakeLook = { apply: apply, rebuild: apply, tick: tick, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

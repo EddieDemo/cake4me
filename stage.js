@@ -10,10 +10,12 @@
    with ambient light only, so it is always darker than the floor beside
    it, by exactly the share the direct light contributed.
 
-   The sky stays a CSS gradient above the horizon; fog in the sky colour
-   dissolves the floor into it before its edge can show. Both the floor's
-   lit colour and the sky darken with the room's brightness, so an ambient
-   slider dims everything together, as a room would.
+   The world is one featureless plane, so the "sky" is just that plane
+   receding into the distance: the same paint at the same brightness. The
+   CSS backdrop is painted the lit-floor colour and fog in the same colour
+   dissolves the plane into it, so there is no horizon to hide. Turn every
+   light off and the whole scene goes black — the test that the model is
+   honest.
 
    Owns: the floor mesh, the fog, the CSS sky variables.
    Knows nothing about cakes, candles or palettes — it takes two colours
@@ -33,12 +35,11 @@
   var S = {
     size: 400,            // world units; the horizon is fogged long before the edge
     fogNearPast: 6,       // fog starts this far beyond the camera-to-cake distance…
-    fogFarPast: 34,       // …and is total this far beyond it
-    skyDim: 0.85          // how much of the room's brightness change the sky follows (it's not a lit surface)
+    fogFarPast: 34        // …and is total this far beyond it
   };
 
   var scene = null, floor = null, fog = null;
-  var sky = new THREE.Color(0xfff6ea), floorCol = new THREE.Color(0xffe7ce), lit = 1;
+  var floorCol = new THREE.Color(0xffe7ce), lit = 1;
 
   function attach(sc) {
     scene = sc;
@@ -73,17 +74,13 @@
     floor.material.color.copy(floorCol);
     var horizon = litFloor();
     fog.color.copy(horizon);
-    // Sky: the palette's sky colour, dimmed most of the way with the room.
-    var skyLit = sky.clone().multiplyScalar(1 - S.skyDim + S.skyDim * Math.min(1, lit));
+    // The backdrop IS the lit floor, top to bottom.
     var root = document.documentElement.style;
-    root.setProperty('--sky-top', '#' + skyLit.getHexString());
+    root.setProperty('--sky-top', '#' + horizon.getHexString());
     root.setProperty('--sky-bottom', '#' + horizon.getHexString());
   }
 
-  function setColours(skyHex, floorHex) {
-    sky.set(skyHex); floorCol.set(floorHex);
-    refresh();
-  }
+  function setColour(floorHex) { floorCol.set(floorHex); refresh(); }
   function setBrightness(litFactor) { lit = litFactor; refresh(); }
   function update(cameraDistance) {
     if (!fog) return;
@@ -91,6 +88,6 @@
     fog.far = cameraDistance + S.fogFarPast;
   }
 
-  window.CakeStage = { attach: attach, setColours: setColours, setBrightness: setBrightness, update: update, S: S,
+  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, update: update, S: S,
                        get floor() { return floor; } };
 })();
