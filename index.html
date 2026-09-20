@@ -95,6 +95,16 @@
               <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
               <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
             </div>
+            <div class="tray-head sub"><span>Shape</span><button type="button" class="linkish" id="shape-reset">Reset shape</button></div>
+            <div class="seg small" id="shape-tiers">
+              <button type="button" data-tier="0" class="on">Tier 1</button>
+              <button type="button" data-tier="1">Tier 2</button>
+              <button type="button" data-tier="2">Tier 3</button>
+            </div>
+            <div class="tray-head sub"><span>Width</span><output id="sw-out">—</output></div>
+            <input id="f-sw" type="range" min="0" max="9" step="1" value="5">
+            <div class="tray-head sub"><span>Height</span><output id="sh-out">—</output></div>
+            <input id="f-sh" type="range" min="0" max="9" step="1" value="5">
           </div>
           <div id="ck-sponge" hidden>
             <div class="tray-head sub"><span>Filling</span></div>

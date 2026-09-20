@@ -1,25 +1,32 @@
-# Cake — v0.59 (sky and floor, for real)
+# Cake — v0.60 (tier shape)
 
-Three colour-space mistakes, all mine, all fixed. The sky and the floor now agree to within a
-couple of levels on every backdrop, including Midnight, and the floor plane's far edge no longer
-shows as a line.
+Each tier's **width and height are the sender's**. In the Cake tray's Tiers sub-tab, under the tier
+picker: tier pills (only as many as the cake has), a **Width** slider and a **Height** slider for
+the selected tier, and **Reset shape**. Ten steps each; radius 0.9–2.7, height 0.6–2.0.
 
-1. **The probe read back the wrong space.** An offscreen render target isn't output-encoded unless
-   told to, so the bytes were linear and I decoded them as sRGB — too dark. `probeRT.texture.encoding
-   = sRGBEncoding` makes the readback mean what the viewer sees.
-2. **Fog is applied in screen space in r128.** `fog_fragment` comes *after* `encodings_fragment`
-   (checked in the vendored build), so the fog colour must be handed over already converted to
-   sRGB. Handing it linear drew the far floor darker and more saturated than the sky — the band in
-   your screenshots.
-3. **The colour shim converted hex strings twice.** Three's `getHexString` calls `getHex` internally;
-   I had patched both, so the linear→sRGB conversion ran twice for strings. Barely visible on light
-   colours, dramatic on dark ones (Midnight's sky came out pale slate). Every CSS sky variable since
-   v0.55 was a little too bright because of it. `getHexString` is now derived from the *original*
-   `getHex` on an already-converted copy; `#161c33` round-trips as `#161c33`.
+## The constraint, as a clamp rather than a rule
+An upper tier can never be wider than the tier below it minus a 0.3 ledge (about a candle's width,
+so a tier always reads as a tier). The width slider's maximum for tier 2 *is* tier 1's current
+width minus the ledge, and likewise for tier 3; and narrowing a lower tier pulls the tiers above it
+down with it, so the stack is always valid and no slider ever sits somewhere illegal. Candles go on
+whatever ledge has room, or the top when none does — the placement already did that.
 
-Verified: Midnight top-of-canvas (19,20,31) vs near floor (24,21,31) vs CSS `#0f111d`; Sky and
-Cream within two levels; no errors.
+## Under the surface
+The fixed tier table (`TIERS`) is now only the classic starting point. Everything that read it — the
+camera framing and centre of mass, the box size, the free-area fit, candle placement, the cut
+wedges, the slice page, the ribbon pills — reads **`tiersFor(cfg)`** instead, so a custom shape is
+a first-class cake everywhere. Price and slice count stay keyed to tier *count*.
 
-A consequence worth knowing: Midnight is properly dark now rather than slate — that's the true
-palette under the night lighting. If it reads too dark on the phone, the night ambient in
-`LOOK.night.hemi` is the knob.
+## Schema
+`tp` appended: two characters per tier, width step and height step. Missing → the classic
+proportions, so every existing link is untouched; a new tier count also starts from the classic
+shape for that count. The live `sh` array is the runtime truth (UI edits); `tp` enters via decode
+or an explicit `cake.set({tp})`.
+
+## A bug this exposed and fixed
+`build()` only normalised its config when the ribbon array was missing, so `cake.set({t:3})` on a
+one-tier cake built a one-tier shape under a Showstopper label. `build()` now always normalises —
+the derived arrays must match the tier count.
+
+Verified: the clamp (tier 3's width max fell to step 1 after tier 1 went slim); link round trip; a
+recipient cutting a custom-shaped cake; legacy links decode to classic; 16 programs at load, 16 after.

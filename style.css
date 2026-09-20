@@ -632,3 +632,5 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .seg.small { margin: 4px 0 8px; }
 .seg.small button { padding: 6px 0; font-size: 0.85rem; }
 .seg.small button[hidden] { display: none; }
+
+.linkish { background: none; border: 0; padding: 0; font: inherit; font-size: 0.8rem; color: #3b2a2a; text-decoration: underline; }

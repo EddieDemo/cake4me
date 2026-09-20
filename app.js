@@ -173,6 +173,37 @@
     3: [ { r: 2.7, h: 1.4 }, { r: 1.95, h: 1.2 }, { r: 1.2, h: 1.0 } ]
   };
   var CAP_H = 0.32;
+  // Tier proportions are the sender's (v0.60): per tier a width step and a height step, each
+  // 0–9. Missing → the classic table above, so older links are untouched. Radius runs 0.9–2.7,
+  // height 0.6–2.0. An upper tier can never be wider than the one below it minus a ledge.
+  var SHAPE = { rMin: 0.9, rMax: 2.7, hMin: 0.6, hMax: 2.0, steps: 10, ledge: 0.3 };
+  function stepToR(st) { return SHAPE.rMin + (SHAPE.rMax - SHAPE.rMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
+  function stepToH(st) { return SHAPE.hMin + (SHAPE.hMax - SHAPE.hMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
+  function rToStep(r) { return Math.round((r - SHAPE.rMin) / (SHAPE.rMax - SHAPE.rMin) * (SHAPE.steps - 1)); }
+  function hToStep(h) { return Math.round((h - SHAPE.hMin) / (SHAPE.hMax - SHAPE.hMin) * (SHAPE.steps - 1)); }
+  // The classic proportions as steps, per tier count — what a fresh draft starts with.
+  function classicShape(t) { return (TIERS[t] || TIERS[1]).map(function (x) { return { r: rToStep(x.r), h: hToStep(x.h) }; }); }
+  // Enforce the stack: each tier's radius ≤ the tier below minus the ledge (in steps).
+  function constrainShape(sh) {
+    for (var i = 1; i < sh.length; i++) {
+      var maxR = stepToR(sh[i - 1].r) - SHAPE.ledge;
+      if (stepToR(sh[i].r) > maxR) sh[i].r = Math.max(0, Math.floor(rToStep(maxR)));
+    }
+    return sh;
+  }
+  function parseShape(str, t) {
+    var clean = String(str || '').replace(/[^0-9]/g, ''), n = (TIERS[t] || TIERS[1]).length, out = [];
+    if (clean.length < n * 2) return classicShape(t);
+    for (var i = 0; i < n; i++) out.push({ r: clampInt(+clean[i * 2], 0, 9, 0), h: clampInt(+clean[i * 2 + 1], 0, 9, 0) });
+    return constrainShape(out);
+  }
+  function serializeShape(sh) { return sh.map(function (x) { return String(x.r) + String(x.h); }).join(''); }
+  // THE tier list for a cake: radii and heights from the sender's shape. Everything that used
+  // to read TIERS[cfg.t] reads this.
+  function tiersFor(cfg) {
+    var sh = (cfg && cfg.sh && cfg.sh.length) ? cfg.sh : classicShape(cfg ? cfg.t : 1);
+    return sh.map(function (x) { return { r: stepToR(x.r), h: stepToH(x.h) }; });
+  }
   var PLATE_TOP = 0;      // cake sits on the ground; the contact shadow does the grounding
   var ROTATION_SECONDS_PER_TURN = 24;
   // Rendering fidelity.
@@ -260,8 +291,14 @@
       ly: clampInt(c.ly, 2, 4, 3),          // sponge layers (fillings = ly − 1)
       fr: clampInt(c.fr, 0, 1, 1),          // frosting: 0 none (naked), 1 smooth
       rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
-      rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9)   // per-tier ribbons (v0.58); wins when present
+      rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9),  // per-tier ribbons (v0.58); wins when present
+      tp: String(c.tp || '').replace(/[^0-9]/g, '').slice(0, 6)     // tier proportions (v0.60): width/height steps per tier
     };
+    // Live shape array; derived like rt. An explicit `sh` (UI edits) wins over the string.
+    out.sh = (c.sh && c.sh.length === (TIERS[out.t] || TIERS[1]).length)
+      ? constrainShape(c.sh.map(function (x) { return { r: clampInt(x.r, 0, 9, 0), h: clampInt(x.h, 0, 9, 0) }; }))
+      : parseShape(out.tp, out.t);
+    out.tp = serializeShape(out.sh);
     out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
@@ -273,7 +310,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -282,7 +319,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -510,7 +547,7 @@
 
   function build(cfg, opts) {
     markHeavy();
-    if (!cfg.rt) cfg = normalize(cfg);                   // the per-tier ribbon array is derived; make sure it's there
+    cfg = normalize(cfg);                                // derived arrays (rt, sh) must match the tier count; always normalise
     built.visible = true;
     var prevN = (config && config.t === cfg.t) ? (config.n | 0) : 0;
     var prevT = config ? config.t : null;
@@ -526,7 +563,7 @@
     var candleFrom = animate ? Math.min(prevN, MAX_CANDLES) : Infinity;   // candles with index ≥ this pop in
     var tierDrop = animate && prevT !== null && prevT !== cfg.t && cfg.t === 2;
 
-    var tiers = TIERS[cfg.t] || TIERS[1];
+    var tiers = tiersFor(cfg);
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
@@ -643,11 +680,11 @@
     // Materials created for this build are "shared" only until the next build.
     localShared.forEach(function (m) { m.__shared = false; });
 
-    fitShadow((TIERS[cfg.t] || TIERS[1])[0].r);
+    fitShadow(tiersFor(cfg)[0].r);
     rebuildLandings(cfg);
     if (window.CakeLook) CakeLook.adopt(built);
-    FRAME.cake = cakeFrame(cfg.t);
-    if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg.t); }
+    FRAME.cake = cakeFrame(cfg);
+    if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg); }
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = window.CakeLook ? CakeLook.candleIntensity(flames.length, darkness) : Math.min(1.6, 0.25 + flames.length * 0.03);
 
@@ -1013,7 +1050,7 @@
   function updateBleed() {
     if (!window.CakeLook || !config) return;
     var frosting = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
-    var r = (TIERS[config.t] || TIERS[1])[0].r;
+    var r = tiersFor(config)[0].r;
     var onFloor = !boxMode && built.visible !== false || !!cut;
     var left = cut ? slicesLeft() + (cut.lifted ? 1 : 0) : 1;
     CakeLook.setBleed(scene, new THREE.Color(frosting), r, onFloor && left > 0 && viewerMode !== 'slice', roomLit, candleLight.intensity);
@@ -1083,7 +1120,7 @@
     else CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
     var wasCasting = spot.castShadow, wasVisible = spot.visible;
     CakeLook.applySpot(spot);
-    spot.target.position.set(0, config ? centreOfMass(config.t) : 0.8, 0);
+    spot.target.position.set(0, config ? centreOfMass(config) : 0.8, 0);
     // A light that starts or stops casting changes every material's shader; recompile once, now.
     if (spot.castShadow !== wasCasting || spot.visible !== wasVisible) {
       scene.traverse(function (o) { var m = o.material; if (!m) return; (Array.isArray(m) ? m : [m]).forEach(function (mm) { mm.needsUpdate = true; }); });
@@ -1154,14 +1191,14 @@
   var FRAME = { cake: 3.6, box: 5.2 };   // 'cake' is recomputed per tier by cakeFrame()
   // Volume-weighted centre of mass (r²h per tier). The camera aims here, so one-, two- and
   // three-tier cakes all sit balanced instead of a fixed height that only suits the Classic.
-  function centreOfMass(tierKey) {
-    var tiers = TIERS[tierKey] || TIERS[1], num = 0, den = 0, y = PLATE_TOP;
+  function centreOfMass(cfgOrKey) {
+    var tiers = tiersFor(typeof cfgOrKey === 'object' ? cfgOrKey : config), num = 0, den = 0, y = PLATE_TOP;
     tiers.forEach(function (t) { var v = t.r * t.r * t.h; num += v * (y + t.h / 2); den += v; y += t.h; });
     return den ? num / den : 0.8;
   }
   // Framing radius from the cake's real size: wide cakes need width, tall cakes need height.
-  function cakeFrame(tierKey) {
-    var tiers = TIERS[tierKey] || TIERS[1], h = PLATE_TOP;
+  function cakeFrame(cfgOrKey) {
+    var tiers = tiersFor(typeof cfgOrKey === 'object' ? cfgOrKey : config), h = PLATE_TOP;
     tiers.forEach(function (t) { h += t.h; });
     return Math.max(tiers[0].r * 1.45, (h + 0.7) * 0.95);
   }
@@ -1377,7 +1414,7 @@
     // The box has to contain the WIDEST tier. A fixed half-width fits the Classic, but
     // the Showstopper's bottom tier (r 2.7) pushes straight through it.
     var widest = 2.2;
-    (TIERS[(config && config.t) || 1] || TIERS[1]).forEach(function (t) { widest = Math.max(widest, t.r); });
+    tiersFor(config).forEach(function (t) { widest = Math.max(widest, t.r); });
     BOX.half = widest + 0.30;
     BOX.h = height;
     boxMode = true;
@@ -1420,7 +1457,7 @@
   }
 
   function cakeHeight() {
-    var tiers = TIERS[config.t] || TIERS[1], h = PLATE_TOP;
+    var tiers = tiersFor(config), h = PLATE_TOP;
     tiers.forEach(function (t) { h += t.h; });
     return h + 0.7;     // candles + flames
   }
@@ -1477,7 +1514,7 @@
     boxMode = false;
     box.visible = lid.visible = ribbon.visible = false;
     showLidLabel(false);
-    setFrame('cake', centreOfMass(config ? config.t : 1));
+    setFrame('cake', centreOfMass(config));
   }
 
   // Kept for reference; the label is now pinned in screen space by CSS so the cake
@@ -1926,7 +1963,7 @@
   var landings = [];
   function rebuildLandings(cfg) {
     landings = [];
-    var tiers = TIERS[cfg.t] || TIERS[1];
+    var tiers = tiersFor(cfg);
     var y = PLATE_TOP;
     tiers.forEach(function (t, i) {
       y += t.h;
@@ -2209,9 +2246,9 @@
       built.position.y = 0.5 * Math.sin(Math.PI * k) * 0.6;
     }, done: function () {
       box.visible = false; built.position.y = 0;
-      boxMode = false; fitShadow((TIERS[config.t] || TIERS[1])[0].r);
+      boxMode = false; fitShadow(tiersFor(config)[0].r);
       tween({ duration: 160, ease: EASE.pop, update: function (k) { var sc = 1.03 - 0.03 * k; built.scale.set(sc, sc, sc); } });
-      setFrame('cake', centreOfMass(config ? config.t : 1));
+      setFrame('cake', centreOfMass(config));
     } });
     // 4. candles light in a ripple, centre out, capped at 1.2s
     setTimeout(function () {
@@ -2248,7 +2285,7 @@
   function saveCutState(code, st) { try { localStorage.setItem('cake.cut.' + code, JSON.stringify(st)); } catch (e) {} }
 
   function tierTops(cfg) {
-    var tiers = TIERS[cfg.t] || TIERS[1], y = PLATE_TOP, out = [];
+    var tiers = tiersFor(cfg), y = PLATE_TOP, out = [];
     tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, y0: y, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
     return out;
   }
@@ -2913,10 +2950,38 @@
     ['tiers', 'sponge', 'frosting'].forEach(function (x) { var el = $('ck-' + x); if (el) el.hidden = (x !== k); });
     setTimeout(resize, 0);
   }
+  // ---- Tier shape controls: width and height per tier, the stack always valid ----
+  var shapeTier = 0;
+  function syncShape() {
+    var n = tiersFor(draft).length;
+    if (shapeTier >= n) shapeTier = 0;
+    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) { b.hidden = i >= n; b.classList.toggle('on', i === shapeTier); });
+    var st = draft.sh[shapeTier];
+    var w = $('f-sw'), h = $('f-sh');
+    // Width can't exceed the tier below minus the ledge — the slider's max moves with it.
+    var maxStep = shapeTier === 0 ? SHAPE.steps - 1 : Math.max(0, Math.floor(rToStep(stepToR(draft.sh[shapeTier - 1].r) - SHAPE.ledge)));
+    w.max = maxStep; w.value = Math.min(st.r, maxStep); h.value = st.h;
+    $('sw-out').textContent = (stepToR(st.r) * 2).toFixed(1); $('sh-out').textContent = stepToH(st.h).toFixed(1);
+  }
   var ribbonTier = 0;                                  // which tier the Ribbon controls edit
   function syncRibbon() {
-    var tiers = TIERS[draft.t].length;
+    var tiers = tiersFor(draft).length;
     if (ribbonTier >= tiers) ribbonTier = 0;
+    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) {
+      b.addEventListener('click', function () { shapeTier = i; syncShape(); });
+    });
+    $('f-sw').addEventListener('input', function (e) {
+      draft.sh[shapeTier].r = +e.target.value; draft = normalize(draft);   // normalize re-clamps the tiers above
+      syncShape(); syncRibbon(); build(draft);
+    });
+    $('f-sh').addEventListener('input', function (e) {
+      draft.sh[shapeTier].h = +e.target.value; draft = normalize(draft);
+      syncShape(); build(draft);
+    });
+    $('shape-reset').addEventListener('click', function () {
+      draft.sh = classicShape(draft.t); draft = normalize(draft);
+      syncShape(); build(draft);
+    });
     Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) {
       b.hidden = i >= tiers; b.classList.toggle('on', i === ribbonTier);
     });
@@ -2929,6 +2994,7 @@
   }
   function syncFrosting() {
     syncRibbon();
+    syncShape();
     var on = !!draft.fr;
     var box = $('f-frost'); if (box) box.checked = on;
     var opts = $('frost-opts'); if (opts) opts.classList.toggle('dim', !on);
@@ -3040,7 +3106,8 @@
     Array.prototype.forEach.call(els.tiers.children, function (b) {
       b.addEventListener('click', function () {
         draft.t = b.getAttribute('data-t') | 0;
-        syncTiers(draft.t);
+        draft.sh = classicShape(draft.t); draft = normalize(draft);   // a new tier count starts from the classic shape
+        syncTiers(draft.t); syncShape(); syncRibbon();
         updateCta();
         build(draft, { showMessage: true });
       });
@@ -3334,6 +3401,7 @@
       for (var k in config) next[k] = config[k];
       for (var j in partial) next[j] = partial[j];
       if ('rbt' in partial) delete next.rt;              // an explicit ribbon string beats the live per-tier array
+      if ('tp' in partial) delete next.sh;               // likewise an explicit shape string
       if (draft && !document.body.classList.contains('mode-viewer')) { draft = normalize(next); syncForm(); }
       build(next, { showMessage: showMessage });
     },
