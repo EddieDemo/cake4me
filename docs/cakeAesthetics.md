@@ -142,11 +142,40 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   paint × (ambient + direct) lands near the paint in daylight. The dev panel's ambient and key
   sliders are the whole rig: ambient scales everything, key sets shadow depth, light size sets
   softness.
+- **Baked ambient occlusion (v0.41)** — `shapes.js` writes a darkness per vertex along the lathe
+  profiles (the tier's foot, the tuck under the cap's overhang, the cap's underside lip, and a ring
+  on a tier's top where the tier above sits), and the cake materials multiply by it via
+  `vertexColors`. Analytic, noise-free, free at runtime. The bright streaks at every tier junction
+  were the hemisphere's ground bounce lighting the new downward-facing fillets — light that can't
+  physically reach a crease. The ground bounce was also turned down (#f0d6bd → #b8a48f).
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
-  contact-hardening (done) → lit floor (done) →
+  contact-hardening (done) → lit floor (done) → baked AO (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.
+
+## What game engines have that we still don't (20 Sept 2026) — to return to
+
+In the order they'd matter for a cake:
+
+1. ~~Ambient occlusion~~ — baked, v0.41. Screen-space AO (three's SSAOPass) remains available as a
+   dev-toggle experiment for the dynamic layer; not planned.
+2. **Subsurface scattering.** Sponge and buttercream are translucent; without it they read as
+   plaster. A cheap "wrap lighting" term — light bleeding slightly past the terminator into the
+   shadow side with a warm tint — is most of the food-ness for almost nothing. The one that would
+   make it look like cake.
+3. **Colour bleeding / GI.** Pink frosting should tint the floor beside it and the tier below. Real
+   GI is out of reach; a proxy is tinting the hemisphere's ground colour with the frosting colour.
+4. **Environment reflections and tone mapping.** Built, switched off, waiting for glossy materials
+   (glaze, satin ribbon, sugar work).
+5. **Real bloom.** Faked with halo sprites; a true post-process bloom would also glow the message
+   and the wax. Perf-dependent.
+6. **Physically-correct light units.** One-line switch affecting the candle light's falloff; needs
+   retuning.
+7. **Depth of field** for the photo/video export only.
+
+Point-light shadows from the candles and motion blur are on the engine list too; neither is worth
+its cost here.
 
 ## Tier D — skip for now
 

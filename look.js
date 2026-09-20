@@ -85,7 +85,7 @@
     // Retuned (v0.37) for a LIT floor: the floor's paint colour × (ambient + direct) should land
     // close to the paint colour in daylight, so Cream renders as cream rather than clipping white.
     lights: {
-      hemiSky: '#e9f0ff', hemiGround: '#f0d6bd', hemi: 0.55,
+      hemiSky: '#e9f0ff', hemiGround: '#b8a48f', hemi: 0.55,   // ground bounce turned down (v0.41): one window's worth, not a lightbox
       key: 0.62, fill: 0.20
     },
     // Dev-panel multipliers on the room (ambient) and the sun/window (key). 1 = as designed.
@@ -254,38 +254,20 @@
   // one tiny mesh per shader variant the app ever uses lives permanently under the floor —
   // inside the shadow frustum, hidden by the floor — and every program (including the
   // shadow-depth variants) compiles on the very first frame instead of mid-gesture.
+  // A pair of tiny permanent casters under the floor so the shadow-DEPTH programs (plain and
+  // instanced) compile on the first frame. renderer.compile() doesn't cover the shadow pass.
+  // The material programs themselves are warmed by app.js's warmCompile(), which builds one
+  // of each real thing the app makes rather than a hand-written list.
   function warmUp(scene) {
     var g = new THREE.Group(); g.name = 'shader-warmup'; g.position.y = -0.6;
     var tiny = new THREE.BoxGeometry(0.05, 0.05, 0.05);
-    // Texture ENCODING is part of the shader signature. The app's canvas textures are sRGB, so
-    // the warm-up's must be too, or these compile the wrong variant and the real one still
-    // compiles mid-gesture.
-    var c = document.createElement('canvas'); c.width = c.height = 2;
-    var tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
-    var variants = [
-      new THREE.MeshStandardMaterial({ roughness: 0.6 }),                                   // frosting, cap, box, plate
-      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex }),                         // filling faces (map)
-      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex, emissiveMap: tex }),       // message band (map + emissiveMap)
-      new THREE.MeshStandardMaterial({ roughness: 0.6, map: tex, side: THREE.DoubleSide }), // cut faces (double-sided)
-      new THREE.MeshStandardMaterial({ roughness: 0.6, side: THREE.DoubleSide }),           // ribbon band
-      new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.5 }),  // fading pieces
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5 }),                     // seams
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })       // contact disc
-    ];
-    variants.forEach(function (m) {
-      var mesh = new THREE.Mesh(tiny, m); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
-    });
-    var inst = new THREE.InstancedMesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.6, vertexColors: true }), 1);
-    inst.castShadow = true; inst.receiveShadow = true; inst.setMatrixAt(0, new THREE.Matrix4());
-    inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(3), 3);   // confetti: per-instance colour is a variant too
-    g.add(inst);
-    var candles = new THREE.InstancedMesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.45 }), 1);
-    candles.castShadow = true; candles.receiveShadow = true; candles.setMatrixAt(0, new THREE.Matrix4()); g.add(candles);
+    var m = new THREE.Mesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.6 })); m.castShadow = true; m.receiveShadow = true; g.add(m);
+    var inst = new THREE.InstancedMesh(tiny, new THREE.MeshStandardMaterial({ roughness: 0.6 }), 1);
+    inst.castShadow = true; inst.receiveShadow = true; inst.setMatrixAt(0, new THREE.Matrix4()); g.add(inst);
     g.traverse(function (o) { o.userData.__look = true; });
     scene.add(g);
     return g;
   }
-
   // ---------- flame halo ----------
   var haloTex = null, haloMat = null;
   function makeHaloTexture() {

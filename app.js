@@ -474,8 +474,9 @@
     var ribbonHex = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
     var ink = pickInk(frosting, cfg.tc);
 
-    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    // vertexColors: the lathe geometry carries baked ambient occlusion as a grey per vertex.
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
     nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
     frostingMat.__shared = capMat.__shared = true;   // reused across meshes within this build
     var localShared = [frostingMat, capMat];
@@ -497,7 +498,7 @@
       if (tier === messageTier && cfg.m && showMessage) {
         // Frosting colour is baked into the canvas so light ink stays light on dark cakes.
         sideMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff, roughness: 0.62, map: makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH)
+          color: 0xffffff, roughness: 0.62, map: makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH), vertexColors: true
         });
         nightGlow(sideMat, 0xffffff, true);
       }
@@ -510,7 +511,8 @@
       if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = bodyH; }
 
       // Frosting cap, a touch wider than the body
-      var capGeo = CakeShapes.cap(tier.r, CAP_H, CYL_SEG, open, Math.PI * 2 - open);
+      var above = tiers[i + 1];                 // the tier sitting on this one, if any
+      var capGeo = CakeShapes.cap(tier.r, CAP_H, CYL_SEG, open, Math.PI * 2 - open, above ? above.r : undefined);
       var cap = new THREE.Mesh(capGeo, capMat);
       cap.position.y = y + bodyH;
       tg.add(cap);
@@ -520,7 +522,7 @@
       // Cut faces (dev cut-away): two planes showing sponge + filling layers
       if (cfg.cutaway) {
         var faceTex = makeLayersTexture(filling);
-        var faceMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.9, side: THREE.DoubleSide });
+        var faceMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
         faceMat.__shared = true; localShared.push(faceMat);
         [0, open].forEach(function (theta) {
           var face = new THREE.Mesh(CakeShapes.cutFace(tier.r, bodyH, CAP_H), faceMat);
@@ -596,7 +598,7 @@
     var mat;
     if (m && showMessage) {
       mat = new THREE.MeshStandardMaterial({
-        color: 0xffffff, roughness: 0.62, map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tier.r, bodyH)
+        color: 0xffffff, roughness: 0.62, map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tier.r, bodyH), vertexColors: true
       });
     } else {
       mat = messageMesh.material[1];   // plain frosting
@@ -2114,7 +2116,7 @@
 
   function tierTops(cfg) {
     var tiers = TIERS[cfg.t] || TIERS[1], y = PLATE_TOP, out = [];
-    tiers.forEach(function (t) { out.push({ r: t.r, h: t.h, y0: y }); y += t.h; });
+    tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, y0: y, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
     return out;
   }
 
@@ -2130,12 +2132,12 @@
       t.wrapS = THREE.RepeatWrapping;
       t.repeat.x = len / (Math.PI * 2);
       t.offset.x = theta0 / (Math.PI * 2);
-      side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t });
+      side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t, vertexColors: true });
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
     var body = new THREE.Mesh(CakeShapes.body(tier.r, bodyH, wseg, theta0, len), [side, frostingMat, frostingMat]);
     body.position.y = tier.y0; g.add(body);
-    var cap = new THREE.Mesh(CakeShapes.cap(tier.r, CAP_H, wseg, theta0, len), capMat);
+    var cap = new THREE.Mesh(CakeShapes.cap(tier.r, CAP_H, wseg, theta0, len, tier.aboveR), capMat);
     cap.position.y = tier.y0 + bodyH; g.add(cap);
     // Cut faces follow the rounded outline, so the wedge matches the whole cake.
     [theta0, theta0 + len].forEach(function (th) {
@@ -2155,10 +2157,10 @@
     var st = loadCutState(code);
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
-    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
     nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
-    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
+    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
     var msgMap = messageMesh && messageMesh.material[0] && messageMesh.material[0].map ? messageMesh.material[0].map : null;
 
     built.visible = false;                    // the whole cake, candles included, steps aside
@@ -2361,10 +2363,10 @@
     while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]);
     var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
-    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62 });
-    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55 });
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
     nightGlow(frostingMat, frosting, false); nightGlow(capMat, lighten(frosting, 0.12), false);
-    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide });
+    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
     var tiers = tierTops(cfg);
     var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
     var tier = { r: tiers[ti].r, h: tiers[ti].h, y0: 0.08 };
@@ -3005,6 +3007,41 @@
   // =====================================================================
   //  Router
   // =====================================================================
+  // =====================================================================
+  //  Shader warm-compile. Three compiles a material's program on its first draw, and the
+  //  PCSS variant is heavy — a compile mid-gesture reads as a freeze. Rather than maintain a
+  //  hand-written list of material variants (which drifted out of date within a day), build
+  //  one of each REAL thing the app makes, let renderer.compile() initialise every program,
+  //  then throw the stand-ins away. renderer.compile walks every object with a material,
+  //  visible or not, so nothing needs to be on screen.
+  // =====================================================================
+  function warmCompile() {
+    var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
+    var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
+    var frosting = PALETTES.frosting[0].hex, filling = PALETTES.filling[7].layers;
+    var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
+    var capMat = new THREE.MeshStandardMaterial({ color: lighten(frosting, 0.12), roughness: 0.55, vertexColors: true });
+    var faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
+    var msgTex = makeMessageTexture('warm', INK_DARK, frosting, 2.2, 1.2);
+    var msgMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: msgTex, vertexColors: true });
+    nightGlow(msgMat, 0xffffff, true);                                   // message band: map + emissiveMap
+    var tier = { r: 2.2, h: 1.6, y0: 0, aboveR: 1.4 };
+    tmp.add(makeWedge(tier, 0, cfg, frostingMat, capMat, faceMat, msgTex)); // wedge band: map, no emissive
+    tmp.add(makeWedge(tier, 1, cfg, frostingMat, capMat, faceMat, null));
+    var wholeBody = new THREE.Mesh(CakeShapes.body(2.2, 1.28, 8), [msgMat, frostingMat, frostingMat]); tmp.add(wholeBody);
+    tmp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 8), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 })));   // plate
+    tmp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.16, depthWrite: false }))); // seams
+    tmp.add(new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 4, 8), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5 })));      // plate rim
+    if (window.CakeLook) CakeLook.adopt(tmp);
+    scene.add(tmp);
+    // The box, the confetti mesh (count 0) and the floor already exist in the scene; the
+    // built cake and its candles do too. compile() takes all of them in one pass.
+    try { renderer.compile(scene, camera); } catch (e) {}
+    scene.remove(tmp);
+    tmp.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
+    msgTex.dispose();
+  }
+
   function route() {
     endCeremony();
     stopMic();
@@ -3075,6 +3112,7 @@
     wireBuilder();
     wireViewer();
     route();
+    warmCompile();
     window.addEventListener('hashchange', route);
     frame();
   }
