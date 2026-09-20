@@ -2910,7 +2910,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'cake', 'candles', 'backdrop'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -2941,14 +2941,6 @@
       mats.forEach(function (m) { m.transparent = false; m.opacity = 1; });
       tierGroups.forEach(function (tg) { tg.scale.set(1, 1, 1); });
     } });
-  }
-  // Cake tray sub-tabs: Tiers · Sponge · Frosting — the order a cake is made.
-  var cakeTab = 'tiers';
-  function setCakeTab(k) {
-    cakeTab = k;
-    Array.prototype.forEach.call($('caketabs').children, function (t) { t.classList.toggle('on', t.getAttribute('data-k') === k); });
-    ['tiers', 'sponge', 'frosting'].forEach(function (x) { var el = $('ck-' + x); if (el) el.hidden = (x !== k); });
-    setTimeout(resize, 0);
   }
   // ---- Tier shape controls: width and height per tier, the stack always valid ----
   var shapeTier = 0;
@@ -3051,11 +3043,8 @@
 
   function wireBuilder() {
     makeOccasions();
-    Array.prototype.forEach.call($('chiprow').children, function (c) {
+    Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip'), function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
-    });
-    Array.prototype.forEach.call($('caketabs').children, function (t) {
-      t.addEventListener('click', function () { setCakeTab(t.getAttribute('data-k')); });
     });
     $('f-frost').addEventListener('change', function (e) {
       draft.fr = e.target.checked ? 1 : 0;
@@ -3077,7 +3066,7 @@
       draft.rt[ribbonTier].w = +e.target.value; draft = normalize(draft);
       syncRibbon(); build(draft);
     });
-    setCakeTab('tiers');
+
 
     makeSwatches(els.swFc, PALETTES.frosting, 'fc');
     makeSwatches(els.swIc, PALETTES.filling, 'ic');

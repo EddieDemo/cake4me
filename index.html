@@ -26,28 +26,33 @@
 
     <!-- Builder (sender): floating chip bar + one tray at a time -->
     <section class="builder" id="builder" aria-label="Make a cake">
+      <!-- One row of decisions, in four groups, left to right in the order a cake is made.
+           Each tray holds ONE decision and is at most three rows, so the cake keeps the screen. -->
       <div class="chiprow" id="chiprow" role="tablist">
-        <button type="button" class="chip" data-tray="occasion" aria-selected="false">
-          <span class="ic" aria-hidden="true" id="chip-o-ic">🎁</span><span id="chip-o">Occasion</span>
-        </button>
-        <button type="button" class="chip" data-tray="message" aria-selected="false">
-          <span class="ic" aria-hidden="true">✎</span>Message
-        </button>
-        <button type="button" class="chip" data-tray="cake" aria-selected="false">
-          <span class="ic" aria-hidden="true">◍</span>Cake
-        </button>
-        <button type="button" class="chip" data-tray="candles" aria-selected="false">
-          <span class="ic" aria-hidden="true">🎀</span>Decorate
-        </button>
-        <button type="button" class="chip" data-tray="backdrop" aria-selected="false">
-          <span class="ic" aria-hidden="true">🖼</span>Backdrop</button>
+        <span class="grp-label" aria-hidden="true">gift</span>
+        <button type="button" class="chip" data-tray="occasion" aria-selected="false"><span class="ic" aria-hidden="true" id="chip-o-ic">🎁</span><span id="chip-o">Occasion</span></button>
+        <button type="button" class="chip" data-tray="message" aria-selected="false"><span class="ic" aria-hidden="true">✎</span>Message</button>
+        <span class="chip-gap" aria-hidden="true"></span>
+        <span class="grp-label" aria-hidden="true">cake</span>
+        <button type="button" class="chip" data-tray="tiers" aria-selected="false"><span class="ic" aria-hidden="true">◍</span>Tiers</button>
+        <button type="button" class="chip" data-tray="shape" aria-selected="false"><span class="ic" aria-hidden="true">⤢</span>Shape</button>
+        <button type="button" class="chip" data-tray="sponge" aria-selected="false"><span class="ic" aria-hidden="true">▤</span>Sponge</button>
+        <button type="button" class="chip" data-tray="frosting" aria-selected="false"><span class="ic" aria-hidden="true">◐</span>Frosting</button>
+        <span class="chip-gap" aria-hidden="true"></span>
+        <span class="grp-label" aria-hidden="true">decorate</span>
+        <button type="button" class="chip" data-tray="candles" aria-selected="false"><span class="ic" aria-hidden="true">🕯</span>Candles</button>
+        <button type="button" class="chip" data-tray="ribbon" aria-selected="false"><span class="ic" aria-hidden="true">🎀</span>Ribbon</button>
+        <span class="chip-gap" aria-hidden="true"></span>
+        <span class="grp-label" aria-hidden="true">scene</span>
+        <button type="button" class="chip" data-tray="backdrop" aria-selected="false"><span class="ic" aria-hidden="true">🖼</span>Backdrop</button>
       </div>
 
       <div class="trays" id="trays">
         <div class="tray" id="tray-occasion" hidden>
           <div class="tray-head"><span>What's the occasion?</span></div>
-          <div class="occasions" id="occasions" role="radiogroup" aria-label="Occasion"></div>
+          <div class="occasions" id="occasions"></div>
         </div>
+
         <div class="tray" id="tray-message" hidden>
           <div class="tray-row two">
             <label>To<input id="f-to" type="text" maxlength="24" autocomplete="off" placeholder="Their name"></label>
@@ -57,86 +62,69 @@
             <input id="f-m" type="text" maxlength="80" autocomplete="off" placeholder="Happy birthday!">
             <span class="count" id="m-count">0 / 80</span>
           </label>
-          <div class="tray-head sub"><span>Writing colour</span></div>
-          <div class="swatches" id="sw-tc" data-c="tc"></div>
+          <div class="rowline"><span class="rowlab">Writing</span><div class="swatches" id="sw-tc" data-c="tc"></div></div>
           <p class="tray-note" id="colour-note">&nbsp;</p>
         </div>
 
-        <!-- Decorate: candles and ribbon now; sprinkles and toppers later -->
+        <div class="tray" id="tray-tiers" hidden>
+          <div class="tiers" id="tiers">
+            <button type="button" class="tier" data-t="1"><strong>Classic</strong><span>£4.49 · 8 slices</span></button>
+            <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
+            <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
+          </div>
+        </div>
+
+        <div class="tray" id="tray-shape" hidden>
+          <div class="rowline"><div class="seg small grow" id="shape-tiers">
+            <button type="button" data-tier="0" class="on">Tier 1</button>
+            <button type="button" data-tier="1">Tier 2</button>
+            <button type="button" data-tier="2">Tier 3</button>
+          </div><button type="button" class="linkish" id="shape-reset">Reset</button></div>
+          <div class="rowline"><span class="rowlab">Width</span><input id="f-sw" type="range" min="0" max="9" step="1" value="5"><output id="sw-out">—</output></div>
+          <div class="rowline"><span class="rowlab">Height</span><input id="f-sh" type="range" min="0" max="9" step="1" value="5"><output id="sh-out">—</output></div>
+        </div>
+
+        <div class="tray" id="tray-sponge" hidden>
+          <div class="rowline"><span class="rowlab">Filling</span><div class="swatches" id="sw-ic" data-c="ic"></div></div>
+          <div class="rowline"><span class="rowlab">Layers</span><div class="seg small grow" id="layers">
+            <button type="button" data-ly="2">2</button>
+            <button type="button" data-ly="3" class="on">3</button>
+            <button type="button" data-ly="4">4</button>
+          </div><output id="ly-out" hidden>3</output></div>
+        </div>
+
+        <div class="tray" id="tray-frosting" hidden>
+          <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-frost"><span class="knob"></span><span class="tlabel">Frost</span></label>
+            <div class="swatches" id="sw-fc" data-c="fc"></div></div>
+          <div id="frost-opts" class="dim">
+            <div class="rowline"><span class="rowlab">Style</span><div class="seg small grow" id="frost-style">
+              <button type="button" class="on" data-fr="1">Smooth</button>
+              <button type="button" disabled>Drip</button>
+              <button type="button" disabled>Rustic</button>
+              <button type="button" disabled>Semi-naked</button>
+            </div></div>
+          </div>
+        </div>
+
         <div class="tray" id="tray-candles" hidden>
-          <div class="tray-head"><span>Candles</span><output id="n-out" for="f-n">30</output></div>
-          <input id="f-n" type="range" min="0" max="100" value="30">
-          <div class="tray-head sub"><span>Candle colour</span></div>
-          <div class="swatches" id="sw-cc" data-c="cc"></div>
-          <div class="tray-head sub" style="margin-top:12px"><span>Ribbon</span></div>
+          <div class="rowline"><span class="rowlab">Candles</span><input id="f-n" type="range" min="0" max="100" value="30"><output id="n-out" for="f-n">30</output></div>
+          <div class="rowline"><span class="rowlab">Colour</span><div class="swatches" id="sw-cc" data-c="cc"></div></div>
+        </div>
+
+        <div class="tray" id="tray-ribbon" hidden>
           <div class="seg small" id="ribbon-tiers">
             <button type="button" data-tier="0" class="on">Tier 1</button>
             <button type="button" data-tier="1">Tier 2</button>
             <button type="button" data-tier="2">Tier 3</button>
           </div>
-          <label class="toggle"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon on this tier</span></label>
-          <div id="ribbon-opts" class="dim">
-            <div class="swatches" id="sw-rc" data-c="rc"></div>
-            <div class="tray-head sub"><span>Width</span><output id="rw-out">0.32</output></div>
-            <input id="f-rw" type="range" min="0" max="7" step="1" value="4">
-          </div>
-        </div>
-
-        <!-- Cake: made in the order a cake is made — tiers, then the sponge, then frosting -->
-        <div class="tray" id="tray-cake" hidden>
-          <div class="subtabs" id="caketabs">
-            <button type="button" data-k="tiers" class="on">Tiers</button>
-            <button type="button" data-k="sponge">Sponge</button>
-            <button type="button" data-k="frosting">Frosting</button>
-          </div>
-          <div id="ck-tiers">
-            <div class="tiers" id="tiers">
-              <button type="button" class="tier" data-t="1"><strong>Classic</strong><span>£4.49 · 8 slices</span></button>
-              <button type="button" class="tier" data-t="2"><strong>Two-tier</strong><span>£9.99 · 16 slices</span></button>
-              <button type="button" class="tier" data-t="3"><strong>Showstopper</strong><span>£24.99 · 24</span></button>
-            </div>
-            <div class="tray-head sub"><span>Shape</span><button type="button" class="linkish" id="shape-reset">Reset shape</button></div>
-            <div class="seg small" id="shape-tiers">
-              <button type="button" data-tier="0" class="on">Tier 1</button>
-              <button type="button" data-tier="1">Tier 2</button>
-              <button type="button" data-tier="2">Tier 3</button>
-            </div>
-            <div class="tray-head sub"><span>Width</span><output id="sw-out">—</output></div>
-            <input id="f-sw" type="range" min="0" max="9" step="1" value="5">
-            <div class="tray-head sub"><span>Height</span><output id="sh-out">—</output></div>
-            <input id="f-sh" type="range" min="0" max="9" step="1" value="5">
-          </div>
-          <div id="ck-sponge" hidden>
-            <div class="tray-head sub"><span>Filling</span></div>
-            <div class="swatches" id="sw-ic" data-c="ic"></div>
-            <div class="tray-head sub"><span>Layers</span><output id="ly-out">3</output></div>
-            <div class="seg" id="layers">
-              <button type="button" data-ly="2">2</button>
-              <button type="button" data-ly="3" class="on">3</button>
-              <button type="button" data-ly="4">4</button>
-            </div>
-          </div>
-          <div id="ck-frosting" hidden>
-            <label class="toggle"><input type="checkbox" id="f-frost"><span class="knob"></span><span class="tlabel">Frost the cake</span></label>
-            <div id="frost-opts" class="dim">
-              <div class="tray-head sub"><span>Colour</span></div>
-              <div class="swatches" id="sw-fc" data-c="fc"></div>
-              <div class="tray-head sub"><span>Style</span></div>
-              <div class="seg" id="frost-style">
-                <button type="button" class="on" data-fr="1">Smooth</button>
-                <button type="button" disabled>Drip</button>
-                <button type="button" disabled>Rustic</button>
-                <button type="button" disabled>Semi-naked</button>
-              </div>
-            </div>
-          </div>
+          <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon</span></label>
+            <div id="ribbon-opts" class="dim grow"><div class="swatches" id="sw-rc" data-c="rc"></div></div></div>
+          <div class="rowline" id="ribbon-width-row"><span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="7" step="1" value="4"><output id="rw-out">0.32</output></div>
         </div>
 
         <div class="tray" id="tray-backdrop" hidden>
-          <div class="tray-head sub"><span>Backdrop</span></div>
-          <div class="swatches" id="sw-bg" data-c="bg"></div>
+          <div class="rowline"><span class="rowlab">Backdrop</span><div class="swatches" id="sw-bg" data-c="bg"></div></div>
         </div>
-
       </div>
 
       <button type="button" class="primary" id="get-link">Get my link · <span id="cta-price">£4.49</span></button>

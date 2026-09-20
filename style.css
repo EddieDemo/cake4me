@@ -634,3 +634,23 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .seg.small button[hidden] { display: none; }
 
 .linkish { background: none; border: 0; padding: 0; font: inherit; font-size: 0.8rem; color: #3b2a2a; text-decoration: underline; }
+
+/* ---- v0.61: one decision per tray, rows not stacks ---- */
+.chiprow .grp-label { align-self: center; flex: none; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(59,42,42,0.5); padding: 0 0.1rem 0 0.2rem; }
+.chiprow .chip-gap { flex: none; width: 1px; height: 1.4rem; align-self: center; background: rgba(59,42,42,0.16); margin: 0 0.25rem; }
+.rowline { display: flex; align-items: center; gap: 0.6rem; min-height: 2.4rem; }
+.rowline + .rowline { margin-top: 0.15rem; }
+.rowline .rowlab { flex: none; width: 3.6rem; font-size: 0.78rem; color: var(--ink-soft, #8a7f78); }
+.rowline input[type="range"] { flex: 1; min-width: 0; margin: 0; }
+.rowline output { flex: none; width: 2.4rem; text-align: right; font-size: 0.8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rowline .grow { flex: 1; min-width: 0; }
+.rowline .swatches { flex: 1; min-width: 0; }
+/* swatch rows always scroll on one line, never wrap */
+.swatches { flex-wrap: nowrap; overflow-x: auto; padding: 0.2rem 0.15rem; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.swatches::-webkit-scrollbar { display: none; }
+.swatches > * { flex: none; }
+.toggle.inline { margin: 0; flex: none; gap: 0.5rem; }
+.toggle.inline .tlabel { font-size: 0.85rem; }
+.seg.small.grow { margin: 0; }
+#ribbon-opts.dim, #frost-opts.dim { opacity: .35; pointer-events: none; }
+.tray-note { margin: 0.1rem 0 0; }
