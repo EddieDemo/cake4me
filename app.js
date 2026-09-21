@@ -40,14 +40,19 @@
   function serializeRibbons(rt) {
     return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
   }
-  var FROST_T = 0.08;            // frosting thickness: a naked sponge is this much smaller than the shell
+  // The SPONGE is the object: the shape sliders size it, the fillings sit inside it, the grooves
+  // are in it. Frosting is a layer ON the sponge. Smooth frosting is a shell of real thickness
+  // (FROST_T on the sides, FROST_TOP on top) so a frosted tier is fractionally bigger than the
+  // same sponge naked; semi-naked is a scrape of no thickness, so it IS the sponge's geometry.
+  var FROST_T = 0.08;            // smooth frosting: side thickness
+  var FROST_TOP = 0.10;          // smooth frosting: extra height on top
   var FILL_T = 0.09;             // filling thickness, world units — the same whatever the layer count
   var NAKED_CAP_H = 0.12;        // a naked tier's top disc is thin, so no filling hides inside it
   function capHeightFor(cfg) { return cfg.fr ? CAP_H : NAKED_CAP_H; }
   // Where the fillings sit in a tier, bottom→top, in world units. Sponge layers are equal;
   // the top layer runs up into the cap.
   function layerScheme(tierH, spongeLayers) {
-    var n = Math.max(2, Math.min(4, spongeLayers | 0)), fills = [];
+    var n = Math.max(1, Math.min(4, spongeLayers | 0)), fills = [];
     var spongeT = (tierH - (n - 1) * FILL_T) / n;
     for (var i = 1; i < n; i++) { var y0 = i * spongeT + (i - 1) * FILL_T; fills.push([y0, y0 + FILL_T]); }
     return { n: n, spongeT: spongeT, fillT: FILL_T, fills: fills, h: tierH };
@@ -200,9 +205,16 @@
   function serializeShape(sh) { return sh.map(function (x) { return String(x.r) + String(x.h); }).join(''); }
   // THE tier list for a cake: radii and heights from the sender's shape. Everything that used
   // to read TIERS[cfg.t] reads this.
+  // OUTER tier dimensions (what the camera, box, candles, cut and ribbon see), plus the sponge's
+  // own dimensions (rs, hs). Frosting that has thickness makes the outer bigger than the sponge.
+  function frostingHasThickness(cfg) { return !!cfg && cfg.fr === 1; }   // smooth (drip/rustic will too)
   function tiersFor(cfg) {
     var sh = (cfg && cfg.sh && cfg.sh.length) ? cfg.sh : classicShape(cfg ? cfg.t : 1);
-    return sh.map(function (x) { return { r: stepToR(x.r), h: stepToH(x.h) }; });
+    var thick = frostingHasThickness(cfg);
+    return sh.map(function (x) {
+      var rs = stepToR(x.r), hs = stepToH(x.h);
+      return { r: rs + (thick ? FROST_T : 0), h: hs + (thick ? FROST_TOP : 0), rs: rs, hs: hs };
+    });
   }
   var PLATE_TOP = 0;      // cake sits on the ground; the contact shadow does the grounding
   var ROTATION_SECONDS_PER_TURN = 24;
@@ -288,7 +300,7 @@
       // Lighting, appended after o: the room the sender lit the cake in (look.js serialises
       // it; '' means "as designed"). Only digits, '.', '-' and '~' survive.
       lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200),
-      ly: clampInt(c.ly, 2, 4, 3),          // sponge layers (fillings = ly − 1)
+      ly: clampInt(c.ly, 1, 4, 3),          // sponge layers (fillings = ly − 1); 1 = just cake, no fillings
       fr: clampInt(c.fr, 0, 4, 1),          // frosting: 0 none · 1 smooth · 2 drip · 3 rustic · 4 semi-naked
       rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
       rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9),  // per-tier ribbons (v0.58); wins when present
@@ -599,7 +611,7 @@
       var ink = pickInk(frosting, cfg.tc);
       var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH;
       frostingMat.__shared = capMat.__shared = true; localShared.push(frostingMat, capMat);
-      var bodyH = TM.bodyH;
+      var bodyH = TM.bodyH, rr = TM.rr;
       var open = cfg.cutaway ? Math.PI / 4 : 0;          // dev wedge removed
       var tg = new THREE.Group();                        // this tier's meshes, so it can drop in
       built.add(tg);
@@ -615,14 +627,13 @@
         var keptMap = (opts && opts.keepMessage && keepMessageMap) ? keepMessageMap : null;
         sideMat = new THREE.MeshStandardMaterial({
           color: 0xffffff, roughness: naked ? 0.95 : (cfg.fr === 4 ? 0.85 : 0.62),
-          map: keptMap || makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH, msgBase), vertexColors: true
+          map: keptMap || makeMessageTexture(cfg.m, ink, frosting, rr, bodyH, msgBase), vertexColors: true
         });
         if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
         nightGlow(sideMat, 0xffffff, true);
       }
       // Rounded lathe profiles (shapes.js): a slight bulge, a rounded base, a rounded rim.
       // The lathe's origin is its base, not its centre, hence the different .position.y.
-      var rr = naked ? tier.r - FROST_T : tier.r;   // the sponge is what's left when the frosting is off
       var bodyGeo = CakeShapes.body(rr, bodyH, CYL_SEG, open, Math.PI * 2 - open, scheme);
       var body = new THREE.Mesh(bodyGeo, [sideMat, frostingMat, frostingMat]);
       body.position.y = y;
@@ -631,7 +642,8 @@
 
       // Frosting cap, a touch wider than the body
       var above = tiers[i + 1];                 // the tier sitting on this one, if any
-      var capGeo = CakeShapes.cap(rr, capH, CYL_SEG, open, Math.PI * 2 - open, above ? (naked ? above.r - FROST_T : above.r) : undefined);
+      var aboveTM = above ? (frostingHasThickness(cfg) ? above.r : above.rs) : undefined;
+      var capGeo = CakeShapes.cap(rr, capH, CYL_SEG, open, Math.PI * 2 - open, aboveTM);
       var cap = new THREE.Mesh(capGeo, capMat);
       cap.position.y = y + bodyH;
       tg.add(cap);
@@ -719,8 +731,8 @@
       frosting = PALETTES.frosting[clampIndex(config.fcs ? config.fcs[0] : config.fc, PALETTES.frosting)].hex;   // the message tier's own colour
       mat = new THREE.MeshStandardMaterial({
         color: 0xffffff, roughness: nakedNow ? 0.95 : 0.62,
-        map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tier.r, bodyH,
-          tierMaterials(config, { r: tier.r, h: tier.h, idx: 0 }).base), vertexColors: true
+        map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tierMaterials(config, tier).rr, bodyH,
+          tierMaterials(config, tier).base), vertexColors: true
       });
       nightGlow(mat, 0xffffff, true);
     } else {
@@ -1042,6 +1054,23 @@
     var n = Math.round(W * H / 160);
     for (var k = 0; k < n; k++) g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
   }
+  // A cut face: the sponge and its fillings, with the frosting band around the outside and on
+  // top when the frosting has thickness. The face geometry spans the OUTER radius and height
+  // (u = x/R, v = y/H); the sponge occupies u < rs/R, v < hs/H.
+  function makeCutFaceTexture(layers, scheme, tier, frostingHex, thick) {
+    var W = 256, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    if (thick) {
+      g.fillStyle = hexCss(frostingHex); g.fillRect(0, 0, W, H);
+      var sw = W * (tier.rs / tier.r), sh = H * (tier.hs / tier.h);
+      g.save(); g.beginPath(); g.rect(0, H - sh, sw, sh); g.clip();
+      // sponge stripes laid out over the sponge's own height, inside the frosting
+      g.translate(0, H - sh); paintLayers(g, sw, sh, layers, scheme, tier.hs); g.restore();
+    } else {
+      paintLayers(g, W, H, layers, scheme, tier.h);
+    }
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  }
   function makeLayersTexture(layers, scheme, span) {
     // Sponge / filling stripes for cut faces and naked sides. Filling colours run bottom→top.
     var c = document.createElement('canvas');
@@ -1087,8 +1116,12 @@
     var frosting = PALETTES.frosting[clampIndex(fi, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var naked = !cfg.fr;
-    var capH = capHeightFor(cfg), bodyH = tier.h - capH;
-    var scheme = layerScheme(tier.h, cfg.ly);
+    var thick = frostingHasThickness(cfg);
+    // Geometry: the sponge itself (rs/hs, grooved) unless the frosting has thickness, in which
+    // case the outer shell (r/h, smooth). Semi-naked has no thickness, so it wears the sponge.
+    var rr = thick ? tier.r : tier.rs, hh = thick ? tier.h : tier.hs;
+    var capH = thick ? CAP_H : NAKED_CAP_H, bodyH = hh - capH;
+    var scheme = layerScheme(tier.hs, cfg.ly);   // fillings live in the sponge
     var side, cap, base = null;
     var semi = cfg.fr === 4 && window.CakeFrosting;
     var paintSponge = function (g, W, H) { paintLayers(g, W, H, filling, scheme, bodyH); };
@@ -1128,11 +1161,12 @@
     // times a second while a shape slider was being dragged. Safari reloaded the tab for memory.
     var faceMat = null;
     function face() {
-      if (!faceMat) faceMat = new THREE.MeshStandardMaterial({ map: makeLayersTexture(filling, scheme, tier.h), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
+      if (!faceMat) faceMat = new THREE.MeshStandardMaterial({ map: makeCutFaceTexture(filling, scheme, { r: rr, h: hh, rs: tier.rs, hs: tier.hs }, frosting, thick), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
       return faceMat;
     }
     return { side: side, cap: cap, face: face, frosting: frosting, filling: filling, naked: naked,
-             scheme: naked ? scheme : null, capH: capH, bodyH: bodyH,
+             scheme: thick ? null : scheme,            // grooves only when the sponge is what's seen
+             capH: capH, bodyH: bodyH, rr: rr, hh: hh,
              base: base };
   }
   // At night the cake gets a faint self-glow so the shape never goes fully black, and the
@@ -2360,7 +2394,7 @@
 
   function tierTops(cfg) {
     var tiers = tiersFor(cfg), y = PLATE_TOP, out = [];
-    tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, y0: y, idx: i, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
+    tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, rs: t.rs, hs: t.hs, y0: y, idx: i, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
     return out;
   }
 
@@ -2382,10 +2416,10 @@
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t, vertexColors: true });
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
-    var rr = cfg.fr ? tier.r : tier.r - FROST_T;             // naked wedges are sponge-sized
+    var rr = TM.rr;                                           // the sponge, or the shell when the frosting is thick
     var body = new THREE.Mesh(CakeShapes.body(rr, bodyH, wseg, theta0, len, scheme), [side, frostingMat, frostingMat]);
     body.position.y = tier.y0; g.add(body);
-    var cap = new THREE.Mesh(CakeShapes.cap(rr, capH, wseg, theta0, len, tier.aboveR ? (cfg.fr ? tier.aboveR : tier.aboveR - FROST_T) : undefined), capMat);
+    var cap = new THREE.Mesh(CakeShapes.cap(rr, capH, wseg, theta0, len, tier.aboveR ? (frostingHasThickness(cfg) ? tier.aboveR : tier.aboveR - FROST_T) : undefined), capMat);
     cap.position.y = tier.y0 + bodyH; g.add(cap);
     // Cut faces follow the rounded outline, so the wedge matches the whole cake.
     [theta0, theta0 + len].forEach(function (th) {

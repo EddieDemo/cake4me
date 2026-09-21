@@ -1,24 +1,35 @@
-# Cake — v0.65 (semi-naked frosting)
+# Cake — v0.66 (the sponge is the object)
 
-## New file: `frosting.js`
-Frosting **styles** — how the shell is painted or shaped beyond a colour — live here, one function
-each, so `app.js` stays the product and this file grows as styles do: semi-naked now, drip and
-rustic next. It knows nothing about cakes; it takes a base painter and a frosting colour.
+You were right: semi-naked in v0.65 was a reskin of the frosted shell — the frosted geometry at
+the frosted radius, no grooves, with sponge painted on. This build makes the model honest.
 
-## Semi-naked
-The smooth shell wearing a thin scrape of frosting: the sponge and its filling lines show through
-in vertical smears, fuller near the rims. Per pixel over the layer painting (768×384, smeared, so
-it needn't be sharp), with a per-tier seed so tiers don't repeat. The message is piped straight
-onto the scrape — `makeMessageTexture` now takes a general *base painter* rather than the
-naked-only sponge, so any style can sit under the writing. Wedges and the slice page inherit it.
+## The model
+- **The shape sliders size the sponge.** Its radius, its height, its fillings and its grooves
+  belong to the sponge, whether or not you can see it.
+- **Frosting is a layer on the sponge.** Smooth frosting is a shell of real thickness — 0.08 on
+  the sides, 0.10 on top — so a frosted tier is fractionally bigger than the same sponge naked,
+  as a real cake is. Semi-naked is a scrape of no thickness: it *is* the sponge's geometry, grooves
+  and all, with the frosting painted on. Drip and rustic will be the shell plus a curtain, and the
+  shell with a worked surface.
+- **Cut faces agree.** A cut smooth cake shows the sponge and its fillings with the frosting band
+  around the outside and on top, at the shell's thickness. A semi-naked cut shows the sponge.
 
-Textures are cached on their inputs (colour, filling, layers, tier height, tier index), so
-scrubbing a shape slider doesn't repaint them; the cache holds 12 and disposes the oldest.
+Measured: naked and semi-naked tiers share the identical grooved geometry (same radius, same
+1455 vertices); smooth is a separate shell 0.08 wider with 776 vertices and no grooves.
 
-## Style row
-Smooth and Semi-naked are live; Drip and Rustic stay reserved. `fr`: 0 none · 1 smooth · 2 drip ·
-3 rustic · 4 semi-naked. A link asking for a reserved style decodes as smooth. The Frost toggle
-remembers the last style chosen, so off-then-on comes back semi-naked.
+## Underneath
+`tiersFor(cfg)` now returns the **outer** dimensions everything else expects (camera, box,
+candles, cut, ribbon) *and* the sponge's own (`rs`, `hs`); `frostingHasThickness(cfg)` decides
+which the tier geometry uses. `tierMaterials` picks the geometry (`rr`, `hh`), the grooves and the
+cut-face painter from that one rule, so the whole cake, the wedges and the slice page can't
+disagree. `makeCutFaceTexture` paints the sponge inside the frosting band from the same numbers.
 
-Verified: style selection, toggle memory, link round trip, reserved fallback, 16 programs at load
-and 16 after.
+A consequence to know: the classic proportions now describe the *sponge*, so a classic frosted
+cake is 0.08 wider and 0.10 taller than before. The camera fits to it.
+
+## Fillings can be zero
+The Sponge tray's row is **Fillings: 0 · 1 · 2 · 3** (sponge layers 1–4; `ly` = 1 is just cake).
+Older links are unchanged.
+
+Verified: naked/semi/smooth renders, zero fillings, a recipient cutting a smooth cake with the
+frosting band on the face; no errors.
