@@ -1,37 +1,30 @@
-# Cake — v0.72 (MVP Phase 1)
+# Cake — v0.73 (MVP Phase 2)
 
-## Feature flags
-One `FEATURES` block at the top of `app.js`, all off for the MVP:
-- `occasion` — the Occasion chip and tray are hidden; new cakes are silently **Birthday**, so the
-  reminder, calendar and opening copy stay right. The builder now opens on **Message**.
-- `buttercream` — the Frosting chip is hidden; **Fondant** remains (off = a naked sponge).
-- `tier3` — the Showstopper card is hidden; the Tiers tray shows Classic (£4.49) and Two-tier (£9.99)
-  side by side.
-They limit what a *sender* can choose, never what a recipient sees: links carrying an occasion,
-buttercream or a third tier still decode and render as sent (verified: an old Showstopper link with
-30 candles opens as a Showstopper with 30). The builder clamps a pre-filled old cake (reminder,
-"send one back") to its own limits — two tiers, 20 candles — keeping the bottom tiers as they were.
-Flip a flag to `true` to bring a feature back.
+## Slice parity
+The recipient's slice was built from half the information and on its own plate. Now:
+- **One plate** (`makePlate`, `PLATE`): the sender's lifted wedge and the recipient's slice page
+  use the same plate. The slice page's smaller plate and its ribbon-coloured torus rim — the red
+  ring — are gone.
+- **One way of plating** (`wedgeOffsetFor`): the recipient's wedge is made by the same
+  `makeWedge` from the **full tier** (`tierTops`: sponge size, index, the tier above), with the
+  same wedge index the sender cut, the same message band, dropped onto the plate the same way.
+  So a fondant slice shows the fondant band with the layered sponge inside, not "a slice of
+  frosting".
+- **Ribbons go with the slice.** Wedges now carry their tier's ribbon, cut to the wedge
+  (`bandGeometry` takes a sweep); before, cutting silently removed it.
+Lighting and backdrop already travelled in the link and were applied on the slice route.
 
-## Remember tier settings
-Switching the tier count no longer resets the shape. The builder remembers every tier's shape,
-fondant and colours; 2 → 1 → 2 brings the top tier back as it was, re-clamped if the bottom has
-narrowed. A tier that's never existed starts from the classic shape and the bottom tier's colours.
-Ribbons were already kept per tier.
+## A finished cake to start with
+A new cake is a **finished single-tier cake in a random curated look**: fondant on, one or two
+fillings, a comfortable shape, a ribbon about half the time. Randomness picks a *look* from
+`LOOKS` (ten colour sets that belong together: fondant, filling, ribbon, candle, backdrop), then
+varies shape, fillings and ribbon within `LOOK_BOUNDS`. Never the same look twice running. The
+words, names, candle count and lighting are the sender's and are left alone. First pass — both
+tables are at the top of `app.js` for tuning later.
 
-## Candles max 20
-The builder slider is 0–20 (`BUILDER_MAX_CANDLES`). Links may still carry up to 100.
+## Shuffle
+A 🎲 **Shuffle** chip at the start of the row re-dresses the cake in a new look for its current
+tier count (a two-tier cake gets two tiers, the upper one narrower). The die tumbles.
 
-## Grab and spin
-- A finger down **catches** the cake: dead stop, and it follows the thumb 1:1 while held (no
-  momentum or ambient turn underneath).
-- Release: held still or a tap → stays stopped (the viewer's ambient turn waits ~2s before
-  resuming). A flick **the same way** it was going → speed **builds** on what it had. A flick the
-  other way → it simply goes the new way.
-- Capped at 12 rad/s (~2 turns/s); constant friction so it always settles.
-Verified: one flick 6.3 rad/s, a second same-way flick 12 (the cap); held → 0; right-then-left →
-negative.
-
-## Not in this build
-Slice parity is Phase 2 — please resend the screenshot of the red plate ring, it didn't come
-through.
+Verified: three looks from load + shuffles; sender's lifted slice and recipient's slice match
+(same plate, fondant band, three fillings); no rim; 16 programs at load, 16 after; no errors.

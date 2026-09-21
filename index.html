@@ -29,6 +29,8 @@
       <!-- One row of decisions, in four groups, left to right in the order a cake is made.
            Each tray holds ONE decision and is at most three rows, so the cake keeps the screen. -->
       <div class="chiprow" id="chiprow" role="tablist">
+        <button type="button" class="chip shuffle" data-action="shuffle" aria-label="Shuffle the look"><span class="ic" aria-hidden="true">🎲</span>Shuffle</button>
+        <span class="chip-gap" aria-hidden="true"></span>
         <span class="grp-label" aria-hidden="true">gift</span>
         <button type="button" class="chip" data-tray="occasion" aria-selected="false"><span class="ic" aria-hidden="true" id="chip-o-ic">🎁</span><span id="chip-o">Occasion</span></button>
         <button type="button" class="chip" data-tray="message" aria-selected="false"><span class="ic" aria-hidden="true">✎</span>Message</button>

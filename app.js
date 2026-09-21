@@ -21,6 +21,53 @@
     tier3: false          // the Showstopper card; the builder offers one or two tiers
   };
   var OCCASION_DEFAULT = 0;       // Birthday — used when the picker is hidden
+
+  // ---- Curated looks for the starting cake and the Shuffle chip (v0.73, first pass) ----
+  // Independent random picks clash, so randomness chooses a LOOK (colours that belong together)
+  // and then varies the shape, the fillings and the ribbon within comfortable bounds.
+  // Indices into PALETTES: fc frosting/fondant, ic filling, rc ribbon, cc candle, bg backdrop.
+  var LOOKS = [
+    { name: 'Strawberries & cream', fc: 0, ic: 0, rc: 3, cc: 0, bg: 1 },
+    { name: 'Chocolate & gold',     fc: 2, ic: 5, rc: 2, cc: 5, bg: 2 },
+    { name: 'Mint garden',          fc: 3, ic: 3, rc: 4, cc: 0, bg: 1 },
+    { name: 'Lemon & sky',          fc: 4, ic: 1, rc: 8, cc: 0, bg: 4 },
+    { name: 'Lavender',             fc: 5, ic: 4, rc: 6, cc: 4, bg: 3 },
+    { name: 'Blue sky',             fc: 6, ic: 6, rc: 8, cc: 3, bg: 9 },
+    { name: 'Coral',                fc: 7, ic: 0, rc: 3, cc: 2, bg: 1 },
+    { name: 'Vanilla & raspberry',  fc: 1, ic: 0, rc: 1, cc: 1, bg: 3 },
+    { name: 'Midnight',             fc: 1, ic: 2, rc: 2, cc: 5, bg: 7 },
+    { name: 'Party',                fc: 1, ic: 7, rc: 0, cc: 3, bg: 9 }
+  ];
+  var LOOK_BOUNDS = {
+    bottomW: [5, 8], bottomH: [4, 7],      // shape steps (0–9) for the bottom tier
+    topH: [3, 6], topInset: [2, 4],         // upper tier: height, and how many width steps narrower
+    fillings: [1, 2],                       // sponge layers − 1
+    ribbonChance: 0.5, ribbonW: [2, 5]
+  };
+  var lastLook = -1;
+  function randInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  // Dress `d` (a normalized draft) in a random look, for its current tier count. Words,
+  // names, candles count and lighting are the sender's and are left alone.
+  function applyRandomLook(d) {
+    var li; do { li = Math.floor(Math.random() * LOOKS.length); } while (LOOKS.length > 1 && li === lastLook);
+    lastLook = li;
+    var L = LOOKS[li], B = LOOK_BOUNDS, n = TIERS[d.t].length;
+    var sh = [];
+    for (var i = 0; i < n; i++) {
+      if (i === 0) sh.push({ r: randInt(B.bottomW[0], B.bottomW[1]), h: randInt(B.bottomH[0], B.bottomH[1]) });
+      else sh.push({ r: Math.max(1, sh[i - 1].r - randInt(B.topInset[0], B.topInset[1])), h: randInt(B.topH[0], B.topH[1]) });
+    }
+    d.sh = sh;
+    d.fc = L.fc; d.ic = L.ic; d.cc = L.cc; d.bg = L.bg; d.rc = L.rc;
+    d.fcs = sh.map(function () { return L.fc; }); d.frs = d.fcs.slice();
+    d.fds = sh.map(function () { return 1; });            // a finished cake: fondant on
+    d.frsty = sh.map(function () { return 0; });
+    d.ly = 1 + randInt(B.fillings[0], B.fillings[1]);
+    d.rt = [0, 1, 2].map(function (i) {
+      return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]) };
+    });
+    return normalize(d);
+  }
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
@@ -2566,6 +2613,14 @@
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
     var rr = TM.rr;                                           // the sponge, or the shell when the fondant is on
+    // The ribbon goes with the slice: the same band as the whole cake's, cut to this wedge.
+    var rtw = cfg.rt && cfg.rt[tier.idx || 0];
+    if (rtw && rtw.on) {
+      var band = new THREE.Mesh(
+        CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, ribbonWidth(rtw.w), RIBBON.thick, wseg, pOpts, theta0, len),
+        new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rtw.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide }));
+      band.position.y = tier.y0; g.add(band);
+    }
     if (!TM.fdOn) {
       // A naked or semi-naked wedge is the stack itself, cut: real layer solids with their ends.
       var stack = buildStack(cfg, tier, TM, side, theta0, len, wseg, true);
@@ -2681,6 +2736,30 @@
     return null;
   }
 
+  // ---- One plate and one way of plating a slice (v0.73) ----
+  // The sender's lifted wedge and the recipient's slice page used to build their own plates
+  // (the recipient's was smaller, with a ribbon-coloured rim) and the recipient's wedge was
+  // made from a stub of the tier (no sponge size, no index) so its layers came out empty.
+  // Both now use these, with the full tier from tierTops, so they cannot drift apart.
+  var PLATE = { r: 1.3, h: 0.08, colour: 0xfafafa };
+  function makePlate() {
+    var plate = new THREE.Mesh(new THREE.CylinderGeometry(PLATE.r, PLATE.r, PLATE.h, 48),
+      new THREE.MeshStandardMaterial({ color: PLATE.colour, roughness: 0.4 }));
+    plate.position.y = PLATE.h / 2;
+    if (window.CakeLook) CakeLook.adopt(plate);
+    return plate;
+  }
+  // Where a wedge must sit so its centroid is over (x, z) on a plate there. The wedge is built
+  // in cake space at its tier's height; this drops it onto the plate.
+  function wedgeOffsetFor(tier, i, x, z) {
+    var thMid = (i + 0.5) * Math.PI * 2 / WEDGES_PER_TIER;
+    return new THREE.Vector3(x - Math.sin(thMid) * tier.r * 0.6, PLATE.h - tier.y0, z - Math.cos(thMid) * tier.r * 0.6);
+  }
+  // The message band texture of the cake as built (for wedges from the message tier).
+  function currentMessageMap() {
+    return messageMesh && messageMesh.material[0] && messageMesh.material[0].map ? messageMesh.material[0].map : null;
+  }
+
   function liftWedge(w) {
     if (!cut || cut.lifted) return;
     cut.lifted = w; w.userData.lifted = true;
@@ -2689,16 +2768,13 @@
     var tier = tierTops(config)[w.userData.tier];
     var out = tier.r + 1.9;
     var target = dir.clone().multiplyScalar(out);
-    // Small plate arrives from the side
-    var plate = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.08, 48), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
-    plate.position.set(target.x + dir.z * 3, 0.04, target.z - dir.x * 3);
-    if (window.CakeLook) CakeLook.adopt(plate);
+    // The plate arrives from the side
+    var plate = makePlate();
+    plate.position.set(target.x + dir.z * 3, PLATE.h / 2, target.z - dir.x * 3);
     cutGroup.add(plate); cut.plate = plate;
-    // The wedge's own centroid direction, so it lands centred on the plate
-    var thMid = (w.userData.i + 0.5) * Math.PI * 2 / WEDGES_PER_TIER;
-    var cen = new THREE.Vector3(Math.sin(thMid) * tier.r * 0.6, 0, Math.cos(thMid) * tier.r * 0.6);
+    // Land with the wedge's own centroid over the plate's centre
     var startP = w.position.clone();
-    var endP = new THREE.Vector3(target.x - cen.x, 0.08 - tier.y0, target.z - cen.z);
+    var endP = wedgeOffsetFor(tier, w.userData.i, target.x, target.z);
     tween({ duration: 450, ease: EASE.lift, update: function (k) {
       w.position.lerpVectors(startP, endP, k);
       w.position.y += Math.sin(Math.PI * k) * 0.55;                  // up and over
@@ -2708,7 +2784,7 @@
       tween({ duration: 160, ease: EASE.pop, update: function (k) { w.scale.y = 0.96 + 0.04 * k; } });
     } });
     tween({ delay: 120, duration: 280, ease: EASE.soft, update: function (k) {
-      plate.position.set(target.x + dir.z * 3 * (1 - k), 0.04, target.z - dir.x * 3 * (1 - k));
+      plate.position.set(target.x + dir.z * 3 * (1 - k), PLATE.h / 2, target.z - dir.x * 3 * (1 - k));
     } });
     updateCutUI();
   }
@@ -2797,28 +2873,27 @@
     build(cfg, { showMessage: true, animate: false });
     built.visible = false;                                   // no whole cake here
     while (cutGroup.children.length) cutGroup.remove(cutGroup.children[0]);
+    // The same wedge the sender lifted: the FULL tier (sponge size, index, the tier above),
+    // the same wedge index, the same message band, on the same plate.
     var tiers = tierTops(cfg);
     var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
-    var tier = { r: tiers[ti].r, h: tiers[ti].h, y0: 0.08 };
-    var w = makeWedge(tier, 0, cfg, null, null);
-    // Centre the wedge's centroid on the plate and face the cut toward +z
-    // The wedge is built around the cake's axis; rotate it so the cut points at the camera,
-    // then move it by its (rotated) centroid so it sits on the plate's centre.
-    var thMid = 0.5 * Math.PI * 2 / WEDGES_PER_TIER;
-    w.rotation.y = Math.PI - thMid;                          // centroid now points to -z (away)
-    var cr = tier.r * 0.62;
-    w.position.set(0, 0, cr);                                 // pull it back to the centre
+    var tier = tiers[ti], wi = sl.index % WEDGES_PER_TIER;
+    var w = makeWedge(tier, wi, cfg, null, ti === 0 ? currentMessageMap() : null);
+    // Face the cut toward the camera: turn the wedge so its centroid points away (−z), then
+    // drop it so the centroid sits over the plate's centre.
+    var holder = new THREE.Group();
+    holder.add(w);
+    var off = wedgeOffsetFor(tier, wi, 0, 0);
+    w.position.set(off.x, off.y, off.z);
+    var thMid = (wi + 0.5) * Math.PI * 2 / WEDGES_PER_TIER;
+    holder.rotation.y = Math.PI - thMid;
     if (window.CakeLook) CakeLook.adopt(w);
-    cutGroup.add(w);
-    var plate = new THREE.Mesh(new THREE.CylinderGeometry(tier.r * 0.78, tier.r * 0.78, 0.08, 64), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 }));
-    plate.position.y = 0.04; if (window.CakeLook) CakeLook.adopt(plate); cutGroup.add(plate);
-    var rim = new THREE.Mesh(new THREE.TorusGeometry(tier.r * 0.74, 0.045, 10, 96),
-      new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex, roughness: 0.5 }));
-    rim.rotation.x = Math.PI / 2; rim.position.y = 0.09; cutGroup.add(rim);
+    cutGroup.add(holder);
+    cutGroup.add(makePlate());
     // No candle on a slice: the candles went when the cake was cut, and a slice that
     // sprouted a new one would contradict that. It's a piece of the cake you were sent.
     flames.length = 0; wicks.length = 0;
-    var topY = 0.08 + tier.h;
+    var topY = PLATE.h + tier.h;
     landings = [{ y: topY, r: tier.r * 0.8, rInner: 0 }];
     fitShadow(tier.r * 0.8);
     blow = { enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: 0, revealed: true };
@@ -3368,8 +3443,17 @@
     if (!FEATURES.occasion) hideEl($('chiprow').querySelector('.chip[data-tray="occasion"]'));
     if (!FEATURES.buttercream) hideEl($('chiprow').querySelector('.chip[data-tray="frosting"]'));
     if (!FEATURES.tier3) { hideEl(els.tiers.querySelector('.tier[data-t="3"]')); els.tiers.style.gridTemplateColumns = 'repeat(2, 1fr)'; }
-    Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip'), function (c) {
+    Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip[data-tray]'), function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
+    });
+    // Shuffle: a new look for the same cake (tier count, words and candles kept).
+    var shuf = $('chiprow').querySelector('.chip[data-action="shuffle"]');
+    if (shuf) shuf.addEventListener('click', function () {
+      draft = applyRandomLook(draft);
+      syncForm(); updateColourNote(); updateCta();
+      build(draft, { showMessage: true });
+      frostOn();
+      shuf.classList.remove('spin'); void shuf.offsetWidth; shuf.classList.add('spin');
     });
     // Fondant on/off — the moment: the sheet goes over the cake.
     $('f-fondant').addEventListener('change', function (e) {
@@ -3737,7 +3821,7 @@
       document.body.classList.add('mode-builder');
       var pre = readEditHash();
       if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
-      if (!draft) { draft = normalize(DEFAULTS); draft.o = FEATURES.occasion ? OCCASION_UNCHOSEN : OCCASION_DEFAULT; draft.ly = 2; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked with one filling: no buttercream, no fondant, no ribbons
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = FEATURES.occasion ? OCCASION_UNCHOSEN : OCCASION_DEFAULT; draft.ly = 2; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); draft = applyRandomLook(draft); }   // a new cake starts as a finished cake in a random curated look
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });

@@ -212,12 +212,12 @@
   }
   // A strip lying ON the wall: inner face on the wall, outer face `thick` out, closed top and
   // bottom. Samples the wall so it stays flush across a bulge or a groove.
-  function bandGeometry(r, bodyH, scheme, y0, width, thick, seg, opts) {
+  function bandGeometry(r, bodyH, scheme, y0, width, thick, seg, opts, phi0, phiLen) {
     var prof = bodyProfile(r, bodyH, scheme, opts), pts = [], n = 8;
     for (var i = 0; i <= n; i++) { var y = y0 + width * i / n; pts.push(new THREE.Vector2(radiusAt(prof, y) + thick, y)); }
     for (var j = n; j >= 0; j--) { var yy = y0 + width * j / n; pts.push(new THREE.Vector2(radiusAt(prof, yy) - 0.012, yy)); }
     pts.push(new THREE.Vector2(radiusAt(prof, y0) + thick, y0));
-    var geo = new THREE.LatheGeometry(pts, seg);
+    var geo = new THREE.LatheGeometry(pts, seg, phi0 || 0, phiLen || Math.PI * 2);
     return geo;
   }
   // ---------- The sponge as a STACK of solids (v0.69) ----------
