@@ -289,16 +289,26 @@
       // it; '' means "as designed"). Only digits, '.', '-' and '~' survive.
       lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200),
       ly: clampInt(c.ly, 2, 4, 3),          // sponge layers (fillings = ly − 1)
-      fr: clampInt(c.fr, 0, 1, 1),          // frosting: 0 none (naked), 1 smooth
+      fr: clampInt(c.fr, 0, 4, 1),          // frosting: 0 none · 1 smooth · 2 drip · 3 rustic · 4 semi-naked
       rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
       rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9),  // per-tier ribbons (v0.58); wins when present
-      tp: String(c.tp || '').replace(/[^0-9]/g, '').slice(0, 6)     // tier proportions (v0.60): width/height steps per tier
+      tp: String(c.tp || '').replace(/[^0-9]/g, '').slice(0, 6),    // tier proportions (v0.60): width/height steps per tier
+      fct: String(c.fct || '').replace(/[^0-9]/g, '').slice(0, 3)   // frosting colour per tier (v0.64); wins when present
     };
     // Live shape array; derived like rt. An explicit `sh` (UI edits) wins over the string.
     out.sh = (c.sh && c.sh.length === (TIERS[out.t] || TIERS[1]).length)
       ? constrainShape(c.sh.map(function (x) { return { r: clampInt(x.r, 0, 9, 0), h: clampInt(x.h, 0, 9, 0) }; }))
       : parseShape(out.tp, out.t);
+    if (out.fr === 2 || out.fr === 3) out.fr = 1;   // drip and rustic aren't built yet: a link asking for them gets smooth
     out.tp = serializeShape(out.sh);
+    // Frosting colour per tier. Live array `fcs`; string `fct` in the link; `fc` stays as the
+    // summary (the bottom tier) for the bow, the bleed and older readers.
+    var nT = out.sh.length;
+    if (c.fcs && c.fcs.length === nT) out.fcs = c.fcs.map(function (v) { return clampInt(v, 0, PALETTES.frosting.length - 1, 0); });
+    else if (out.fct.length >= nT) out.fcs = out.fct.slice(0, nT).split('').map(function (ch) { return clampInt(+ch, 0, PALETTES.frosting.length - 1, 0); });
+    else { out.fcs = []; while (out.fcs.length < nT) out.fcs.push(out.fc); }
+    out.fct = out.fcs.map(function (v) { return String(v % 10); }).join('');
+    out.fc = out.fcs[0];
     out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
@@ -310,7 +320,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -319,7 +329,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -539,6 +549,7 @@
     }
   }
 
+  var lastBgKey = '';
   var messageMesh = null;   // body mesh of the tier carrying the message (for cheap message-only updates)
   var showMessage = true;
 
@@ -582,8 +593,11 @@
 
     tiers.forEach(function (tier, i) {
       var isTop = (i === tiers.length - 1);
+      tier.idx = i;
       var TM = tierMaterials(cfg, tier);
-      var frostingMat = TM.side, capMat = TM.cap, sponge = TM.sponge, scheme = TM.scheme, capH = TM.capH;
+      var frosting = TM.frosting;                         // this tier's own colour
+      var ink = pickInk(frosting, cfg.tc);
+      var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH;
       frostingMat.__shared = capMat.__shared = true; localShared.push(frostingMat, capMat);
       var bodyH = TM.bodyH;
       var open = cfg.cutaway ? Math.PI / 4 : 0;          // dev wedge removed
@@ -600,8 +614,8 @@
         // doesn't churn a 16MB canvas per frame.
         var keptMap = (opts && opts.keepMessage && keepMessageMap) ? keepMessageMap : null;
         sideMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff, roughness: naked ? 0.95 : 0.62,
-          map: keptMap || makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH, naked ? sponge : null), vertexColors: true
+          color: 0xffffff, roughness: naked ? 0.95 : (cfg.fr === 4 ? 0.85 : 0.62),
+          map: keptMap || makeMessageTexture(cfg.m, ink, frosting, tier.r, bodyH, msgBase), vertexColors: true
         });
         if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
         nightGlow(sideMat, 0xffffff, true);
@@ -688,7 +702,7 @@
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = window.CakeLook ? CakeLook.candleIntensity(flames.length, darkness) : Math.min(1.6, 0.25 + flames.length * 0.03);
 
-    applyBackground(frosting, cfg.bg);
+    if (lastBgKey !== frosting + '|' + cfg.bg) { lastBgKey = frosting + '|' + cfg.bg; applyBackground(frosting, cfg.bg); }
   }
 
   // Cheap path for typing: swap only the message texture.
@@ -702,10 +716,11 @@
     if (m && showMessage) {
       var nakedNow = !config.fr;
       var fillingNow = PALETTES.filling[clampIndex(config.ic, PALETTES.filling)].layers;
+      frosting = PALETTES.frosting[clampIndex(config.fcs ? config.fcs[0] : config.fc, PALETTES.frosting)].hex;   // the message tier's own colour
       mat = new THREE.MeshStandardMaterial({
         color: 0xffffff, roughness: nakedNow ? 0.95 : 0.62,
         map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tier.r, bodyH,
-          nakedNow ? { layers: fillingNow, scheme: layerScheme(tier.h, config.ly), span: bodyH } : null), vertexColors: true
+          tierMaterials(config, { r: tier.r, h: tier.h, idx: 0 }).base), vertexColors: true
       });
       nightGlow(mat, 0xffffff, true);
     } else {
@@ -904,7 +919,9 @@
   // `sponge` (optional): { layers, count } — paint the naked sponge's stripes as the background
   // instead of a flat frosting colour, so the message is piped straight onto the cake.
   var msgCanvas = null;
-  function makeMessageTexture(text, ink, frostingHex, radius, bodyH, sponge) {
+  // `base` (optional): function(ctx, W, H) painting what's under the writing — the sponge
+  // stripes on a naked cake, the frosting scrape on a semi-naked one. Flat frosting otherwise.
+  function makeMessageTexture(text, ink, frostingHex, radius, bodyH, base) {
     text = String(text).slice(0, MAX_MSG);
     var circumference = 2 * Math.PI * radius;
     // The message is the thing people zoom into, so size its canvas off the real
@@ -919,7 +936,7 @@
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     var g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
-    if (sponge) paintLayers(g, W, H, sponge.layers, sponge.scheme, sponge.span);
+    if (base) base(g, W, H);
     else { g.fillStyle = hexCss(frostingHex); g.fillRect(0, 0, W, H); }
 
     // Text occupies ~34% of the circumference (≈120° arc) so it reads from the front.
@@ -1062,18 +1079,45 @@
   }
   // Materials for a tier — frosted shell or naked sponge — from a config. Shared by the whole
   // cake, the cut wedges and the slice page so the three can't disagree.
+  var semiCache = {}, semiKeys = [];   // semi-naked side textures, by their inputs (see tierMaterials)
   // Per TIER, because the fillings are laid out in world units and tiers differ in height.
+  // tier.idx (from tierTops / the build loop) picks the tier's own frosting colour.
   function tierMaterials(cfg, tier) {
-    var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
+    var fi = (cfg.fcs && tier.idx !== undefined && cfg.fcs[tier.idx] !== undefined) ? cfg.fcs[tier.idx] : cfg.fc;
+    var frosting = PALETTES.frosting[clampIndex(fi, PALETTES.frosting)].hex;
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
     var naked = !cfg.fr;
     var capH = capHeightFor(cfg), bodyH = tier.h - capH;
     var scheme = layerScheme(tier.h, cfg.ly);
-    var side, cap;
+    var side, cap, base = null;
+    var semi = cfg.fr === 4 && window.CakeFrosting;
+    var paintSponge = function (g, W, H) { paintLayers(g, W, H, filling, scheme, bodyH); };
     if (naked) {
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, map: makeLayersTexture(filling, scheme, bodyH), vertexColors: true });
       side.map.wrapS = THREE.RepeatWrapping;
       cap = new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, vertexColors: true });
+      base = paintSponge;
+    } else if (semi) {
+      // Semi-naked: the smooth shell wearing a thin scrape of frosting over the sponge.
+      var hx = hexCss(frosting), rgb = [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
+      var scrape = function (g, W, H) {
+        // paint into a scratch canvas via the style, then copy — keeps the style's own resolution
+        var t = CakeFrosting.semiNakedTexture({ frostingRgb: rgb, paintBase: paintSponge, seed: (tier.idx || 0) + 1, size: [W, H] });
+        g.drawImage(t.image, 0, 0, W, H); t.dispose();
+      };
+      // The scrape is a per-pixel canvas pass, so it's cached on its inputs: scrubbing a shape
+      // slider back and forth doesn't repaint it, and cached textures are shared across builds.
+      var key = [hx, filling.join(','), cfg.ly, bodyH.toFixed(2), tier.idx || 0].join('|');
+      var tex = semiCache[key];
+      if (!tex) {
+        tex = CakeFrosting.semiNakedTexture({ frostingRgb: rgb, paintBase: paintSponge, seed: (tier.idx || 0) + 1 });
+        tex.__shared = true;                         // owned by the cache, not by any one build
+        semiKeys.push(key); semiCache[key] = tex;
+        while (semiKeys.length > 12) { var old = semiKeys.shift(); semiCache[old].dispose(); delete semiCache[old]; }
+      }
+      side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, vertexColors: true, map: tex });
+      cap = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.75, vertexColors: true });
+      base = scrape;
     } else {
       side = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
       cap = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
@@ -1089,7 +1133,7 @@
     }
     return { side: side, cap: cap, face: face, frosting: frosting, filling: filling, naked: naked,
              scheme: naked ? scheme : null, capH: capH, bodyH: bodyH,
-             sponge: naked ? { layers: filling, scheme: scheme, span: bodyH } : null };
+             base: base };
   }
   // At night the cake gets a faint self-glow so the shape never goes fully black, and the
   // message band a little more so the writing stays readable. Zero in daylight.
@@ -1119,7 +1163,7 @@
   }
   var bgLuminance = 1;          // 0 = dark backdrop, 1 = light. Drives the shadow and the room lights.
   var darkness = 0;             // 0 daylight … 1 candlelit (look.js decides from bgLuminance)
-  var floorPaint = new THREE.Color(0xffebd2), roomLit = 1, skyDirty = true, skyCalibrations = 0;
+  var floorPaint = new THREE.Color(0xffebd2), roomLit = 1, skyDirty = true, skyCalibrations = 0, skyKey = '';
   function updateRoomLights() {
     if (!window.CakeLook) return;
     darkness = CakeLook.darknessFor(bgLuminance);
@@ -1143,7 +1187,13 @@
       var kd = key.position.clone().normalize();
       roomLit = CakeLook.litFactor(R, kd, key.color);
       CakeStage.setBrightness(roomLit);                 // fallback until measured
-      skyDirty = true;                                  // measure on the next frame, once lights are applied
+      // Measure the sky only when something that could change it has changed: the paint, the
+      // room lights, the key, the spot. A rebuild with the same backdrop measures nothing —
+      // the measurement is a GPU readback, and one per slider tick was the "freeze".
+      var k = floorPaint.getHex() + '|' + R.hemi.toFixed(3) + R.key.toFixed(3) + R.fill.toFixed(3) + R.hemiSky.getHex() + R.hemiGround.getHex() +
+              '|' + key.color.getHex() + key.position.x.toFixed(2) + key.position.y.toFixed(2) + key.position.z.toFixed(2) +
+              '|' + (spot.visible ? spot.intensity.toFixed(2) + spot.color.getHex() : 'off');
+      if (k !== skyKey) { skyKey = k; skyDirty = true; }
     }
     updateBleed();
   }
@@ -1399,6 +1449,7 @@
       // Measure the sky when the lighting has changed — and a couple of times early on, so the
       // first measurement isn't taken before the materials have compiled.
       if (skyDirty || skyCalibrations < 3) { CakeStage.calibrate(renderer, scene); skyDirty = false; skyCalibrations++; }
+      else CakeStage.finishCalibrate(renderer);        // the readback happens a frame later, when the GPU is done
     }
     renderer.render(scene, camera);
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
@@ -1856,6 +1907,17 @@
     }
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
+    // Tap a tier to make it the current one (builder only; a drag is not a tap).
+    var tapDown = null;
+    canvas.addEventListener('pointerdown', function (e) { if (e.isPrimary) tapDown = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    canvas.addEventListener('pointerup', function (e) {
+      if (!tapDown || !e.isPrimary) { tapDown = null; return; }
+      var moved = Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y), quick = performance.now() - tapDown.t < 400;
+      tapDown = null;
+      if (moved > 8 || !quick || !document.body.classList.contains('mode-builder') || !draft) return;
+      var i = tierAt(e.clientX, e.clientY);
+      if (i >= 0) setCurTier(i, true);
+    });
   })();
 
   // Microphone
@@ -2298,7 +2360,7 @@
 
   function tierTops(cfg) {
     var tiers = tiersFor(cfg), y = PLATE_TOP, out = [];
-    tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, y0: y, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
+    tiers.forEach(function (t, i) { out.push({ r: t.r, h: t.h, y0: y, idx: i, aboveR: tiers[i + 1] ? tiers[i + 1].r : undefined }); y += t.h; });
     return out;
   }
 
@@ -2859,7 +2921,8 @@
         b.style.background = hexCssStr(item.hex);
       }
       b.addEventListener('click', function () {
-        if (key === 'rc') { draft.rt[ribbonTier].c = i; draft = normalize(draft); }   // per tier
+        if (key === 'rc') { draft.rt[curTier].c = i; draft = normalize(draft); }   // per tier
+        else if (key === 'fc') { if (frostAll) draft.fcs = draft.fcs.map(function () { return i; }); else draft.fcs[curTier] = i; draft = normalize(draft); }
         else draft[key] = i;
         syncSwatches(container, i);
         if (key === 'fc' || key === 'tc') refreshAutoSwatch();
@@ -2905,7 +2968,7 @@
     els.n.value = draft.n;
     els.nOut.textContent = draft.n;
     syncTiers(draft.t);
-    syncSwatches(els.swFc, draft.fc);
+    // frosting swatches: see syncFrostTiers (per tier)
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
     // ribbon swatches: see syncRibbon (per tier)
@@ -2954,16 +3017,46 @@
       tierGroups.forEach(function (tg) { tg.scale.set(1, 1, 1); });
     } });
   }
+  // ---- One current tier, shared by Shape, Frosting and Ribbon ----
+  // Pick Tier 2 in Shape and you're still on Tier 2 in Frosting. Tapping a tier on the cake
+  // sets it too. Frosting also has an "All" mode (the default) so one swatch colours every tier.
+  var curTier = 0, frostAll = true;
+  function setCurTier(i, fromCake) {
+    var n = tiersFor(draft).length;
+    curTier = Math.max(0, Math.min(n - 1, i | 0));
+    if (fromCake) frostAll = false;
+    syncShape(); syncRibbon(); syncFrostTiers();
+    if (fromCake) pulseTier(curTier);
+  }
+  // A brief scale pulse on the tapped tier, so the tap is acknowledged where it landed.
+  function pulseTier(i) {
+    var tg = tierGroups[i]; if (!tg) return;
+    tween({ duration: 260, ease: EASE.soft, update: function (k) { var sc = 1 + 0.03 * Math.sin(k * Math.PI); tg.scale.set(sc, sc, sc); }, done: function () { tg.scale.set(1, 1, 1); } });
+  }
+  // Which tier is under a screen point (builder only).
+  var _tierRay = new THREE.Raycaster(), _tierNdc = new THREE.Vector2();
+  function tierAt(clientX, clientY) {
+    var r = canvas.getBoundingClientRect();
+    _tierNdc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    _tierRay.setFromCamera(_tierNdc, camera);
+    var hits = _tierRay.intersectObjects(tierGroups, true);
+    for (var h = 0; h < hits.length; h++) {
+      var o = hits[h].object;
+      while (o && tierGroups.indexOf(o) < 0) o = o.parent;
+      if (o) return tierGroups.indexOf(o);
+    }
+    return -1;
+  }
+
   // ---- Tier shape controls: width and height per tier, the stack always valid ----
-  var shapeTier = 0;
   function syncShape() {
     var n = tiersFor(draft).length;
-    if (shapeTier >= n) shapeTier = 0;
-    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) { b.hidden = i >= n; b.classList.toggle('on', i === shapeTier); });
-    var st = draft.sh[shapeTier];
+    if (curTier >= n) curTier = 0;
+    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) { b.hidden = i >= n; b.classList.toggle('on', i === curTier); });
+    var st = draft.sh[curTier];
     var w = $('f-sw'), h = $('f-sh');
     // Width can't exceed the tier below minus the ledge — the slider's max moves with it.
-    var maxStep = shapeTier === 0 ? SHAPE.steps - 1 : Math.max(0, Math.floor(rToStep(stepToR(draft.sh[shapeTier - 1].r) - SHAPE.ledge)));
+    var maxStep = curTier === 0 ? SHAPE.steps - 1 : Math.max(0, Math.floor(rToStep(stepToR(draft.sh[curTier - 1].r) - SHAPE.ledge)));
     w.max = maxStep; w.value = Math.min(st.r, maxStep); h.value = st.h;
     $('sw-out').textContent = (stepToR(st.r) * 2).toFixed(1); $('sh-out').textContent = stepToH(st.h).toFixed(1);
   }
@@ -2976,43 +3069,37 @@
     buildPending = true;
     requestAnimationFrame(function () { buildPending = false; var o = buildOpts; buildOpts = null; build(draft, o || undefined); });
   }
-  var ribbonTier = 0;                                  // which tier the Ribbon controls edit
   function syncRibbon() {
     var tiers = tiersFor(draft).length;
-    if (ribbonTier >= tiers) ribbonTier = 0;
-    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) {
-      b.addEventListener('click', function () { shapeTier = i; syncShape(); });
-    });
-    $('f-sw').addEventListener('input', function (e) {
-      draft.sh[shapeTier].r = +e.target.value; draft = normalize(draft);   // normalize re-clamps the tiers above
-      syncShape(); syncRibbon(); scheduleBuild({ keepMessage: true });
-    });
-    $('f-sh').addEventListener('input', function (e) {
-      draft.sh[shapeTier].h = +e.target.value; draft = normalize(draft);
-      syncShape(); scheduleBuild({ keepMessage: true });
-    });
-    // On release, one full rebuild so the message band is redrawn for the final shape.
-    ['f-sw', 'f-sh'].forEach(function (id) { $(id).addEventListener('change', function () { scheduleBuild(); }); });
-    $('shape-reset').addEventListener('click', function () {
-      draft.sh = classicShape(draft.t); draft = normalize(draft);
-      syncShape(); build(draft);
-    });
+    if (curTier >= tiers) curTier = 0;
     Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) {
-      b.hidden = i >= tiers; b.classList.toggle('on', i === ribbonTier);
+      b.hidden = i >= tiers; b.classList.toggle('on', i === curTier);
     });
-    var rt = draft.rt[ribbonTier];
+    var rt = draft.rt[curTier];
     var box = $('f-ribbon'); if (box) box.checked = !!rt.on;
     var opts = $('ribbon-opts'); if (opts) opts.classList.toggle('dim', !rt.on);
     syncSwatches(els.swRc, rt.c);
     var rw = $('f-rw'); if (rw) rw.value = rt.w;
     var out = $('rw-out'); if (out) out.textContent = ribbonWidth(rt.w).toFixed(2);
   }
+  function syncFrostTiers() {
+    var n = tiersFor(draft).length;
+    Array.prototype.forEach.call($('frost-tiers').children, function (b) {
+      var k = b.getAttribute('data-tier');
+      b.hidden = k !== 'all' && +k >= n;
+      b.classList.toggle('on', frostAll ? k === 'all' : +k === curTier);
+    });
+    // the swatches show the current tier's colour (or the bottom tier's when "All")
+    syncSwatches(els.swFc, draft.fcs[frostAll ? 0 : curTier]);
+  }
   function syncFrosting() {
     syncRibbon();
     syncShape();
+    syncFrostTiers();
     var on = !!draft.fr;
     var box = $('f-frost'); if (box) box.checked = on;
     var opts = $('frost-opts'); if (opts) opts.classList.toggle('dim', !on);
+    Array.prototype.forEach.call($('frost-style').children, function (b) { b.classList.toggle('on', on && +b.getAttribute('data-fr') === draft.fr); });
     Array.prototype.forEach.call($('layers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-ly') === draft.ly); });
     var lo = $('ly-out'); if (lo) lo.textContent = draft.ly;
   }
@@ -3069,24 +3156,52 @@
     Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip'), function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
     });
+    var lastStyle = 1;                                   // the style to come back to when frosting is toggled on
     $('f-frost').addEventListener('change', function (e) {
-      draft.fr = e.target.checked ? 1 : 0;
+      draft.fr = e.target.checked ? lastStyle : 0;
       syncFrosting(); updateColourNote();
       build(draft);
       if (draft.fr) frostOn();                           // the moment: the frosting goes on
     });
+    Array.prototype.forEach.call($('frost-style').children, function (b) {
+      b.addEventListener('click', function () {
+        if (b.disabled) return;
+        lastStyle = +b.getAttribute('data-fr') || 1;
+        draft.fr = lastStyle; syncFrosting(); build(draft);
+      });
+    });
     Array.prototype.forEach.call($('layers').children, function (b) {
       b.addEventListener('click', function () { draft.ly = +b.getAttribute('data-ly'); syncFrosting(); build(draft); });
     });
-    Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) {
-      b.addEventListener('click', function () { ribbonTier = i; syncRibbon(); });
+    // Tier pills in Shape, Frosting and Ribbon all set the one current tier.
+    Array.prototype.forEach.call($('shape-tiers').children, function (b, i) { b.addEventListener('click', function () { setCurTier(i); }); });
+    Array.prototype.forEach.call($('ribbon-tiers').children, function (b, i) { b.addEventListener('click', function () { setCurTier(i); }); });
+    Array.prototype.forEach.call($('frost-tiers').children, function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-tier');
+        if (k === 'all') { frostAll = true; syncFrostTiers(); } else { frostAll = false; setCurTier(+k); }
+      });
+    });
+    // Shape sliders: keep the message texture during the drag; one full rebuild on release.
+    $('f-sw').addEventListener('input', function (e) {
+      draft.sh[curTier].r = +e.target.value; draft = normalize(draft);   // normalize re-clamps the tiers above
+      syncShape(); syncRibbon(); scheduleBuild({ keepMessage: true });
+    });
+    $('f-sh').addEventListener('input', function (e) {
+      draft.sh[curTier].h = +e.target.value; draft = normalize(draft);
+      syncShape(); scheduleBuild({ keepMessage: true });
+    });
+    ['f-sw', 'f-sh'].forEach(function (id) { $(id).addEventListener('change', function () { scheduleBuild(); }); });
+    $('shape-reset').addEventListener('click', function () {
+      draft.sh = classicShape(draft.t); draft = normalize(draft);
+      syncShape(); build(draft);
     });
     $('f-ribbon').addEventListener('change', function (e) {
-      draft.rt[ribbonTier].on = e.target.checked; draft = normalize(draft);
+      draft.rt[curTier].on = e.target.checked; draft = normalize(draft);
       syncRibbon(); build(draft);
     });
     $('f-rw').addEventListener('input', function (e) {
-      draft.rt[ribbonTier].w = +e.target.value; draft = normalize(draft);
+      draft.rt[curTier].w = +e.target.value; draft = normalize(draft);
       syncRibbon(); scheduleBuild();
     });
 
@@ -3414,6 +3529,8 @@
       for (var j in partial) next[j] = partial[j];
       if ('rbt' in partial) delete next.rt;              // an explicit ribbon string beats the live per-tier array
       if ('tp' in partial) delete next.sh;               // likewise an explicit shape string
+      if ('fct' in partial) delete next.fcs;             // and an explicit per-tier frosting string
+      if ('fc' in partial && !('fct' in partial)) delete next.fcs;   // a plain fc recolours every tier
       if (draft && !document.body.classList.contains('mode-viewer')) { draft = normalize(next); syncForm(); }
       build(next, { showMessage: showMessage });
     },
@@ -3428,6 +3545,8 @@
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     look: window.CakeLook ? CakeLook.LOOK : null,
     relight: updateRoomLights,
+    get tierGroups() { return tierGroups; },
+    __tierAt: function (x, y) { return tierAt(x, y); }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
     renderer: renderer,               // for cake.renderer.info.programs — count should not grow after load
     relook: function () {
       if (!window.CakeLook) return;

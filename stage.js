@@ -98,6 +98,10 @@
   // point well outside the shadow frustum and any local light's reach, so what comes back is
   // "floor paint under the room's lights" — exactly what the sky should be. The fog is pushed
   // out of range for the render (uniforms only; no shader change) and restored after.
+  // Two phases so the readback never stalls the pipeline: render the probe on one frame, read
+  // it on the next, when the GPU has long finished. glReadPixels is a full drain otherwise —
+  // on a tile-based phone GPU, tens of milliseconds while a shadow pass is in flight.
+  var probePending = false;
   function calibrate(renderer, scene) {
     if (!floor || !fog || !renderer) return;
     if (!probeRT) {
@@ -115,14 +119,20 @@
     var prev = renderer.getRenderTarget();
     renderer.setRenderTarget(probeRT);
     renderer.render(scene, probeCam);
-    renderer.readRenderTargetPixels(probeRT, 0, 0, 2, 2, probeBuf);
     renderer.setRenderTarget(prev);
     renderer.shadowMap.autoUpdate = shadowAuto;
     fog.near = near; fog.far = far;
+    probePending = true;
+  }
+  function finishCalibrate(renderer) {
+    if (!probePending || !probeRT) return false;
+    probePending = false;
+    renderer.readRenderTargetPixels(probeRT, 0, 0, 2, 2, probeBuf);
     // The target holds output-encoded (sRGB) bytes; setRGB is linear by contract, so decode.
     measured = measured || new THREE.Color();
     measured.setRGB(probeBuf[0] / 255, probeBuf[1] / 255, probeBuf[2] / 255).convertSRGBToLinear();
     refresh();
+    return true;
   }
   function setBrightness(litFactor) { lit = litFactor; refresh(); }
   function update(cameraDistance) {
@@ -131,6 +141,6 @@
     fog.far = cameraDistance + S.fogFarPast;
   }
 
-  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, calibrate: calibrate, update: update, S: S,
+  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, calibrate: calibrate, finishCalibrate: finishCalibrate, update: update, S: S,
                        get floor() { return floor; } };
 })();

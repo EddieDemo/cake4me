@@ -1,30 +1,24 @@
-# Cake — v0.62
+# Cake — v0.65 (semi-naked frosting)
 
-## 1. The tier-switch animation is back to how it was
-What you were seeing was **dead code that came back to life.** A "top tier drops in from above"
-animation had existed since the early builds but never fired, because the builder mutated the same
-config object the build compared against, so the build never saw a tier change. When v0.60 made the
-tier switch produce a fresh config, the comparison started working and the drop woke up — along
-with a re-pop of every candle. Both are gone for good; a tier switch is once again just the camera
-easing to the new cake.
+## New file: `frosting.js`
+Frosting **styles** — how the shell is painted or shaped beyond a colour — live here, one function
+each, so `app.js` stays the product and this file grows as styles do: semi-naked now, drip and
+rustic next. It knows nothing about cakes; it takes a base painter and a frosting colour.
 
-## 2. A tier may be exactly as wide as the tier below
-The ledge minimum is 0. Tier 2's width slider now maxes out *at* tier 1's width.
+## Semi-naked
+The smooth shell wearing a thin scrape of frosting: the sponge and its filling lines show through
+in vertical smears, fuller near the rims. Per pixel over the layer painting (768×384, smeared, so
+it needn't be sharp), with a per-tier seed so tiers don't repeat. The message is piped straight
+onto the scrape — `makeMessageTexture` now takes a general *base painter* rather than the
+naked-only sponge, so any style can sit under the writing. Wedges and the slice page inherit it.
 
-## 3. One candle by default
-`DEFAULTS.n` is 1. (Links always carry their own count.)
+Textures are cached on their inputs (colour, filling, layers, tier height, tier index), so
+scrubbing a shape slider doesn't repaint them; the cache holds 12 and disposes the oldest.
 
-## 4. The page "refreshing" — Safari killing the tab for memory
-Every slider tick rebuilt the whole cake, and each rebuild allocated a fresh **4096px-wide message
-canvas (~16MB on your phone)** plus a cut-face texture per tier that nothing used unless the cake
-was cut. At dozens of ticks a second, iOS Safari's canvas memory limit was blown and it reloaded
-the tab. Three fixes:
-- **One persistent message canvas**, redrawn rather than reallocated. There's only ever one live
-  band, so one element serves every build.
-- **Slider rebuilds are coalesced** to at most one per animation frame, and during a shape drag
-  the existing message texture is **kept** (`keepMessage`) — the text scales a hair with the tier
-  for a moment — with one full redraw on release.
-- The cut-face material is **made on demand** (cut, slice page, dev cut-away), not per build.
+## Style row
+Smooth and Semi-naked are live; Drip and Rustic stay reserved. `fr`: 0 none · 1 smooth · 2 drip ·
+3 rustic · 4 semi-naked. A link asking for a reserved style decodes as smooth. The Frost toggle
+remembers the last style chosen, so off-then-on comes back semi-naked.
 
-Measured: **zero canvas allocations across 20 slider ticks**, two on release; GPU texture count
-flat at 8 throughout.
+Verified: style selection, toggle memory, link round trip, reserved fallback, 16 programs at load
+and 16 after.

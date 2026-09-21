@@ -161,7 +161,11 @@
     bakeAO(geo, bodyAO(r, bodyH, scheme));
     // One material group covering everything, so a [message, frosting, frosting] material
     // array keeps working: index 0 is the whole side.
-    geo.clearGroups(); geo.addGroup(0, Infinity, 0);
+    // The group must carry the REAL index count. `Infinity` renders fine, but r128's Mesh.raycast
+    // bounds a material-group loop by min(group.start + group.count, drawRange end) — both
+    // Infinity here — so any raycast that hit a tier body looped forever (tap-to-select, and
+    // tap-to-cut on a wedge, both froze the tab).
+    geo.clearGroups(); geo.addGroup(0, geo.index ? geo.index.count : geo.attributes.position.count, 0);
     return geo;
   }
   // occluderR: radius of the tier sitting on this one (undefined for the top tier).
