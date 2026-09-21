@@ -49,7 +49,7 @@
   var FROST_T = 0.12;            // fondant: side thickness
   var FROST_TOP = 0.15;          // fondant: extra height on top
   var FONDANT_BASE_FILLET = 0.05; // fondant is trimmed at the board: half the top rim's roundness
-  var FILL_T = 0.09;             // filling thickness, world units — the same whatever the layer count
+  var FILL_T = 0.16;             // filling thickness, world units — the same whatever the layer count (v0.71: was 0.09)
   var NAKED_CAP_H = 0.12;        // a naked tier's top disc is thin, so no filling hides inside it
   function capHeightFor(cfg, i) { return frostingHasThickness(cfg, i) ? CAP_H : NAKED_CAP_H; }
   // Where the fillings sit in a tier, bottom→top, in world units. Sponge layers are equal;
@@ -637,7 +637,8 @@
       var frosting = TM.frosting;                         // this tier's own colour
       var ink = pickInk(frosting, cfg.tc);
       var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
-      frostingMat.__shared = capMat.__shared = true; localShared.push(frostingMat, capMat);
+      if (frostingMat) { frostingMat.__shared = true; localShared.push(frostingMat); }
+      capMat.__shared = true; localShared.push(capMat);
       var bodyH = TM.bodyH, rr = TM.rr;
       var open = cfg.cutaway ? Math.PI / 4 : 0;          // dev wedge removed
       var tg = new THREE.Group();                        // this tier's meshes, so it can drop in
@@ -666,7 +667,7 @@
         body = buildStack(cfg, tier, TM, sideMat, 0, Math.PI * 2, CYL_SEG, false);
         body.position.y = y;
         tg.add(body);
-        if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = tier.hs; }
+        if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = tier.hs; body.__stack = true; }
       } else {
         // Fondant: the shell is what's seen; the stack inside it is built only when cut.
         var bodyGeo = CakeShapes.body(rr, bodyH, CYL_SEG, open, Math.PI * 2 - open, scheme, pOpts);
@@ -755,6 +756,9 @@
   function updateMessage(m) {
     config.m = m;
     if (!messageMesh) { build(config); return; }
+    // On a stack (naked / semi-naked) the wall materials are assigned per solid at build time —
+    // the writing must span sponge AND fillings — so a message change rebuilds the tier.
+    if (messageMesh.__stack) { build(config); return; }
     var tier = messageMesh.__tier, bodyH = messageMesh.__bodyH;
     var frosting = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
     var old = messageMesh.material[0];
@@ -768,7 +772,7 @@
       });
       nightGlow(mat, 0xffffff, true);
     } else {
-      mat = messageMesh.material[1];   // plain frosting
+      mat = messageMesh.__plainWall || messageMesh.material[1];   // the tier's plain wall
     }
     messageMesh.material[0] = mat;
     if (old !== messageMesh.material[1]) { if (old.map) old.map.dispose(); old.dispose(); }
@@ -965,7 +969,10 @@
   var msgCanvas = null;
   // `base` (optional): function(ctx, W, H) painting what's under the writing — the sponge
   // stripes on a naked cake, the frosting scrape on a semi-naked one. Flat frosting otherwise.
-  function makeMessageTexture(text, ink, frostingHex, radius, bodyH, base) {
+  // `ownCanvas`: paint into a fresh canvas instead of the shared one. The warm-up compile uses
+  // this — otherwise its placeholder band overwrote the shared canvas, and any texture that
+  // later re-uploaded from it (a wedge's clone) wore the word "warm".
+  function makeMessageTexture(text, ink, frostingHex, radius, bodyH, base, ownCanvas) {
     text = String(text).slice(0, MAX_MSG);
     var circumference = 2 * Math.PI * radius;
     // The message is the thing people zoom into, so size its canvas off the real
@@ -976,7 +983,7 @@
     // One persistent canvas, redrawn: at 4096 wide this is ~16MB, and allocating a fresh one on
     // every rebuild was what made Safari reload the tab under a slider drag. There is only ever
     // one live message band, so a single element serves every build (and the warm-up).
-    var c = msgCanvas || (msgCanvas = document.createElement('canvas'));
+    var c = ownCanvas ? document.createElement('canvas') : (msgCanvas || (msgCanvas = document.createElement('canvas')));
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     var g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
@@ -1145,23 +1152,40 @@
   // Materials for a tier — frosted shell or naked sponge — from a config. Shared by the whole
   // cake, the cut wedges and the slice page so the three can't disagree.
   var semiCache = {}, semiKeys = [];   // semi-naked side textures, by their inputs (see tierMaterials)
+  // The sponge's crumb, with no stripes: fillings are solids with their own material now, so
+  // nothing about them is painted. One tileable texture, made once.
+  var crumbTex = null;
+  function makeCrumbTexture() {
+    if (crumbTex) return crumbTex;
+    var c = document.createElement('canvas'); c.width = 256; c.height = 256;
+    paintLayers(c.getContext('2d'), 256, 256, [], { fills: [] }, 1);
+    crumbTex = new THREE.CanvasTexture(c); crumbTex.encoding = THREE.sRGBEncoding;
+    crumbTex.wrapS = crumbTex.wrapT = THREE.RepeatWrapping; crumbTex.repeat.set(6, 1); crumbTex.__shared = true;
+    return crumbTex;
+  }
 
   // ---- The sponge as a stack of real solids (v0.69) ----
   // Builds one merged mesh: each sponge layer and each filling a closed solid of its own, and —
   // when `partial` — the flat ends of every solid at both cut angles, each in the solid's own
   // colour. Material array: [0] the outer side (layers texture, scrape, or the message band),
   // [1] sponge ends, [2..] filling ends by palette colour. Positioned at the tier's base.
+  // `sideMat` is a texture that must span the whole stack (the writing, or a scrape); pass null
+  // and every solid wears its own material — sponge crumb, filling colour — with nothing painted.
   function buildStack(cfg, tier, TM, sideMat, theta0, len, seg, partial) {
     var rs = tier.rs, hs = tier.hs, scheme = layerScheme(hs, cfg.ly), filling = TM.filling;
     var G = CakeShapes.P.groove, D = CakeShapes.P.disc;
-    var geoms = [], mats = [sideMat, new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, vertexColors: true })];
+    var textured = !!sideMat;
+    var wall = sideMat || new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, map: makeCrumbTexture(), vertexColors: true });
+    // Ends face both ways: of the two faces bounding a gap in a cut cake, one points into it
+    // and one away, so single-sided ends vanished from half the angles.
+    var geoms = [], mats = [wall, new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, side: THREE.DoubleSide, vertexColors: true })];
     // [2] the top surface of the top layer: plain — sponge, or the buttercream where a scrape
     // covers the top fully. The side texture must not be sampled across the lid.
     var topHex = (TM.style === 4) ? PALETTES.frosting[clampIndex(cfg.frs ? cfg.frs[tier.idx || 0] : cfg.fc, PALETTES.frosting)].hex : SPONGE;
     mats.push(new THREE.MeshStandardMaterial({ color: topHex, roughness: TM.style === 4 ? 0.75 : 0.95, vertexColors: true }));
     var fillMatIndex = {};   // filling end materials start at index 3
     function fillMat(hex) {
-      if (fillMatIndex[hex] === undefined) { fillMatIndex[hex] = mats.length; mats.push(new THREE.MeshStandardMaterial({ color: hex, roughness: 0.7, vertexColors: true })); }
+      if (fillMatIndex[hex] === undefined) { fillMatIndex[hex] = mats.length; mats.push(new THREE.MeshStandardMaterial({ color: hex, roughness: 0.7, side: THREE.DoubleSide, vertexColors: true })); }
       return fillMatIndex[hex];
     }
     var matOf = [];                                   // material index per geometry, parallel to geoms
@@ -1174,7 +1198,8 @@
       }
       // occlusion: the bottom layer's foot, and every filling sits in shadow
       CakeShapes.bakeAO(g, function (rr, y) { var v = 1; if (y0 === 0) v = Math.min(v, 0.62 + 0.38 * Math.min(1, y / 0.28)); if (endMat !== 1) v = Math.min(v, 0.72); return v; });
-      geoms.push(g); matOf.push(0);
+      // Walls: the spanning texture if there is one; otherwise the solid's own material.
+      geoms.push(g); matOf.push(textured ? 0 : (endMat === 1 ? 0 : endMat));
       if (partial) {
         [theta0, theta0 + len].forEach(function (th) {
           var fg = CakeShapes.faceAt(CakeShapes.discFace(r, t, f, y0), th);
@@ -1216,10 +1241,12 @@
     var scheme = layerScheme(tier.hs, cfg.ly);   // fillings live in the sponge
     var side, cap, base = null;
     var semi = !fdOn && style === 4 && window.CakeFrosting;   // fondant hides a scrape
-    var paintSponge = function (g, W, H) { paintLayers(g, W, H, filling, scheme, bodyH); };
+    // Base painters span the SPONGE height — the same span the stack's UVs use — so a message
+    // or a scrape lands on the fillings exactly where the filling solids are.
+    var hs = tier.hs;
+    var paintSponge = function (g, W, H) { paintLayers(g, W, H, filling, scheme, hs); };
     if (naked) {
-      side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, map: makeLayersTexture(filling, scheme, bodyH), vertexColors: true });
-      side.map.wrapS = THREE.RepeatWrapping;
+      side = null;                                       // the stack wears its own materials
       cap = new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, vertexColors: true });
       base = paintSponge;
     } else if (semi) {
@@ -1232,7 +1259,7 @@
       };
       // The scrape is a per-pixel canvas pass, so it's cached on its inputs: scrubbing a shape
       // slider back and forth doesn't repaint it, and cached textures are shared across builds.
-      var key = [hx, filling.join(','), cfg.ly, bodyH.toFixed(2), tier.idx || 0].join('|');
+      var key = [hx, filling.join(','), cfg.ly, hs.toFixed(2), tier.idx || 0].join('|');
       var tex = semiCache[key];
       if (!tex) {
         tex = CakeFrosting.semiNakedTexture({ frostingRgb: rgb, paintBase: paintSponge, seed: (tier.idx || 0) + 1 });
@@ -1248,7 +1275,8 @@
       side = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.62, vertexColors: true });
       cap = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.55, vertexColors: true });
     }
-    nightGlow(side, naked ? SPONGE : frosting, false); nightGlow(cap, naked ? SPONGE : frosting, false);
+    if (side) nightGlow(side, naked ? SPONGE : frosting, false);
+    nightGlow(cap, naked ? SPONGE : frosting, false);
     // The cut-face material is made on demand: only the cut, the slice page and the dev cut-away
     // use it, and creating it eagerly leaked three textures per build (one per tier) — dozens of
     // times a second while a shape slider was being dragged. Safari reloaded the tab for memory.
@@ -2529,9 +2557,7 @@
         f.rotation.y = th - Math.PI / 2;               // +x (radius) → along (sin θ, cos θ)
         g.add(f);
       });
-      var inner = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, map: makeLayersTexture(TM.filling, layerScheme(tier.hs, cfg.ly), tier.hs), vertexColors: true });
-      inner.map.wrapS = THREE.RepeatWrapping;
-      var stack2 = buildStack(cfg, tier, TM, inner, theta0, len, wseg, true);
+      var stack2 = buildStack(cfg, tier, TM, null, theta0, len, wseg, true);
       stack2.position.y = tier.y0; g.add(stack2);
     }
     g.traverse(function (o) { if (o.isMesh) o.userData.wedge = g; });
@@ -3559,7 +3585,7 @@
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
     var frosting = PALETTES.frosting[0].hex, filling = PALETTES.filling[7].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-    var msgTex = makeMessageTexture('warm', INK_DARK, frosting, 2.2, 1.2);
+    var msgTex = makeMessageTexture('warm', INK_DARK, frosting, 2.2, 1.2, null, true);   // its own canvas
     var msgMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: msgTex, vertexColors: true });
     nightGlow(msgMat, 0xffffff, true);                                   // message band: map + emissiveMap
     var tier = { r: 2.2, h: 1.6, y0: 0, aboveR: 1.4 };
@@ -3648,7 +3674,7 @@
       document.body.classList.add('mode-builder');
       var pre = readEditHash();
       if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
-      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked: no buttercream, no fondant, no ribbons
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.ly = 2; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked with one filling: no buttercream, no fondant, no ribbons
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
