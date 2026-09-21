@@ -9,7 +9,18 @@
   'use strict';
 
   var SCHEMA_VERSION = 1;
-  var MAX_CANDLES = 100;
+  var MAX_CANDLES = 100;          // what a LINK may carry (old gifts keep their count)
+  var BUILDER_MAX_CANDLES = 20;   // what the builder offers
+  // ---- MVP feature flags (Phase 1, 21 Sept 2026) ----
+  // These hide parts of the detailed builder. They change what a SENDER can choose, never what
+  // a recipient can see: links carrying an occasion, buttercream or a third tier still decode
+  // and render exactly as sent. Flip to true to bring a feature back.
+  var FEATURES = {
+    occasion: false,      // the Occasion chip + tray; new cakes are silently Birthday
+    buttercream: false,   // the Frosting chip (semi-naked etc.); fondant remains
+    tier3: false          // the Showstopper card; the builder offers one or two tiers
+  };
+  var OCCASION_DEFAULT = 0;       // Birthday — used when the picker is hidden
   var MAX_MSG = 80;
   var MAX_NAME = 24;
 
@@ -1841,7 +1852,8 @@
   // There is no separate "blow" gesture.
   var SPIN = {
     idle: (Math.PI * 2) / ROTATION_SECONDS_PER_TURN,   // ambient, rad/s (~0.26)
-    max: Infinity,                                     // no cap: flick it as hard as you like
+    max: 12,                                           // rad/s (~2 turns/s): repeated flicks build to here
+    catchIdleDelay: 2200,                              // ms after a catch before the ambient turn resumes (viewer)
     friction: 1.4,                                     // rad/s² — constant deceleration, like a real turntable
     blowAt: 1.9,                                       // wind starts to bite, rad/s
     blowFull: 5.5,                                     // a wave every ~120ms up here
@@ -1874,6 +1886,8 @@
   var bankZ = 0;                // held twist (Z), radians, clamped to TWIST — two-finger gesture
   var dragging = false;
   var spinFree = false;         // true once the user has taken hold of the cake
+  var heldOmega = 0;            // the speed the cake had when it was caught (for building speed)
+  var idleResumeAt = 0;         // after a catch, the ambient turn waits until this time
 
   var blow = { enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: 0, revealed: false };
 
@@ -1907,7 +1921,9 @@
     // This runs while dragging too: the cake keeps its momentum under your thumb,
     // the way brushing a spinning turntable does. Hold it still long enough and
     // friction bleeds the speed away, so a press-and-hold still settles it.
-    var target = idleRate();
+    // A finger on the cake holds it: no momentum, no ambient turn — it follows the thumb 1:1.
+    if (dragging) { omega = 0; }
+    var target = (dragging || now < idleResumeAt) ? 0 : idleRate();
     var diff = omega - target;
     var step = SPIN.friction * dt;
     if (Math.abs(diff) <= step) omega = target;
@@ -2002,6 +2018,9 @@
         lastT = performance.now();
         samples.length = 0;
         dragging = true; spinFree = true; dragW = 0;
+        // Catch: the cake stops dead under the finger. Its speed is remembered so a swipe the
+        // same way can build on it (a lazy Susan: catch it, push it further).
+        heldOmega = omega; omega = 0;
         killTweens('turn');
         if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
       }
@@ -2057,7 +2076,15 @@
       // build speed and a flick against the spin brakes it. Replacing it here is
       // what made multiple swipes feel capped.
       var v = (now - lastT > 90) ? 0 : smoothedVel(now) * SPIN.flingGain;
-      if (isFinite(v)) omega += v;
+      if (!isFinite(v)) v = 0;
+      // Held still (or a tap): it stays stopped, and the viewer's ambient turn waits a moment.
+      // Flung the same way it was already going: speed builds. Flung the other way: the catch
+      // already stopped it, so it simply goes the new way.
+      if (Math.abs(v) < 0.15) { omega = 0; idleResumeAt = now + SPIN.catchIdleDelay; }
+      else if (heldOmega && Math.sign(v) === Math.sign(heldOmega)) omega = heldOmega + v;
+      else omega = v;
+      omega = Math.max(-SPIN.max, Math.min(SPIN.max, omega));
+      heldOmega = 0;
       dragW = 0;
       samples.length = 0;
     }
@@ -3127,7 +3154,19 @@
       b.setAttribute('aria-pressed', (b.getAttribute('data-t') | 0) === active ? 'true' : 'false');
     });
   }
+  // What the builder may offer, applied to whatever draft it's given (a fresh one, or a
+  // reminder / "send one back" pre-fill from an older link). The viewer is never clamped.
+  function applyBuilderLimits() {
+    if (!FEATURES.tier3 && draft.t > 2) {
+      // Keep the bottom two tiers as they were: drop the live arrays so normalize re-derives
+      // them for two tiers from the link strings.
+      draft.t = 2; delete draft.sh; delete draft.fcs; delete draft.frs; delete draft.frsty; delete draft.fds;
+      draft = normalize(draft);
+    }
+    if (draft.n > BUILDER_MAX_CANDLES) draft.n = BUILDER_MAX_CANDLES;
+  }
   function syncForm() {
+    applyBuilderLimits();
     els.to.value = draft.to;
     els.from.value = draft.from;
     els.m.value = draft.m;
@@ -3324,6 +3363,11 @@
 
   function wireBuilder() {
     makeOccasions();
+    // Hidden features: remove their chips (and the Showstopper card) from the builder.
+    function hideEl(el) { if (el) { el.hidden = true; el.style.display = 'none'; } }
+    if (!FEATURES.occasion) hideEl($('chiprow').querySelector('.chip[data-tray="occasion"]'));
+    if (!FEATURES.buttercream) hideEl($('chiprow').querySelector('.chip[data-tray="frosting"]'));
+    if (!FEATURES.tier3) { hideEl(els.tiers.querySelector('.tier[data-t="3"]')); els.tiers.style.gridTemplateColumns = 'repeat(2, 1fr)'; }
     Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip'), function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
     });
@@ -3407,24 +3451,43 @@
     });
 
     els.n.addEventListener('input', function () {
-      draft.n = clampInt(els.n.value, 0, MAX_CANDLES, 0);
+      draft.n = clampInt(els.n.value, 0, BUILDER_MAX_CANDLES, 0);
       els.nOut.textContent = draft.n;
       updateCta();
       scheduleBuild();
     });
 
+    // Per-tier settings are remembered across a tier-count change: going 2 → 1 → 2 brings the
+    // top tier back as it was (re-clamped if the bottom has narrowed meanwhile). A tier that has
+    // never existed starts from the classic shape and the bottom tier's colours.
+    var tierMem = { sh: [], fcs: [], frs: [], frsty: [], fds: [] };
+    function rememberTiers() {
+      Object.keys(tierMem).forEach(function (k) {
+        (draft[k] || []).forEach(function (v, i) { tierMem[k][i] = (typeof v === 'object') ? { r: v.r, h: v.h } : v; });
+      });
+    }
     Array.prototype.forEach.call(els.tiers.children, function (b) {
       b.addEventListener('click', function () {
-        draft.t = b.getAttribute('data-t') | 0;
-        draft.sh = classicShape(draft.t); draft = normalize(draft);   // a new tier count starts from the classic shape
-        syncTiers(draft.t); syncShape(); syncRibbon();
+        var t = b.getAttribute('data-t') | 0;
+        if (t === draft.t) return;
+        rememberTiers();
+        var n = TIERS[t].length, classic = classicShape(t), next = { sh: [], fcs: [], frs: [], frsty: [], fds: [] };
+        for (var i = 0; i < n; i++) {
+          next.sh.push(tierMem.sh[i] ? { r: tierMem.sh[i].r, h: tierMem.sh[i].h } : classic[i]);
+          ['fcs', 'frs', 'frsty', 'fds'].forEach(function (k) { next[k].push(tierMem[k][i] !== undefined ? tierMem[k][i] : tierMem[k][0]); });
+        }
+        draft.t = t;
+        Object.keys(next).forEach(function (k) { draft[k] = next[k]; });
+        draft = normalize(draft);                         // re-clamps the stack
+        if (curTier >= n) curTier = n - 1;
+        syncTiers(draft.t); syncShape(); syncRibbon(); syncFrostTiers();
         updateCta();
         build(draft, { showMessage: true });
       });
     });
 
     els.getLink.addEventListener('click', function () {
-      if (draft.o === OCCASION_UNCHOSEN) draft.o = OCCASION_FALLBACK;
+      if (draft.o === OCCASION_UNCHOSEN) draft.o = FEATURES.occasion ? OCCASION_FALLBACK : OCCASION_DEFAULT;
       // The lighting the sender is looking at right now is part of the cake.
       draft.lt = window.CakeLook ? CakeLook.serializeLighting() : '';
       draft = normalize(draft);
@@ -3494,7 +3557,7 @@
       firstBuilderVisit = false;
       // Fresh build: "What's the occasion?" is the first question. Pre-filled (a reminder or
       // "send one back"): the occasion is already known, go straight to the message.
-      openTray = null; setTray(draft && draft.o >= 0 && draft.__prefilled ? 'message' : 'occasion');
+      openTray = null; setTray((!FEATURES.occasion || (draft && draft.o >= 0 && draft.__prefilled)) ? 'message' : 'occasion');
     }
     els.linkpanel.hidden = which !== 'linkpanel';
     els.viewerFoot.hidden = which !== 'viewer';
@@ -3674,7 +3737,7 @@
       document.body.classList.add('mode-builder');
       var pre = readEditHash();
       if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
-      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.ly = 2; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked with one filling: no buttercream, no fondant, no ribbons
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = FEATURES.occasion ? OCCASION_UNCHOSEN : OCCASION_DEFAULT; draft.ly = 2; draft.frsty = draft.frsty.map(function () { return 0; }); draft.fds = draft.fds.map(function () { return 0; }); draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked with one filling: no buttercream, no fondant, no ribbons
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
