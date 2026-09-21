@@ -1,28 +1,29 @@
-# Cake — v0.67 (frosting and fondant)
+# Cake — v0.69 (the sponge as a stack of real solids)
 
-The smooth shell was fondant all along — a rolled, sharp-edged, uniform sheet — so it's called that
-now, and buttercream is its own layer. The model, outermost last:
+Cutting no longer paints a picture of layers on a flat face. **The sponge is a stack**: each sponge
+layer and each filling is a real, closed, softly-rounded solid, fillings set slightly in; a cut
+face is just the end of each solid, in that solid's own colour. The uncut naked cake is built
+from the same parts, so the grooves you see outside *are* the filling solids, and the cut and the
+uncut cake cannot disagree.
 
-    Sponge  →  Frosting (buttercream, spread on)  →  Fondant (a sheet draped over)
+## How it's put together
+- `shapes.js`: `disc` (a closed lathe solid with rounded edges, UVs in *tier* space), `discTop`
+  (the lid, so the top layer's top can be its own plain material rather than the side texture
+  sampled radially), `discFace` (a solid's flat end), `merge` (many geometries → one, with a
+  material group per part), and `cutFace(...inner)` (an L-shaped face showing only the fondant's
+  thickness).
+- `app.js`: `buildStack(cfg, tier, TM, sideMat, θ0, len, seg, partial)` builds one merged mesh per
+  tier — materials `[side, sponge ends, lid, filling ends…]` — for the whole cake (full sweep) and
+  for every wedge (partial sweep with ends). A fondant wedge is the shell, its L-band, and the
+  stack inside. A fondant tier uncut is still just the shell (the stack inside is invisible).
+- One mesh per tier uncut; two per fondant wedge, one otherwise — draw calls unchanged.
 
-- **Frosting** chip: All/tier pills, a **style** row — **None · Semi-naked** (Smooth and Rustic
-  reserved) — and a colour row. None is a style, so there's no toggle. Colour per tier (`frt`).
-- **Fondant** chip: All/tier pills, the toggle at the head of its colour row. Colour per tier
-  (`fct`, the field that used to hold the shell's colour). Fondant has real thickness (0.08 sides,
-  0.10 top) and **meets the base with half the top rim's roundness** — trimmed at the board, as
-  rolled icing is — via a `baseFillet` option on the body profile that the ribbon band and cut
-  face share.
-- Fondant over a semi-naked scrape hides the scrape: that's the crumb coat, and it's right.
-- The writing sits on the outermost layer; the auto ink and the contrast note follow it.
-- Shape, Frosting, Fondant and Ribbon share the one current tier; Frosting and Fondant each have
-  their own "All".
+## A bug this exposed, older than the stack
+The persistent message canvas (v0.62) is shared by every band texture, and the **warm-up compile
+painted its own band into it after the real cake had been built but before that texture had
+uploaded** — so a recipient's cake could wear the warm-up's pink band. `makeMessageTexture` now
+uploads eagerly (`renderer.initTexture`) the moment it paints.
 
-## Links
-`fd` (fondant on/off) and `frt` (buttercream colours) appended. **Every existing link with
-`fr` = 1 decodes as fondant on, frosting none** — the field changes meaning, the picture doesn't
-(verified for 13-field and 17-field legacy links, and for a v0.65 semi-naked link). `fc` is now
-the outermost layer's bottom-tier colour for the bow, the bleed and older readers. A fresh cake
-starts naked: no buttercream, no fondant, no ribbons.
-
-Verified: the style row, per-tier buttercream colour, fondant on/off and colour, base fillet 0.05
-vs the sponge's 0.10, link round trip; no errors.
+Verified: uncut naked + semi-naked with the message wrapping across the layers; a recipient
+cutting a naked cake (real layer ends); a fondant cake cut (L-band with the stack inside); 16
+programs at load, 16 after; no errors.

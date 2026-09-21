@@ -169,9 +169,16 @@ Rendered side by side against v0.27 across four palettes, the box and a cut cake
   filling is an inset groove with chamfered sponge edges in the lathe profile, with occlusion baked
   into the groove. Filling types (jam inset and glossy, cream proud and matte) will change the
   profile as well as the colour.
+- **The sponge as a stack of solids (v0.69).** Each sponge layer and each filling is a real closed
+  lathe solid (`CakeShapes.disc`), fillings set in by the groove inset; a tier's stack merges into
+  one mesh with a material array (`CakeShapes.merge`). A cut face is simply the end of each solid
+  in that solid's own colour — nothing is painted on. The side texture (layers, scrape, or the
+  message band) wraps the stack in tier space, so writing crosses the layers seamlessly; the top
+  layer's lid is its own plain surface. A fondant wedge shows the fondant's own thickness as an
+  L-shaped band with the stack inside.
 - Order now: shadows (done) → rounded geometry (done) → flame halo (done) → candlelight (done) →
   contact-hardening (done) → lit floor (done) → baked AO (done) → one shell (done) → colour
-  management (done) → measured sky + layer geometry (done) →
+  management (done) → measured sky + layer geometry (done) → stacked solids (done) →
   environment/tone mapping only alongside a glossy skin. The Tier A/B+ list is complete except for
   cake-ness items (sprinkles, drips, rosettes), which belong to the builder's object library.
 - Console: `cake.look.shadows = false; cake.relook()` to A/B on the phone; `cake.look.environment = true; cake.relook()` to see the env; `cake.look.toneMapping = 'ACESFilmic'`.

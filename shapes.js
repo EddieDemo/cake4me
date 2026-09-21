@@ -180,14 +180,17 @@
   // The tier's outline (sponge + cap) as a flat shape, for a wedge's cut face. A plain
   // rectangle no longer matches a bulged, rounded tier. UVs normalised to 0–1 so the
   // filling-layers texture maps the same way it did on the rectangle.
-  function cutFace(r, bodyH, capH, scheme, opts) {
+  // `inner` (optional) {rs, hs}: leave the sponge's rectangle out of the face, so what's drawn
+  // is only the fondant's own thickness — an L-shaped band around and above the sponge.
+  function cutFace(r, bodyH, capH, scheme, opts, inner) {
     var outline = bodyProfile(r, bodyH, scheme, opts).concat(
       capProfile(r, capH).map(function (p) { return new THREE.Vector2(p.x, p.y + bodyH); })
     );
     var shape = new THREE.Shape();
-    shape.moveTo(0, 0);
+    if (inner) { shape.moveTo(inner.rs, 0); } else { shape.moveTo(0, 0); }
     outline.forEach(function (p) { shape.lineTo(p.x, p.y); });
     shape.lineTo(0, bodyH + capH);
+    if (inner) { shape.lineTo(0, inner.hs); shape.lineTo(inner.rs, inner.hs); }
     shape.closePath();
     var geo = new THREE.ShapeGeometry(shape, 4);
     var pos = geo.attributes.position, uv = geo.attributes.uv, H = bodyH + capH, R = r + P.capOverhang;
@@ -217,5 +220,74 @@
     var geo = new THREE.LatheGeometry(pts, seg);
     return geo;
   }
-  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry };
+  // ---------- The sponge as a STACK of solids (v0.69) ----------
+  // Each sponge layer and each filling is a real closed solid: a lathe with softly rounded
+  // edges. A cut face is simply the end of each solid, in that solid's own material — nothing
+  // is painted on. `y0` is where the disc sits in the tier (bottom), `span` the tier's height,
+  // so texture v runs over the whole tier and a message wraps across the layers seamlessly.
+  P.disc = { spongeFillet: 0.05, fillingFillet: 0.015 };
+  function discProfile(r, t, f, openTop) {
+    var pts = [];
+    f = Math.min(f, t * 0.45);
+    pts.push(new THREE.Vector2(0, 0));
+    if (f > 0) { arc(r - f, f, f, -Math.PI / 2, 0, 4, pts); pts.push(new THREE.Vector2(r, t - f)); arc(r - f, t - f, f, 0, Math.PI / 2, 4, pts); }
+    else { pts.push(new THREE.Vector2(r, 0), new THREE.Vector2(r, t)); }
+    if (!openTop) pts.push(new THREE.Vector2(0, t));
+    return pts;
+  }
+  // `openTop`: leave the flat top off so it can be its own geometry (and material) — the
+  // top of the top layer wants a plain surface, not the side texture sampled radially.
+  function disc(r, t, f, seg, phi0, phiLen, y0, span, openTop) {
+    var geo = new THREE.LatheGeometry(discProfile(r, t, f, openTop), seg, phi0 || 0, phiLen || Math.PI * 2);
+    heightUVs(geo, -y0, span - y0);                 // v in tier space
+    geo.translate(0, y0, 0);
+    return geo;
+  }
+  // The flat top of a disc: an annulus-free lid from the rounded rim in to the axis.
+  function discTop(r, t, f, seg, phi0, phiLen, y0) {
+    f = Math.min(f, t * 0.45);
+    var geo = new THREE.LatheGeometry([new THREE.Vector2(r - f, t), new THREE.Vector2(0, t)], seg, phi0 || 0, phiLen || Math.PI * 2);
+    geo.translate(0, y0, 0);
+    return geo;
+  }
+  // The flat end of a disc, in the (radius, height) plane, to be rotated into place.
+  function discFace(r, t, f, y0) {
+    var prof = discProfile(r, t, f), shape = new THREE.Shape();
+    shape.moveTo(0, 0); prof.forEach(function (p) { shape.lineTo(p.x, p.y); }); shape.closePath();
+    var geo = new THREE.ShapeGeometry(shape, 3);
+    geo.translate(0, y0, 0);
+    return geo;
+  }
+  // Merge geometries into one, with a material group per input, so a stack of solids and their
+  // faces draw as one mesh with a material array. Missing colour attributes become white.
+  function merge(list, materialIndexOf) {
+    var pos = [], nor = [], uv = [], col = [], idx = [], groups = [], base = 0, off = 0;
+    list.forEach(function (g, k) {
+      var p = g.attributes.position, n = g.attributes.normal, u = g.attributes.uv, c = g.attributes.color, cnt = p.count;
+      for (var i = 0; i < cnt; i++) {
+        pos.push(p.getX(i), p.getY(i), p.getZ(i));
+        nor.push(n.getX(i), n.getY(i), n.getZ(i));
+        uv.push(u ? u.getX(i) : 0, u ? u.getY(i) : 0);
+        col.push(c ? c.getX(i) : 1, c ? c.getY(i) : 1, c ? c.getZ(i) : 1);
+      }
+      var start = idx.length;
+      if (g.index) { var ix = g.index; for (var j = 0; j < ix.count; j++) idx.push(ix.getX(j) + base); }
+      else { for (var j2 = 0; j2 < cnt; j2++) idx.push(j2 + base); }
+      groups.push({ start: start, count: idx.length - start, materialIndex: materialIndexOf(k, g) });
+      base += cnt;
+    });
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    groups.forEach(function (gr) { geo.addGroup(gr.start, gr.count, gr.materialIndex); });
+    return geo;
+  }
+  // Rotate a face geometry so its +x (radius) points along (sin θ, cos θ).
+  function faceAt(geo, theta) { geo.rotateY(theta - Math.PI / 2); return geo; }
+
+  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
+                        disc: disc, discTop: discTop, discFace: discFace, merge: merge, faceAt: faceAt, bakeAO: bakeAO };
 })();
