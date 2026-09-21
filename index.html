@@ -38,6 +38,7 @@
         <button type="button" class="chip" data-tray="shape" aria-selected="false"><span class="ic" aria-hidden="true">⤢</span>Shape</button>
         <button type="button" class="chip" data-tray="sponge" aria-selected="false"><span class="ic" aria-hidden="true">▤</span>Sponge</button>
         <button type="button" class="chip" data-tray="frosting" aria-selected="false"><span class="ic" aria-hidden="true">◐</span>Frosting</button>
+        <button type="button" class="chip" data-tray="fondant" aria-selected="false"><span class="ic" aria-hidden="true">◯</span>Fondant</button>
         <span class="chip-gap" aria-hidden="true"></span>
         <span class="grp-label" aria-hidden="true">decorate</span>
         <button type="button" class="chip" data-tray="candles" aria-selected="false"><span class="ic" aria-hidden="true">🕯</span>Candles</button>
@@ -94,6 +95,8 @@
           </div><output id="ly-out" hidden>3</output></div>
         </div>
 
+        <!-- Frosting: buttercream spread on the sponge. Styles: none, semi-naked (rustic and
+             smooth reserved). Colour per tier. -->
         <div class="tray" id="tray-frosting" hidden>
           <div class="seg small" id="frost-tiers">
             <button type="button" data-tier="all" class="on">All</button>
@@ -101,16 +104,25 @@
             <button type="button" data-tier="1">Tier 2</button>
             <button type="button" data-tier="2">Tier 3</button>
           </div>
-          <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-frost"><span class="knob"></span><span class="tlabel">Frost</span></label>
-            <div class="swatches" id="sw-fc" data-c="fc"></div></div>
-          <div id="frost-opts" class="dim">
-            <div class="rowline"><span class="rowlab">Style</span><div class="seg small grow" id="frost-style">
-              <button type="button" class="on" data-fr="1">Smooth</button>
-              <button type="button" disabled data-fr="2">Drip</button>
-              <button type="button" disabled data-fr="3">Rustic</button>
-              <button type="button" data-fr="4">Semi-naked</button>
-            </div></div>
+          <div class="rowline"><span class="rowlab">Style</span><div class="seg small grow" id="frost-style">
+            <button type="button" class="on" data-fr="0">None</button>
+            <button type="button" data-fr="4">Semi-naked</button>
+            <button type="button" disabled data-fr="5">Smooth</button>
+            <button type="button" disabled data-fr="3">Rustic</button>
+          </div></div>
+          <div class="rowline"><span class="rowlab">Colour</span><div class="swatches" id="sw-frc" data-c="frc"></div></div>
+        </div>
+
+        <!-- Fondant: a rolled sheet draped over whatever's beneath. On/off, colour per tier. -->
+        <div class="tray" id="tray-fondant" hidden>
+          <div class="seg small" id="fond-tiers">
+            <button type="button" data-tier="all" class="on">All</button>
+            <button type="button" data-tier="0">Tier 1</button>
+            <button type="button" data-tier="1">Tier 2</button>
+            <button type="button" data-tier="2">Tier 3</button>
           </div>
+          <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-fondant"><span class="knob"></span><span class="tlabel">Fondant</span></label>
+            <div id="fond-opts" class="dim grow"><div class="swatches" id="sw-fc" data-c="fc"></div></div></div>
         </div>
 
         <div class="tray" id="tray-candles" hidden>

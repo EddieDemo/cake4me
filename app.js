@@ -44,11 +44,14 @@
   // are in it. Frosting is a layer ON the sponge. Smooth frosting is a shell of real thickness
   // (FROST_T on the sides, FROST_TOP on top) so a frosted tier is fractionally bigger than the
   // same sponge naked; semi-naked is a scrape of no thickness, so it IS the sponge's geometry.
-  var FROST_T = 0.08;            // smooth frosting: side thickness
-  var FROST_TOP = 0.10;          // smooth frosting: extra height on top
+  // Layers on the sponge, outermost last: frosting (buttercream, spread on) then fondant (a
+  // rolled sheet draped over). Only fondant has thickness for now; a semi-naked scrape has none.
+  var FROST_T = 0.08;            // fondant: side thickness
+  var FROST_TOP = 0.10;          // fondant: extra height on top
+  var FONDANT_BASE_FILLET = 0.05; // fondant is trimmed at the board: half the top rim's roundness
   var FILL_T = 0.09;             // filling thickness, world units — the same whatever the layer count
   var NAKED_CAP_H = 0.12;        // a naked tier's top disc is thin, so no filling hides inside it
-  function capHeightFor(cfg) { return cfg.fr ? CAP_H : NAKED_CAP_H; }
+  function capHeightFor(cfg) { return frostingHasThickness(cfg) ? CAP_H : NAKED_CAP_H; }
   // Where the fillings sit in a tier, bottom→top, in world units. Sponge layers are equal;
   // the top layer runs up into the cap.
   function layerScheme(tierH, spongeLayers) {
@@ -207,7 +210,7 @@
   // to read TIERS[cfg.t] reads this.
   // OUTER tier dimensions (what the camera, box, candles, cut and ribbon see), plus the sponge's
   // own dimensions (rs, hs). Frosting that has thickness makes the outer bigger than the sponge.
-  function frostingHasThickness(cfg) { return !!cfg && cfg.fr === 1; }   // smooth (drip/rustic will too)
+  function frostingHasThickness(cfg) { return !!cfg && cfg.fd === 1; }   // fondant (smooth buttercream will too)
   function tiersFor(cfg) {
     var sh = (cfg && cfg.sh && cfg.sh.length) ? cfg.sh : classicShape(cfg ? cfg.t : 1);
     var thick = frostingHasThickness(cfg);
@@ -301,17 +304,23 @@
       // it; '' means "as designed"). Only digits, '.', '-' and '~' survive.
       lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200),
       ly: clampInt(c.ly, 1, 4, 3),          // sponge layers (fillings = ly − 1); 1 = just cake, no fillings
-      fr: clampInt(c.fr, 0, 4, 1),          // frosting: 0 none · 1 smooth · 2 drip · 3 rustic · 4 semi-naked
+      fr: clampInt(c.fr, 0, 5, 1),          // frosting (buttercream): 0 none · 4 semi-naked · 3 rustic / 5 smooth reserved · 1 = legacy shell (also what a very old link means)
       rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
       rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9),  // per-tier ribbons (v0.58); wins when present
       tp: String(c.tp || '').replace(/[^0-9]/g, '').slice(0, 6),    // tier proportions (v0.60): width/height steps per tier
-      fct: String(c.fct || '').replace(/[^0-9]/g, '').slice(0, 3)   // frosting colour per tier (v0.64); wins when present
+      fct: String(c.fct || '').replace(/[^0-9]/g, '').slice(0, 3),  // FONDANT colour per tier (was the shell's colour); wins when present
+      fd: clampInt(c.fd, 0, 1, -1),         // fondant on/off (v0.67); -1 = missing, resolved below from the legacy fr
+      frt: String(c.frt || '').replace(/[^0-9]/g, '').slice(0, 3)   // frosting (buttercream) colour per tier (v0.67)
     };
+    // A legacy "smooth shell" (fr 1; 2/3 were reserved) IS fondant now: the field changes meaning,
+    // the picture doesn't. Reserved buttercream styles fall back to none.
+    var legacyShell = (out.fr === 1 || out.fr === 2 || out.fr === 3);
+    if (out.fd === -1) out.fd = legacyShell ? 1 : 0;
+    if (legacyShell || out.fr === 5) out.fr = 0;
     // Live shape array; derived like rt. An explicit `sh` (UI edits) wins over the string.
     out.sh = (c.sh && c.sh.length === (TIERS[out.t] || TIERS[1]).length)
       ? constrainShape(c.sh.map(function (x) { return { r: clampInt(x.r, 0, 9, 0), h: clampInt(x.h, 0, 9, 0) }; }))
       : parseShape(out.tp, out.t);
-    if (out.fr === 2 || out.fr === 3) out.fr = 1;   // drip and rustic aren't built yet: a link asking for them gets smooth
     out.tp = serializeShape(out.sh);
     // Frosting colour per tier. Live array `fcs`; string `fct` in the link; `fc` stays as the
     // summary (the bottom tier) for the bow, the bleed and older readers.
@@ -320,7 +329,13 @@
     else if (out.fct.length >= nT) out.fcs = out.fct.slice(0, nT).split('').map(function (ch) { return clampInt(+ch, 0, PALETTES.frosting.length - 1, 0); });
     else { out.fcs = []; while (out.fcs.length < nT) out.fcs.push(out.fc); }
     out.fct = out.fcs.map(function (v) { return String(v % 10); }).join('');
-    out.fc = out.fcs[0];
+    // Buttercream colours per tier: live `frs`, link `frt`; missing → the fondant colours.
+    if (c.frs && c.frs.length === nT) out.frs = c.frs.map(function (v) { return clampInt(v, 0, PALETTES.frosting.length - 1, 0); });
+    else if (out.frt.length >= nT) out.frs = out.frt.slice(0, nT).split('').map(function (ch) { return clampInt(+ch, 0, PALETTES.frosting.length - 1, 0); });
+    else out.frs = out.fcs.slice();
+    out.frt = out.frs.map(function (v) { return String(v % 10); }).join('');
+    // `fc` is the OUTERMOST layer's bottom-tier colour (bow, bleed, older readers).
+    out.fc = out.fd ? out.fcs[0] : (out.fr ? out.frs[0] : out.fcs[0]);
     out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
@@ -332,7 +347,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -341,7 +356,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -609,7 +624,7 @@
       var TM = tierMaterials(cfg, tier);
       var frosting = TM.frosting;                         // this tier's own colour
       var ink = pickInk(frosting, cfg.tc);
-      var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH;
+      var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
       frostingMat.__shared = capMat.__shared = true; localShared.push(frostingMat, capMat);
       var bodyH = TM.bodyH, rr = TM.rr;
       var open = cfg.cutaway ? Math.PI / 4 : 0;          // dev wedge removed
@@ -626,7 +641,7 @@
         // doesn't churn a 16MB canvas per frame.
         var keptMap = (opts && opts.keepMessage && keepMessageMap) ? keepMessageMap : null;
         sideMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff, roughness: naked ? 0.95 : (cfg.fr === 4 ? 0.85 : 0.62),
+          color: 0xffffff, roughness: naked ? 0.95 : ((!cfg.fd && cfg.fr === 4) ? 0.85 : 0.62),
           map: keptMap || makeMessageTexture(cfg.m, ink, frosting, rr, bodyH, msgBase), vertexColors: true
         });
         if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
@@ -634,7 +649,7 @@
       }
       // Rounded lathe profiles (shapes.js): a slight bulge, a rounded base, a rounded rim.
       // The lathe's origin is its base, not its centre, hence the different .position.y.
-      var bodyGeo = CakeShapes.body(rr, bodyH, CYL_SEG, open, Math.PI * 2 - open, scheme);
+      var bodyGeo = CakeShapes.body(rr, bodyH, CYL_SEG, open, Math.PI * 2 - open, scheme, pOpts);
       var body = new THREE.Mesh(bodyGeo, [sideMat, frostingMat, frostingMat]);
       body.position.y = y;
       tg.add(body);
@@ -655,7 +670,7 @@
         var faceMat = TM.face();
         faceMat.__shared = true; localShared.push(faceMat);
         [0, open].forEach(function (theta) {
-          var face = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme), faceMat);
+          var face = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme, pOpts), faceMat);
           face.position.set(0, y, 0);
           // The shape's +x is radius; rotating by (θ − π/2) about Y points it along (sin θ, cos θ).
           face.rotation.y = theta - Math.PI / 2;
@@ -677,7 +692,7 @@
         var rw = ribbonWidth(rt.w);
         // Follows the wall (its bulge, its grooves) so it sits flush the whole way round.
         var ribbon = new THREE.Mesh(
-          CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, rw, RIBBON.thick, CYL_SEG),
+          CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, rw, RIBBON.thick, CYL_SEG, pOpts),
           new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide })
         );
         ribbon.position.y = y;
@@ -728,7 +743,7 @@
     if (m && showMessage) {
       var nakedNow = !config.fr;
       var fillingNow = PALETTES.filling[clampIndex(config.ic, PALETTES.filling)].layers;
-      frosting = PALETTES.frosting[clampIndex(config.fcs ? config.fcs[0] : config.fc, PALETTES.frosting)].hex;   // the message tier's own colour
+      frosting = tierMaterials(config, tier).frosting;   // the message tier's OUTERMOST layer colour
       mat = new THREE.MeshStandardMaterial({
         color: 0xffffff, roughness: nakedNow ? 0.95 : 0.62,
         map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, tierMaterials(config, tier).rr, bodyH,
@@ -1112,10 +1127,13 @@
   // Per TIER, because the fillings are laid out in world units and tiers differ in height.
   // tier.idx (from tierTops / the build loop) picks the tier's own frosting colour.
   function tierMaterials(cfg, tier) {
-    var fi = (cfg.fcs && tier.idx !== undefined && cfg.fcs[tier.idx] !== undefined) ? cfg.fcs[tier.idx] : cfg.fc;
-    var frosting = PALETTES.frosting[clampIndex(fi, PALETTES.frosting)].hex;
+    var ti = tier.idx !== undefined ? tier.idx : 0;
+    var fondantHex = PALETTES.frosting[clampIndex(cfg.fcs ? cfg.fcs[ti] : cfg.fc, PALETTES.frosting)].hex;
+    var creamHex = PALETTES.frosting[clampIndex(cfg.frs ? cfg.frs[ti] : cfg.fc, PALETTES.frosting)].hex;
+    // "frosting" below is the colour of the OUTERMOST layer on this tier — what the writing sits on.
+    var frosting = cfg.fd ? fondantHex : (cfg.fr ? creamHex : fondantHex);
     var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
-    var naked = !cfg.fr;
+    var naked = !cfg.fr && !cfg.fd;
     var thick = frostingHasThickness(cfg);
     // Geometry: the sponge itself (rs/hs, grooved) unless the frosting has thickness, in which
     // case the outer shell (r/h, smooth). Semi-naked has no thickness, so it wears the sponge.
@@ -1123,7 +1141,7 @@
     var capH = thick ? CAP_H : NAKED_CAP_H, bodyH = hh - capH;
     var scheme = layerScheme(tier.hs, cfg.ly);   // fillings live in the sponge
     var side, cap, base = null;
-    var semi = cfg.fr === 4 && window.CakeFrosting;
+    var semi = !cfg.fd && cfg.fr === 4 && window.CakeFrosting;   // fondant hides a scrape
     var paintSponge = function (g, W, H) { paintLayers(g, W, H, filling, scheme, bodyH); };
     if (naked) {
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, map: makeLayersTexture(filling, scheme, bodyH), vertexColors: true });
@@ -1131,8 +1149,8 @@
       cap = new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, vertexColors: true });
       base = paintSponge;
     } else if (semi) {
-      // Semi-naked: the smooth shell wearing a thin scrape of frosting over the sponge.
-      var hx = hexCss(frosting), rgb = [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
+      // Semi-naked: the sponge's own geometry wearing a thin scrape of buttercream.
+      var hx = hexCss(creamHex), rgb = [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
       var scrape = function (g, W, H) {
         // paint into a scratch canvas via the style, then copy — keeps the style's own resolution
         var t = CakeFrosting.semiNakedTexture({ frostingRgb: rgb, paintBase: paintSponge, seed: (tier.idx || 0) + 1, size: [W, H] });
@@ -1149,11 +1167,12 @@
         while (semiKeys.length > 12) { var old = semiKeys.shift(); semiCache[old].dispose(); delete semiCache[old]; }
       }
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, vertexColors: true, map: tex });
-      cap = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.75, vertexColors: true });
+      cap = new THREE.MeshStandardMaterial({ color: creamHex, roughness: 0.75, vertexColors: true });
       base = scrape;
     } else {
-      side = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
-      cap = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.55, vertexColors: true });
+      // Fondant: a smooth shell in the fondant colour, over whatever's beneath.
+      side = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.62, vertexColors: true });
+      cap = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.55, vertexColors: true });
     }
     nightGlow(side, naked ? SPONGE : frosting, false); nightGlow(cap, naked ? SPONGE : frosting, false);
     // The cut-face material is made on demand: only the cut, the slice page and the dev cut-away
@@ -1167,6 +1186,7 @@
     return { side: side, cap: cap, face: face, frosting: frosting, filling: filling, naked: naked,
              scheme: thick ? null : scheme,            // grooves only when the sponge is what's seen
              capH: capH, bodyH: bodyH, rr: rr, hh: hh,
+             profileOpts: thick ? { baseFillet: FONDANT_BASE_FILLET } : null,   // fondant: tighter at the board
              base: base };
   }
   // At night the cake gets a faint self-glow so the shape never goes fully black, and the
@@ -2403,7 +2423,7 @@
   // Materials are per tier (tierMaterials): pass `TM` for the tier, or nothing to make them here.
   function makeWedge(tier, i, cfg, TM, msgMap) {
     TM = TM || tierMaterials(cfg, tier);
-    var frostingMat = TM.side, capMat = TM.cap, faceMat = TM.face(), scheme = TM.scheme, capH = TM.capH;
+    var frostingMat = TM.side, capMat = TM.cap, faceMat = TM.face(), scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
     var N = WEDGES_PER_TIER, theta0 = i * Math.PI * 2 / N, len = Math.PI * 2 / N;
     var g = new THREE.Group();
     var bodyH = TM.bodyH;
@@ -2417,13 +2437,13 @@
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
     var rr = TM.rr;                                           // the sponge, or the shell when the frosting is thick
-    var body = new THREE.Mesh(CakeShapes.body(rr, bodyH, wseg, theta0, len, scheme), [side, frostingMat, frostingMat]);
+    var body = new THREE.Mesh(CakeShapes.body(rr, bodyH, wseg, theta0, len, scheme, pOpts), [side, frostingMat, frostingMat]);
     body.position.y = tier.y0; g.add(body);
     var cap = new THREE.Mesh(CakeShapes.cap(rr, capH, wseg, theta0, len, tier.aboveR ? (frostingHasThickness(cfg) ? tier.aboveR : tier.aboveR - FROST_T) : undefined), capMat);
     cap.position.y = tier.y0 + bodyH; g.add(cap);
     // Cut faces follow the rounded outline, so the wedge matches the whole cake.
     [theta0, theta0 + len].forEach(function (th) {
-      var f = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme), faceMat);
+      var f = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme, pOpts), faceMat);
       f.position.set(0, tier.y0, 0);
       f.rotation.y = th - Math.PI / 2;               // +x (radius) → along (sin θ, cos θ)
       g.add(f);
@@ -2918,7 +2938,7 @@
   var els = {
     builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swFrc: $('sw-frc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
     copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
@@ -2956,10 +2976,11 @@
       }
       b.addEventListener('click', function () {
         if (key === 'rc') { draft.rt[curTier].c = i; draft = normalize(draft); }   // per tier
-        else if (key === 'fc') { if (frostAll) draft.fcs = draft.fcs.map(function () { return i; }); else draft.fcs[curTier] = i; draft = normalize(draft); }
+        else if (key === 'fc') { if (fondAll) draft.fcs = draft.fcs.map(function () { return i; }); else draft.fcs[curTier] = i; draft = normalize(draft); }
+        else if (key === 'frc') { if (frostAll) draft.frs = draft.frs.map(function () { return i; }); else draft.frs[curTier] = i; draft = normalize(draft); }
         else draft[key] = i;
         syncSwatches(container, i);
-        if (key === 'fc' || key === 'tc') refreshAutoSwatch();
+        if (key === 'fc' || key === 'frc' || key === 'tc') refreshAutoSwatch();
         updateColourNote();
         build(draft, { showMessage: true });
       });
@@ -3019,7 +3040,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -3054,11 +3075,11 @@
   // ---- One current tier, shared by Shape, Frosting and Ribbon ----
   // Pick Tier 2 in Shape and you're still on Tier 2 in Frosting. Tapping a tier on the cake
   // sets it too. Frosting also has an "All" mode (the default) so one swatch colours every tier.
-  var curTier = 0, frostAll = true;
+  var curTier = 0, frostAll = true, fondAll = true;
   function setCurTier(i, fromCake) {
     var n = tiersFor(draft).length;
     curTier = Math.max(0, Math.min(n - 1, i | 0));
-    if (fromCake) frostAll = false;
+    if (fromCake) { frostAll = false; fondAll = false; }
     syncShape(); syncRibbon(); syncFrostTiers();
     if (fromCake) pulseTier(curTier);
   }
@@ -3116,24 +3137,27 @@
     var rw = $('f-rw'); if (rw) rw.value = rt.w;
     var out = $('rw-out'); if (out) out.textContent = ribbonWidth(rt.w).toFixed(2);
   }
-  function syncFrostTiers() {
+  function syncTierPills(id, all) {
     var n = tiersFor(draft).length;
-    Array.prototype.forEach.call($('frost-tiers').children, function (b) {
+    Array.prototype.forEach.call($(id).children, function (b) {
       var k = b.getAttribute('data-tier');
       b.hidden = k !== 'all' && +k >= n;
-      b.classList.toggle('on', frostAll ? k === 'all' : +k === curTier);
+      b.classList.toggle('on', all ? k === 'all' : +k === curTier);
     });
-    // the swatches show the current tier's colour (or the bottom tier's when "All")
-    syncSwatches(els.swFc, draft.fcs[frostAll ? 0 : curTier]);
+  }
+  function syncFrostTiers() {
+    syncTierPills('frost-tiers', frostAll);
+    syncSwatches(els.swFrc, draft.frs[frostAll ? 0 : curTier]);
+    Array.prototype.forEach.call($('frost-style').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-fr') === draft.fr); });
+    syncTierPills('fond-tiers', fondAll);
+    syncSwatches(els.swFc, draft.fcs[fondAll ? 0 : curTier]);
+    var box = $('f-fondant'); if (box) box.checked = !!draft.fd;
+    var opts = $('fond-opts'); if (opts) opts.classList.toggle('dim', !draft.fd);
   }
   function syncFrosting() {
     syncRibbon();
     syncShape();
     syncFrostTiers();
-    var on = !!draft.fr;
-    var box = $('f-frost'); if (box) box.checked = on;
-    var opts = $('frost-opts'); if (opts) opts.classList.toggle('dim', !on);
-    Array.prototype.forEach.call($('frost-style').children, function (b) { b.classList.toggle('on', on && +b.getAttribute('data-fr') === draft.fr); });
     Array.prototype.forEach.call($('layers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-ly') === draft.ly); });
     var lo = $('ly-out'); if (lo) lo.textContent = draft.ly;
   }
@@ -3141,14 +3165,13 @@
   function updateColourNote() {
     var note = $('colour-note');
     if (!note) return;
-    var frosting = PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex;
-    var bgHex = draft.fr ? frosting : SPONGE;
-    var ink = pickInk(bgHex, draft.tc);
+    var outer = (draft.fd || draft.fr) ? PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex : SPONGE;   // fc = the outermost layer's colour
+    var ink = pickInk(outer, draft.tc);
     // Their cake, their call — but say so if it'll be hard to read.
     // inkContrast is a real (linear-luminance) WCAG ratio now; 3:1 is the large-text minimum.
-    note.textContent = inkContrast(ink, bgHex) < 3.0
+    note.textContent = inkContrast(ink, outer) < 3.0
       ? 'Low contrast — this may be hard to read on the cake'
-      : (draft.fr ? 'Auto picks dark or light to suit the frosting' : 'Auto picks dark or light to suit the sponge');
+      : (draft.fd ? 'Auto picks dark or light to suit the fondant' : draft.fr ? 'Auto picks dark or light to suit the frosting' : 'Auto picks dark or light to suit the sponge');
   }
   function updateCta() {
     var el = $('cta-price');
@@ -3190,18 +3213,19 @@
     Array.prototype.forEach.call($('chiprow').querySelectorAll('.chip'), function (c) {
       c.addEventListener('click', function () { setTray(c.getAttribute('data-tray')); });
     });
-    var lastStyle = 1;                                   // the style to come back to when frosting is toggled on
-    $('f-frost').addEventListener('change', function (e) {
-      draft.fr = e.target.checked ? lastStyle : 0;
+    // Fondant on/off — the moment: the sheet goes over the cake.
+    $('f-fondant').addEventListener('change', function (e) {
+      draft.fd = e.target.checked ? 1 : 0; draft = normalize(draft);
       syncFrosting(); updateColourNote();
       build(draft);
-      if (draft.fr) frostOn();                           // the moment: the frosting goes on
+      if (draft.fd) frostOn();
     });
+    // Buttercream style: None is a style, so there's no toggle.
     Array.prototype.forEach.call($('frost-style').children, function (b) {
       b.addEventListener('click', function () {
         if (b.disabled) return;
-        lastStyle = +b.getAttribute('data-fr') || 1;
-        draft.fr = lastStyle; syncFrosting(); build(draft);
+        draft.fr = +b.getAttribute('data-fr') || 0; draft = normalize(draft);
+        syncFrosting(); updateColourNote(); build(draft);
       });
     });
     Array.prototype.forEach.call($('layers').children, function (b) {
@@ -3214,6 +3238,12 @@
       b.addEventListener('click', function () {
         var k = b.getAttribute('data-tier');
         if (k === 'all') { frostAll = true; syncFrostTiers(); } else { frostAll = false; setCurTier(+k); }
+      });
+    });
+    Array.prototype.forEach.call($('fond-tiers').children, function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-tier');
+        if (k === 'all') { fondAll = true; syncFrostTiers(); } else { fondAll = false; setCurTier(+k); }
       });
     });
     // Shape sliders: keep the message texture during the drag; one full rebuild on release.
@@ -3240,7 +3270,8 @@
     });
 
 
-    makeSwatches(els.swFc, PALETTES.frosting, 'fc');
+    makeSwatches(els.swFc, PALETTES.frosting, 'fc');      // fondant colours
+    makeSwatches(els.swFrc, PALETTES.frosting, 'frc');    // buttercream colours
     makeSwatches(els.swIc, PALETTES.filling, 'ic');
     makeSwatches(els.swCc, PALETTES.candle, 'cc');
     makeSwatches(els.swRc, PALETTES.ribbon, 'rc');
@@ -3525,7 +3556,7 @@
       document.body.classList.add('mode-builder');
       var pre = readEditHash();
       if (pre) { draft = pre; draft.__prefilled = true; history.replaceState(null, '', location.pathname); }   // consume the pre-fill
-      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.fr = 0; draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked, no ribbons
+      if (!draft) { draft = normalize(DEFAULTS); draft.o = OCCASION_UNCHOSEN; draft.fr = 0; draft.fd = 0; draft.rt.forEach(function (t) { t.on = false; }); draft = normalize(draft); }   // a new cake starts naked: no buttercream, no fondant, no ribbons
       syncForm();
       showSheet('builder');
       build(draft, { showMessage: true });
@@ -3563,8 +3594,9 @@
       for (var j in partial) next[j] = partial[j];
       if ('rbt' in partial) delete next.rt;              // an explicit ribbon string beats the live per-tier array
       if ('tp' in partial) delete next.sh;               // likewise an explicit shape string
-      if ('fct' in partial) delete next.fcs;             // and an explicit per-tier frosting string
-      if ('fc' in partial && !('fct' in partial)) delete next.fcs;   // a plain fc recolours every tier
+      if ('fct' in partial) delete next.fcs;             // an explicit per-tier fondant string
+      if ('frt' in partial) delete next.frs;             // an explicit per-tier buttercream string
+      if ('fc' in partial && !('fct' in partial)) { delete next.fcs; delete next.frs; }   // a plain fc recolours every tier
       if (draft && !document.body.classList.contains('mode-viewer')) { draft = normalize(next); syncForm(); }
       build(next, { showMessage: showMessage });
     },

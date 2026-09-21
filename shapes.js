@@ -68,9 +68,11 @@
   // base. Each filling becomes a slight inset groove with softly chamfered sponge edges, so a
   // naked cake reads as stacked discs with something squeezed between them.
   P.groove = { inset: 0.045, chamfer: 0.025 };
-  function bodyProfile(r, bodyH, scheme) {
+  // `opts.baseFillet` overrides the base fillet radius: fondant is trimmed at the board and
+  // meets the base with a tighter curve than it turns over the top; buttercream pools.
+  function bodyProfile(r, bodyH, scheme, opts) {
     var pts = [];
-    var f = Math.min(P.baseFillet, bodyH * 0.25);
+    var f = Math.min((opts && opts.baseFillet !== undefined) ? opts.baseFillet : P.baseFillet, bodyH * 0.25);
     // base: from the axis-side inset up through a fillet to the wall
     arc(r - f, f, f, -Math.PI / 2, 0, P.arcSteps, pts);          // (r-f,0) → (r,f)
     if (scheme && scheme.fills && scheme.fills.length) {
@@ -152,8 +154,8 @@
     uv.needsUpdate = true;
   }
 
-  function body(r, bodyH, seg, phi0, phiLen, scheme) {
-    var geo = new THREE.LatheGeometry(bodyProfile(r, bodyH, scheme), seg, phi0 || 0, phiLen || Math.PI * 2);
+  function body(r, bodyH, seg, phi0, phiLen, scheme, opts) {
+    var geo = new THREE.LatheGeometry(bodyProfile(r, bodyH, scheme, opts), seg, phi0 || 0, phiLen || Math.PI * 2);
     heightUVs(geo, 0, bodyH);
     // No computeVertexNormals() here. LatheGeometry already computes normals and, for a full
     // sweep, averages the duplicated first/last columns so the join is seamless; recomputing
@@ -178,8 +180,8 @@
   // The tier's outline (sponge + cap) as a flat shape, for a wedge's cut face. A plain
   // rectangle no longer matches a bulged, rounded tier. UVs normalised to 0–1 so the
   // filling-layers texture maps the same way it did on the rectangle.
-  function cutFace(r, bodyH, capH, scheme) {
-    var outline = bodyProfile(r, bodyH, scheme).concat(
+  function cutFace(r, bodyH, capH, scheme, opts) {
+    var outline = bodyProfile(r, bodyH, scheme, opts).concat(
       capProfile(r, capH).map(function (p) { return new THREE.Vector2(p.x, p.y + bodyH); })
     );
     var shape = new THREE.Shape();
@@ -207,8 +209,8 @@
   }
   // A strip lying ON the wall: inner face on the wall, outer face `thick` out, closed top and
   // bottom. Samples the wall so it stays flush across a bulge or a groove.
-  function bandGeometry(r, bodyH, scheme, y0, width, thick, seg) {
-    var prof = bodyProfile(r, bodyH, scheme), pts = [], n = 8;
+  function bandGeometry(r, bodyH, scheme, y0, width, thick, seg, opts) {
+    var prof = bodyProfile(r, bodyH, scheme, opts), pts = [], n = 8;
     for (var i = 0; i <= n; i++) { var y = y0 + width * i / n; pts.push(new THREE.Vector2(radiusAt(prof, y) + thick, y)); }
     for (var j = n; j >= 0; j--) { var yy = y0 + width * j / n; pts.push(new THREE.Vector2(radiusAt(prof, yy) - 0.012, yy)); }
     pts.push(new THREE.Vector2(radiusAt(prof, y0) + thick, y0));

@@ -652,5 +652,5 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .toggle.inline { margin: 0; flex: none; gap: 0.5rem; }
 .toggle.inline .tlabel { font-size: 0.85rem; }
 .seg.small.grow { margin: 0; }
-#ribbon-opts.dim, #frost-opts.dim { opacity: .35; pointer-events: none; }
+#ribbon-opts.dim, #frost-opts.dim, #fond-opts.dim { opacity: .35; pointer-events: none; }
 .tray-note { margin: 0.1rem 0 0; }
