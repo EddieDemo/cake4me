@@ -192,7 +192,9 @@
   var BP_VERT_DECL = 'varying vec3 vBpPos; varying vec3 vBpN; varying vec3 vBpSideT; varying vec3 vBpUp; varying vec3 vBpTopT; varying vec3 vBpTopB;\n';
   var BP_VERT =
     '\n vBpPos = position; vBpN = objectNormal;' +
-    '\n float bpA = atan(position.x, position.z);' +
+    // atan(0, 0) is undefined — NaN on iPhone GPUs — and every triangle of the flat top shares
+    // the vertex on the axis, so one NaN there blackened the whole top. Guard it.
+    '\n float bpA = (abs(position.x) + abs(position.z) < 1e-5) ? 0.0 : atan(position.x, position.z);' +
     '\n vBpSideT = normalize(normalMatrix * vec3(cos(bpA), 0.0, -sin(bpA)));' +
     '\n vBpUp = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));' +
     '\n vBpTopT = normalize(normalMatrix * vec3(1.0, 0.0, 0.0));' +
@@ -202,7 +204,7 @@
     'uniform float uBpR; uniform float uBpSpan; uniform float uBpScale;\n';
   var BP_FRAG =
     '\n{' +
-    '\n  float bpA = atan(vBpPos.x, vBpPos.z) / 6.2831853 + 0.5;' +
+    '\n  float bpA = ((abs(vBpPos.x) + abs(vBpPos.z) < 1e-5) ? 0.0 : atan(vBpPos.x, vBpPos.z)) / 6.2831853 + 0.5;' +
     '\n  float bpA2 = fract(bpA + 0.5) - 0.5;' +                        // the same angle, seam moved to the back
     '\n  float bpU = (fwidth(bpA) > fwidth(bpA2) + 1e-5) ? bpA2 : bpA;' + // pick whichever has no jump here (no mip seam)
     '\n  vec2 uvS = vec2(bpU, vBpPos.y / uBpSpan);' +
@@ -212,7 +214,8 @@
     '\n  vec3 nT = texture2D(uBpTopN, uvT).xyz * 2.0 - 1.0; nT.xy *= uBpScale;' +
     '\n  vec3 pS = normalize(vBpSideT * nS.x + vBpUp * nS.y + normal * nS.z);' +
     '\n  vec3 pT = normalize(vBpTopT * nT.x + vBpTopB * nT.y + normal * nT.z);' +
-    '\n  normal = normalize(mix(pS, pT, bpW));' +
+    // Never let one projection's bad sample poison the other: mix(a, b, 1) is still NaN if a is.
+    '\n  if (bpW > 0.999) normal = pT; else if (bpW < 0.001) normal = pS; else normal = normalize(mix(pS, pT, bpW));' +
     '\n  roughnessFactor *= mix(texture2D(uBpSideR, uvS).g, texture2D(uBpTopR, uvT).g, bpW);' +
     '\n}\n';
   function dressFondant(mat, maps, R) {
