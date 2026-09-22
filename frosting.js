@@ -223,16 +223,38 @@
   FINISHES[6] = { name: 'Deep rustic', normalScale: 1.45, rough: [0.62, 0.42], displace: 0.085, k: 8.5,
     side: function () { return strokesAt(SW, SH, 80, [90, 200], [32, 64], 71, 1024); },
     top:  function () { return strokesAt(TW, TW, 64, [90, 200], [32, 64], 73, 512); } };
+  // Rings and Whirl (v0.82): the spatula treatment all the way through — Ridged's sides, and a
+  // top of rings (or one continuous pass) with the same cusped grooves, uneven depths and wander.
+  function ringTop(x, z) {
+    var r = Math.hypot(x, z), a = Math.atan2(x, z), u = a / (Math.PI * 2) + 0.5;
+    var t0 = r / GROOVE, i0 = Math.floor(t0), q1 = phash(i0 + 20, 3, 9) * 6.28, q2 = phash(i0 + 21, 5, 11) * 6.28;
+    var wob = 0.16 * Math.sin(a + q1) + 0.075 * Math.sin(a * 2 + q2) + 0.035 * Math.sin(a * 3 + q1 * 0.5);
+    var t = t0 + wob + 0.25 * (fu(u, r / 4, 7, 1, 2, 31) - 0.5), i = Math.floor(t), f = t - i;
+    var dep = 0.6 + 0.55 * phash(i + 20, 7, 8);
+    return 0.92 - 0.5 * (1 - scoopProfile(f)) * dep + 0.03 * (fu(u, r / 3, 40, 1, 2, 33) - 0.5);
+  }
+  function whirlTop(x, z) {
+    var r = Math.hypot(x, z), a = Math.atan2(x, z), u = a / (Math.PI * 2) + 0.5;
+    var t0 = r / GROOVE - a / (Math.PI * 2), i0 = Math.floor(t0), q1 = phash(i0 + 40, 3, 9) * 6.28, q2 = phash(i0 + 41, 5, 11) * 6.28;
+    var wob = 0.14 * Math.sin(a + q1) + 0.07 * Math.sin(a * 2 + q2);
+    var t = t0 + wob + 0.22 * (fu(u, r / 4, 7, 1, 2, 35) - 0.5), i = Math.floor(t), f = t - i;
+    var dep = 0.6 + 0.55 * phash(i + 40, 7, 8);
+    return 0.92 - 0.5 * (1 - scoopProfile(f)) * dep + 0.03 * (fu(u, r / 3, 40, 1, 2, 37) - 0.5);
+  }
+  FINISHES[8] = { name: 'Rings', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
+    side: function () { return sideField(ridgeSide); }, top: function () { return topField(ringTop); } };
+  FINISHES[9] = { name: 'Whirl', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
+    side: function () { return sideField(ridgeSide); }, top: function () { return topField(whirlTop); } };
   FINISHES[7] = { name: 'Ridged', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
     side: function () { return sideField(ridgeSide); }, top: function () { return topField(smoothTop(-0.12)); } };
-  var FINISH_COUNT = 8;
+  var FINISH_COUNT = 10;
   var mapCache = {};
   function fondantMaps(finish) {
     finish = Math.max(0, Math.min(FINISH_COUNT - 1, finish | 0));
     var F = FINISHES[finish], key = F.name;
     if (!mapCache[key]) {
       var hs = F.side(), ht = F.top();
-      if (F.soften) blur(hs, SW, SH, 1, 1);
+      if (F.soften) { blur(hs, SW, SH, 1, 1); blur(ht, TW, TW, 1, 1); }
       // World patterns are written in centimetres, so their normal strength scales with each
       // map's pixels-per-unit; the older patterns keep their own.
       var kS = F.world ? F.k * PX_SIDE / 100 : F.k, kT = F.world ? F.k * PX_TOP / 100 : F.k;

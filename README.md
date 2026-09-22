@@ -1,27 +1,14 @@
-# Cake — v0.81 (finishes, properly scaled)
+# Cake — v0.82 (Rings and Whirl)
 
-## Two new finishes
-- **Combed** — fine vertical grooves pulled with a comb: a hollow the full width of each band
-  meeting its neighbour at a cusp (broad floor, peak almost to a point), spacing that wanders,
-  each groove its own depth, and each line drifting sideways on its own as it rises.
-- **Ridged** — a spatula held to the turning cake: bands of uneven height, each rising and falling
-  a little of its own accord as it goes round.
-The tile row is now **Grain · Swept · Spiral · Combed · Ridged · Rustic · Deep rustic**. Coarse is
-gone (its slot, `ff` 4, is Combed; the few links carrying it show Combed).
+Two more finishes, the spatula treatment all the way through:
+- **Rings** — Ridged's sides (bands of uneven height, each wandering as it goes round) with a top
+  of concentric rings, each its own depth, each drifting in and out so they're not perfect circles.
+- **Whirl** — the same sides, with one continuous pass out from the centre instead of rings.
+Both use the shared groove profile: a hollow the full width of its band meeting its neighbour at a
+cusp, so the peaks come almost to a point.
 
-## Everything in centimetres
-Patterns are written in world units rather than texture cycles, so the **side and the top match**:
-grooves 3cm apart on both, the same depth, the same smoothness. Each map's normal strength is
-scaled by its pixels-per-unit, so their relief matches too. The fondant wall is straight — the old
-slight bulge left a crease at the shoulder that read as a separate lid.
+The tile row is now **Grain · Swept · Spiral · Rings · Whirl · Combed · Ridged · Rustic · Deep
+rustic** (`ff` 8 and 9). The generator favours the spatula finishes — Rings, Whirl, Combed and
+Ridged — with the others turning up less often.
 
-## Two bugs fixed
-- **Upside-down textures.** A canvas texture is flipped when it's uploaded, so every pattern was
-  read upside down — and because the normals are derived in canvas order, **dips rendered as
-  ridges**. Fixed in one place (`field`), which corrects every finish and the sponge: Rustic's
-  knife lips and the sponge's pores were subtly inside-out.
-- **The pattern stopped at the shoulder.** The side/top blend now holds the side pattern until the
-  surface is nearly flat, so combing and ridges run right up to the top edge.
-
-Verified in the app: Combed, Ridged, Swept and Spiral all render, the tiles show their real grain,
-17 shader programs throughout, no errors.
+Verified: both render in the app, the tiles show their real grain, 17 shader programs, no errors.
