@@ -177,6 +177,34 @@
     return geo;
   }
 
+  // ONE continuous surface for a shell tier (fondant): wall, shoulder and top in a single lathe,
+  // so there's no join, no crease and no lid (v0.77). Two material groups — group 0 the wall
+  // (rows up to the straight wall's top: the message band lives here), group 1 the shoulder and
+  // top — so a [side, top] material pair still works. Texture v runs over the body height like
+  // body() (rows above it clamp; the finish maps don't use UVs at all — see frosting.js).
+  function shell(r, bodyH, capH, seg, phi0, phiLen, occluderR, opts) {
+    var bp = bodyProfile(r, bodyH, null, opts), cp = capProfile(r, capH);
+    var prof = bp.slice();
+    for (var k = 1; k < cp.length; k++) prof.push(new THREE.Vector2(cp[k].x, cp[k].y + bodyH));
+    var np = prof.length;
+    var geo = new THREE.LatheGeometry(prof, seg, phi0 || 0, phiLen || Math.PI * 2);
+    heightUVs(geo, 0, bodyH);
+    var bAO = bodyAO(r, bodyH, null), cAO = capAO(r, capH, occluderR);
+    bakeAO(geo, function (rr, y) { return y <= bodyH ? bAO(rr, y) : cAO(rr, y - bodyH); });
+    // Regroup the triangles: wall first (profile rows below the top of the straight wall), then
+    // the shoulder and top. Vertex v sits on profile row v % np (r128's lathe order).
+    var rim = Math.min(P.capRim, capH * 0.9), split = 0;
+    for (var j = 0; j < np; j++) if (prof[j].y <= bodyH + capH - rim + 1e-6) split = j;
+    var idx = geo.index.array, side = [], top = [];
+    for (var t = 0; t < idx.length; t += 3) {
+      var jm = Math.max(idx[t] % np, idx[t + 1] % np, idx[t + 2] % np);
+      (jm <= split ? side : top).push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    geo.setIndex(side.concat(top));
+    geo.clearGroups(); geo.addGroup(0, side.length, 0); geo.addGroup(side.length, top.length, 1);
+    return geo;
+  }
+
   // The tier's outline (sponge + cap) as a flat shape, for a wedge's cut face. A plain
   // rectangle no longer matches a bulged, rounded tier. UVs normalised to 0–1 so the
   // filling-layers texture maps the same way it did on the rectangle.
@@ -213,7 +241,10 @@
   // A strip lying ON the wall: inner face on the wall, outer face `thick` out, closed top and
   // bottom. Samples the wall so it stays flush across a bulge or a groove.
   function bandGeometry(r, bodyH, scheme, y0, width, thick, seg, opts, phi0, phiLen) {
-    var prof = bodyProfile(r, bodyH, scheme, opts), pts = [], n = 8;
+    // `opts.straight`: a flat band at radius r (a naked stack: it bridges the filling gaps like
+    // a ribbon pulled taut, instead of tucking into them). Otherwise it follows the wall's
+    // profile — the fondant's gentle bulge — which is the real surface there.
+    var prof = (opts && opts.straight) ? [new THREE.Vector2(r, -1), new THREE.Vector2(r, 1e3)] : bodyProfile(r, bodyH, scheme, opts), pts = [], n = 8;
     for (var i = 0; i <= n; i++) { var y = y0 + width * i / n; pts.push(new THREE.Vector2(radiusAt(prof, y) + thick, y)); }
     for (var j = n; j >= 0; j--) { var yy = y0 + width * j / n; pts.push(new THREE.Vector2(radiusAt(prof, yy) - 0.012, yy)); }
     pts.push(new THREE.Vector2(radiusAt(prof, y0) + thick, y0));
@@ -288,6 +319,6 @@
   // Rotate a face geometry so its +x (radius) points along (sin θ, cos θ).
   function faceAt(geo, theta) { geo.rotateY(theta - Math.PI / 2); return geo; }
 
-  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
+  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, shell: shell, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
                         disc: disc, discTop: discTop, discFace: discFace, merge: merge, faceAt: faceAt, bakeAO: bakeAO };
 })();

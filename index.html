@@ -147,7 +147,10 @@
           </div>
           <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon</span></label>
             <div id="ribbon-opts" class="dim grow"><div class="swatches" id="sw-rc" data-c="rc"></div></div></div>
-          <div class="rowline" id="ribbon-width-row"><span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="7" step="1" value="4"><output id="rw-out">0.32</output></div>
+          <div class="rowline" id="ribbon-width-row">
+            <span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="7" step="1" value="4">
+            <span class="rowlab mini">Height</span><input id="f-rp" type="range" min="0" max="9" step="1" value="1">
+            <output id="rw-out" hidden>0.32</output></div>
         </div>
 
         <div class="tray" id="tray-backdrop" hidden>

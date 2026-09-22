@@ -117,7 +117,7 @@
     d.frsty = sh.map(function () { return 0; });
     d.ly = 1 + (sh[0].h <= 2 ? B.fillings[0] : randInt(B.fillings[0], B.fillings[1]));
     d.rt = [0, 1, 2].map(function (i) {
-      return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]) };
+      return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]), p: randInt(0, 9) };
     });
     return normalize(d);
   }
@@ -147,6 +147,19 @@
       }
     }
     return out;
+  }
+  // Ribbon POSITION per tier (v0.77): 0–9, where 0 puts the ribbon's bottom at the bottom of the
+  // tier's straight wall and 9 its top at the top of it. −1 = the fixed lift older links used.
+  function ribbonY(TM, tier, width, p) {
+    if (p === undefined || p < 0) return RIBBON.lift;
+    var bottom, top;
+    if (TM.fdOn) {
+      var capRim = Math.min(CakeShapes.P.capRim, TM.capH * 0.9);
+      bottom = FONDANT_BASE_FILLET; top = TM.hh - capRim;
+    } else {
+      bottom = CakeShapes.P.disc.spongeFillet; top = tier.hs - CakeShapes.P.disc.spongeFillet;
+    }
+    return bottom + (Math.max(0, Math.min(9, p)) / 9) * Math.max(0, top - bottom - width);
   }
   function serializeRibbons(rt) {
     return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
@@ -473,9 +486,13 @@
     out.fr = out.frsty[0]; out.fd = out.fds[0];
     // `fc` is the OUTERMOST layer's bottom-tier colour (bow, bleed, older readers).
     out.fc = out.fds[0] ? out.fcs[0] : (out.frsty[0] ? out.frs[0] : out.fcs[0]);
-    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4) }; })
+    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
+    // Positions: live `p` wins; else the link string `rbp` (one digit per tier); else −1 (legacy).
+    var rbpStr = String(c.rbp || '').replace(/[^0-9]/g, '');
+    out.rt.forEach(function (t, i) { if (t.p === undefined || (t.p < 0 && rbpStr.length > i)) t.p = rbpStr.length > i ? +rbpStr[i] : -1; });
+    out.rbp = out.rt.every(function (t) { return t.p < 0; }) ? '' : out.rt.map(function (t) { return String(t.p < 0 ? 1 : t.p); }).join('');
     // Legacy summary kept in step with the per-tier truth (the bow, older readers).
     var firstOn = out.rt.filter(function (t) { return t.on; })[0];
     out.rb = firstOn ? 1 : 0; if (firstOn) out.rc = firstOn.c;
@@ -484,7 +501,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -493,7 +510,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -783,7 +800,7 @@
           map: keptMap || makeMessageTexture(cfg.m, ink, frosting, rr, TM.fdOn ? bodyH : tier.hs, msgBase), vertexColors: true
         });
         if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
-        if (TM.maps) CakeFrosting.dressFondant(sideMat, TM.maps, 'side');   // the writing sits on the finished fondant
+        if (TM.maps) CakeFrosting.dressFondant(sideMat, TM.maps, rr);   // the writing sits on the finished fondant
         nightGlow(sideMat, 0xffffff, true);
       }
       var body;
@@ -796,19 +813,16 @@
         if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = tier.hs; body.__stack = true; }
       } else {
         // Fondant: the shell is what's seen; the stack inside it is built only when cut.
-        var bodyGeo = CakeShapes.body(rr, bodyH, CYL_SEG, open, Math.PI * 2 - open, scheme, pOpts);
-        if (TM.maps) CakeFrosting.angleUV(bodyGeo, open, Math.PI * 2 - open);
-        body = new THREE.Mesh(bodyGeo, [sideMat, frostingMat, frostingMat]);
+        // ONE continuous surface — wall, shoulder and top — so there's no lid (v0.77).
+        var above = tiers[i + 1];                 // the tier sitting on this one, if any
+        var aboveTM = above ? above.r : undefined;             // outer radius, per tier (tiersFor folds thickness in)
+        var bodyGeo = CakeShapes.shell(rr, bodyH, capH, CYL_SEG, open, Math.PI * 2 - open, aboveTM, pOpts);
+        CakeFrosting.angleUV(bodyGeo, open, Math.PI * 2 - open);          // the message band's u = true angle
+        if (TM.maps) CakeFrosting.displaceRim(bodyGeo, rr, bodyH + capH * 0.35, capH, TM.maps.displace);
+        body = new THREE.Mesh(bodyGeo, [sideMat, capMat]);
         body.position.y = y;
         tg.add(body);
         if (tier === messageTier) { messageMesh = body; body.__tier = tier; body.__bodyH = bodyH; }
-        var above = tiers[i + 1];                 // the tier sitting on this one, if any
-        var aboveTM = above ? above.r : undefined;             // outer radius, per tier (tiersFor folds thickness in)
-        var capGeo = CakeShapes.cap(rr, capH, CYL_SEG, open, Math.PI * 2 - open, aboveTM);
-        if (TM.maps) CakeFrosting.capUV(capGeo, rr, capH, TM.maps.displace);
-        var cap = new THREE.Mesh(capGeo, capMat);
-        cap.position.y = y + bodyH;
-        tg.add(cap);
       }
       // (The old torus "drip band" at the cap/body seam is gone: the cap's underside lip
       // and the sponge's top tuck now meet properly, so there's no seam to hide.)
@@ -838,9 +852,9 @@
       var rt = cfg.rt[i];
       if (rt && rt.on) {
         var rw = ribbonWidth(rt.w);
-        // Follows the wall (its bulge, its grooves) so it sits flush the whole way round.
+        // Hugs the fondant's surface, or bridges a naked stack's fillings taut (no tucking in).
         var ribbon = new THREE.Mesh(
-          CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, rw, RIBBON.thick, CYL_SEG, pOpts),
+          CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, rw, rt.p), rw, RIBBON.thick, CYL_SEG, TM.fdOn ? pOpts : { straight: true }),
           new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide })
         );
         ribbon.position.y = y;
@@ -898,7 +912,7 @@
         color: 0xffffff, roughness: TMm.naked ? 0.95 : ((!TMm.fdOn && TMm.style === 4) ? 0.85 : 0.62),
         map: makeMessageTexture(m, pickInk(frosting, config.tc), frosting, TMm.rr, bodyH, TMm.base), vertexColors: true
       });
-      if (TMm.maps) CakeFrosting.dressFondant(mat, TMm.maps, 'side');
+      if (TMm.maps) CakeFrosting.dressFondant(mat, TMm.maps, TMm.rr);
       nightGlow(mat, 0xffffff, true);
     } else {
       mat = messageMesh.__plainWall || messageMesh.material[1];   // the tier's plain wall
@@ -1409,7 +1423,7 @@
       // (frosting.js). There is no flat fondant any more.
       side = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.62, vertexColors: true });
       cap = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.55, vertexColors: true });
-      if (window.CakeFrosting) { fMaps = CakeFrosting.fondantMaps(cfg.ff); CakeFrosting.dressFondant(side, fMaps, 'side'); CakeFrosting.dressFondant(cap, fMaps, 'top'); }
+      if (window.CakeFrosting) { fMaps = CakeFrosting.fondantMaps(cfg.ff); CakeFrosting.dressFondant(side, fMaps, rr); CakeFrosting.dressFondant(cap, fMaps, rr); }
     }
     if (side) nightGlow(side, naked ? SPONGE : frosting, false);
     nightGlow(cap, naked ? SPONGE : frosting, false);
@@ -2686,10 +2700,10 @@
     if (msgMap) {
       var t = msgMap.clone(); t.needsUpdate = true;
       t.wrapS = THREE.RepeatWrapping;
-      if (TM.maps) { t.repeat.x = 1; t.offset.x = 0; }      // fondant wedge: u is already the true angle
+      if (TM.fdOn) { t.repeat.x = 1; t.offset.x = 0; }      // fondant wedge (shell): u is already the true angle
       else { t.repeat.x = len / (Math.PI * 2); t.offset.x = theta0 / (Math.PI * 2); }
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t, vertexColors: true });
-      if (TM.maps) CakeFrosting.dressFondant(side, TM.maps, 'side');
+      if (TM.maps) CakeFrosting.dressFondant(side, TM.maps, TM.rr);
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
     var rr = TM.rr;                                           // the sponge, or the shell when the fondant is on
@@ -2697,7 +2711,7 @@
     var rtw = cfg.rt && cfg.rt[tier.idx || 0];
     if (rtw && rtw.on) {
       var band = new THREE.Mesh(
-        CakeShapes.bandGeometry(rr, bodyH, scheme, RIBBON.lift, ribbonWidth(rtw.w), RIBBON.thick, wseg, pOpts, theta0, len),
+        CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, ribbonWidth(rtw.w), rtw.p), ribbonWidth(rtw.w), RIBBON.thick, wseg, TM.fdOn ? pOpts : { straight: true }, theta0, len),
         new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rtw.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide }));
       band.position.y = tier.y0; g.add(band);
     }
@@ -2708,14 +2722,11 @@
     } else {
       // Fondant: the shell, cut, with an L-shaped face showing only the fondant's thickness —
       // and the sponge stack inside it, cut, showing the layers.
-      var wBodyGeo = CakeShapes.body(rr, bodyH, wseg, theta0, len, scheme, pOpts);
-      if (TM.maps) CakeFrosting.angleUV(wBodyGeo, theta0, len);
-      var body = new THREE.Mesh(wBodyGeo, [side, frostingMat, frostingMat]);
+      var wBodyGeo = CakeShapes.shell(rr, bodyH, capH, wseg, theta0, len, tier.aboveR, pOpts);
+      CakeFrosting.angleUV(wBodyGeo, theta0, len);
+      if (TM.maps) CakeFrosting.displaceRim(wBodyGeo, rr, bodyH + capH * 0.35, capH, TM.maps.displace);
+      var body = new THREE.Mesh(wBodyGeo, [side, capMat]);
       body.position.y = tier.y0; g.add(body);
-      var wCapGeo = CakeShapes.cap(rr, capH, wseg, theta0, len, tier.aboveR);
-      if (TM.maps) CakeFrosting.capUV(wCapGeo, rr, capH, TM.maps.displace);
-      var cap = new THREE.Mesh(wCapGeo, capMat);
-      cap.position.y = tier.y0 + bodyH; g.add(cap);
       var fondFace = new THREE.MeshStandardMaterial({ color: TM.frosting, roughness: 0.62, side: THREE.DoubleSide, vertexColors: true });
       [theta0, theta0 + len].forEach(function (th) {
         var f = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, null, pOpts, { rs: tier.rs, hs: tier.hs }), fondFace);
@@ -3446,6 +3457,7 @@
     var opts = $('ribbon-opts'); if (opts) opts.classList.toggle('dim', !rt.on);
     syncSwatches(els.swRc, rt.c);
     var rw = $('f-rw'); if (rw) rw.value = rt.w;
+    var rp = $('f-rp'); if (rp) rp.value = rt.p < 0 ? 1 : rt.p;
     var out = $('rw-out'); if (out) out.textContent = ribbonWidth(rt.w).toFixed(2);
   }
   function syncTierPills(id, all) {
@@ -3607,8 +3619,14 @@
       syncShape(); build(draft);
     });
     $('f-ribbon').addEventListener('change', function (e) {
-      draft.rt[curTier].on = e.target.checked; draft = normalize(draft);
+      draft.rt[curTier].on = e.target.checked;
+      if (e.target.checked && draft.rt[curTier].p < 0) draft.rt[curTier].p = 1;   // a new ribbon starts near the base
+      draft = normalize(draft);
       syncRibbon(); build(draft);
+    });
+    $('f-rp').addEventListener('input', function (e) {
+      draft.rt[curTier].p = +e.target.value; draft = normalize(draft);
+      syncRibbon(); scheduleBuild();
     });
     $('f-rw').addEventListener('input', function (e) {
       draft.rt[curTier].w = +e.target.value; draft = normalize(draft);
@@ -3839,12 +3857,12 @@
     var tier = { r: 2.2, h: 1.6, rs: 2.08, hs: 1.45, y0: 0, aboveR: 1.4, idx: 0 };
     if (window.CakeFrosting) {                                           // fondant now always wears a finish
       var wm = CakeFrosting.fondantMaps(0);
-      CakeFrosting.dressFondant(msgMat, wm, 'side'); CakeFrosting.dressFondant(frostingMat, wm, 'side');
+      CakeFrosting.dressFondant(msgMat, wm, 2.2); CakeFrosting.dressFondant(frostingMat, wm, 2.2);
     }
     tmp.add(makeWedge(tier, 0, cfg, null, msgTex)); // wedge band: map, no emissive
     tmp.add(makeWedge(tier, 1, cfg, null, null));
     var savedF = cfg.fds; cfg.fds = cfg.fds.map(function () { return 0; }); tmp.add(makeWedge(tier, 2, cfg, null, null)); cfg.fds = savedF;   // a naked wedge too
-    var wholeBody = new THREE.Mesh(CakeShapes.body(2.2, 1.28, 8), [msgMat, frostingMat, frostingMat]); tmp.add(wholeBody);
+    var wholeBody = new THREE.Mesh(CakeShapes.shell(2.2, 1.28, 0.32, 8), [msgMat, frostingMat]); tmp.add(wholeBody);
     tmp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 8), new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 })));   // plate
     tmp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.16, depthWrite: false }))); // seams
     tmp.add(new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 4, 8), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5 })));      // plate rim
@@ -3964,7 +3982,7 @@
       var next = {};
       for (var k in config) next[k] = config[k];
       for (var j in partial) next[j] = partial[j];
-      if ('rbt' in partial) delete next.rt;              // an explicit ribbon string beats the live per-tier array
+      if ('rbt' in partial || 'rbp' in partial) delete next.rt;   // an explicit ribbon string beats the live per-tier array
       if ('tp' in partial) delete next.sh;               // likewise an explicit shape string
       if ('fct' in partial) delete next.fcs;             // an explicit per-tier fondant string
       if ('frt' in partial) delete next.frs;             // an explicit per-tier buttercream string

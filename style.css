@@ -658,3 +658,5 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 /* Shuffle chip: a little tumble of the die when tapped */
 .chip.shuffle.spin .ic { display: inline-block; animation: dieRoll .5s cubic-bezier(.2,.8,.2,1); }
 @keyframes dieRoll { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(200deg) scale(1.25); } 100% { transform: rotate(360deg) scale(1); } }
+
+.rowline .rowlab.mini { width: auto; margin-left: 0.4rem; }

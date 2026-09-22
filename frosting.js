@@ -182,12 +182,58 @@
     var m = mapCache[key];
     return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace };
   }
-  // Put the maps on a material (keeps its colour; roughness then comes from the map).
-  function dressFondant(mat, maps, which) {
-    mat.normalMap = which === 'top' ? maps.topN : maps.sideN;
-    mat.roughnessMap = which === 'top' ? maps.topR : maps.sideR;
+  // Put a finish on a material by BIPLANAR mapping in the shader (v0.77): the normal and
+  // roughness maps are sampled twice — wrapped around the side by angle and height, and
+  // projected straight down onto the top — and blended by how steep the surface is. Sides get
+  // pure wrap, the top pure projection, the shoulder a smooth mix, so the texture never
+  // stretches and has no seam anywhere, a wedge included (it uses the cake's own object space).
+  // No UVs are involved, so the material can still carry a UV-mapped colour map (the message
+  // band). `R` is the tier's outer radius.
+  var BP_VERT_DECL = 'varying vec3 vBpPos; varying vec3 vBpN; varying vec3 vBpSideT; varying vec3 vBpUp; varying vec3 vBpTopT; varying vec3 vBpTopB;\n';
+  var BP_VERT =
+    '\n vBpPos = position; vBpN = objectNormal;' +
+    '\n float bpA = atan(position.x, position.z);' +
+    '\n vBpSideT = normalize(normalMatrix * vec3(cos(bpA), 0.0, -sin(bpA)));' +
+    '\n vBpUp = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));' +
+    '\n vBpTopT = normalize(normalMatrix * vec3(1.0, 0.0, 0.0));' +
+    '\n vBpTopB = normalize(normalMatrix * vec3(0.0, 0.0, -1.0));\n';
+  var BP_FRAG_DECL = BP_VERT_DECL +
+    'uniform sampler2D uBpSideN; uniform sampler2D uBpSideR; uniform sampler2D uBpTopN; uniform sampler2D uBpTopR;\n' +
+    'uniform float uBpR; uniform float uBpSpan; uniform float uBpScale;\n';
+  var BP_FRAG =
+    '\n{' +
+    '\n  float bpA = atan(vBpPos.x, vBpPos.z) / 6.2831853 + 0.5;' +
+    '\n  float bpA2 = fract(bpA + 0.5) - 0.5;' +                        // the same angle, seam moved to the back
+    '\n  float bpU = (fwidth(bpA) > fwidth(bpA2) + 1e-5) ? bpA2 : bpA;' + // pick whichever has no jump here (no mip seam)
+    '\n  vec2 uvS = vec2(bpU, vBpPos.y / uBpSpan);' +
+    '\n  vec2 uvT = vec2(vBpPos.x / (2.0 * uBpR) + 0.5, 0.5 - vBpPos.z / (2.0 * uBpR));' +
+    '\n  float bpW = smoothstep(0.35, 0.85, abs(normalize(vBpN).y));' +
+    '\n  vec3 nS = texture2D(uBpSideN, uvS).xyz * 2.0 - 1.0; nS.xy *= uBpScale;' +
+    '\n  vec3 nT = texture2D(uBpTopN, uvT).xyz * 2.0 - 1.0; nT.xy *= uBpScale;' +
+    '\n  vec3 pS = normalize(vBpSideT * nS.x + vBpUp * nS.y + normal * nS.z);' +
+    '\n  vec3 pT = normalize(vBpTopT * nT.x + vBpTopB * nT.y + normal * nT.z);' +
+    '\n  normal = normalize(mix(pS, pT, bpW));' +
+    '\n  roughnessFactor *= mix(texture2D(uBpSideR, uvS).g, texture2D(uBpTopR, uvT).g, bpW);' +
+    '\n}\n';
+  function dressFondant(mat, maps, R) {
+    R = R || 2;
+    mat.normalMap = null; mat.roughnessMap = null;
     mat.roughness = 1;
-    mat.normalScale = new THREE.Vector2(maps.normalScale, maps.normalScale);
+    mat.extensions = mat.extensions || {}; mat.extensions.derivatives = true;
+    var U = {
+      uBpSideN: { value: maps.sideN }, uBpSideR: { value: maps.sideR },
+      uBpTopN: { value: maps.topN }, uBpTopR: { value: maps.topR },
+      uBpR: { value: R }, uBpSpan: { value: 2 * Math.PI * R * SH / SW }, uBpScale: { value: maps.normalScale }
+    };
+    mat.onBeforeCompile = function (shader) {
+      for (var k in U) shader.uniforms[k] = U[k];
+      shader.vertexShader = BP_VERT_DECL + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + BP_VERT);
+      shader.fragmentShader = BP_FRAG_DECL + shader.fragmentShader
+        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness;')
+        .replace('#include <normal_fragment_maps>', BP_FRAG);
+    };
+    mat.customProgramCacheKey = function () { return 'cake-biplanar-1'; };
+    mat.userData.bp = U;
     mat.needsUpdate = true;
     return mat;
   }
@@ -220,6 +266,24 @@
     return geo;
   }
 
-  window.CakeFrosting = { semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2,
+  // Rustic rim on a one-piece shell: vertices above `yFrom` and near the edge move a little, by
+  // angle, so a wedge's rim matches the whole cake's. (Normals are left alone: the finish maps
+  // carry the light; recomputing would fold the lathe's seam column.)
+  function displaceRim(geo, R, yFrom, capH, displace) {
+    if (!displace) return geo;
+    var pos = geo.attributes.position;
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), rr = Math.sqrt(x * x + z * z);
+      if (rr > R * 0.8 && y > yFrom) {
+        var th = Math.atan2(x, z) / (Math.PI * 2) + 0.5;
+        var k = Math.min(1, (rr - R * 0.8) / (R * 0.2)) * Math.min(1, (y - yFrom) / (capH * 0.4));
+        var n = (fu(th, 0.5, 40, 1, 2, 9) - 0.5) * 2 * displace * k, sc = (rr + n) / rr;
+        pos.setXYZ(i, x * sc, y + n * 0.6, z * sc);
+      }
+    }
+    pos.needsUpdate = true;
+    return geo;
+  }
+  window.CakeFrosting = { semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
                           fondantMaps: fondantMaps, dressFondant: dressFondant, angleUV: angleUV, capUV: capUV, FINISHES: FINISHES };
 })();

@@ -1,21 +1,31 @@
-# Cake — v0.76 (Low sun, done properly)
+# Cake — v0.77
 
-In v0.75 "Low sun" only lowered the key light, so it looked almost the same as Rustic: the light
-kept whatever direction it had (often from roughly behind the camera, which lights the face evenly),
-and the app's room light — ambient stronger than key, the soft balance we tuned — drowned out
-what relief there was.
+## 1. No more lid
+A fondant tier was two pieces — a wall and a cap sitting on it — with different texture mapping
+(wrap on the wall, straight-down projection on the cap), so the finish smeared over the shoulder
+and the join showed. Now:
+- **One surface.** `CakeShapes.shell` builds wall, shoulder and top as a single lathe, with two
+  material groups (wall, where the message lives; shoulder and top). No join, no crease.
+- **Biplanar mapping in the shader** (`CakeFrosting.dressFondant`). The finish's normal and
+  roughness maps are sampled twice — wrapped around by angle and height, and projected straight
+  down — and blended by how steep the surface is. Sides get pure wrap, the top pure projection,
+  the shoulder a smooth mix: no stretching and no seam anywhere, wedges included (the maps live in
+  the cake's own space). The mip seam where the angle wraps is avoided by choosing, per pixel,
+  whichever of two angle forms has no jump. The message band is still a normal UV map, so it
+  coexists.
+- Cost: two extra texture reads per fondant pixel; one shader variant (`customProgramCacheKey`),
+  warmed up. A fresh recipient: 18 programs at load → 18 opened → 18 cut.
 
-Choosing **Low sun** now turns the light into a low sun, **fixed to the room** like a low window:
-- elevation **14°**, azimuth **−80°** — almost exactly from the side, which rakes across the
-  visible face both from the recipient's opening view (front) and from the builder's writing view
-  (back). As the cake spins, the lit side turns past and the shadow sweeps round.
-- key **×1.6**, room ambient **×0.7** — relief is carried by the key.
-- a little more relief in the maps (normal strength 1.3 vs Rustic's 1.0, same textures).
-Choosing another finish restores the key's elevation, direction and strength and the ambient
-exactly as they were. The random generator applies the same preset when it rolls Low sun (and
-resets ambient first, so repeated shuffles can't compound the dimming).
+## 2. Ribbons bridge the fillings
+On a naked cake the ribbon was following the wall profile groove by groove. It's now a flat band at
+the sponge's outer radius, pulled taut across the fillings. On fondant it still follows the gentle
+bulge, which is the real surface.
 
-The whole scene reads a little dusky under a low sun — the backdrop is measured from the lit floor,
-so it follows. That's the mood; tune `RAKING` in `app.js` if it's too much.
+## 3. Ribbon height
+A **Height** slider beside Width in the Ribbon tray, per tier: 0 puts the ribbon's bottom at the
+bottom of the tier's straight wall, 9 its top at the top of it (not over the rounded shoulder, where
+a flat band can't sit). Schema `rbp` appended, one digit per tier; links without it keep the old
+fixed position. A new ribbon starts near the base. The generator randomises it.
 
-No new shaders: 18 programs throughout.
+## 4. Sponge textures
+Mocked, not built — see `cake-sponge-mock.png`.
