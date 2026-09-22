@@ -1,30 +1,32 @@
-# Cake — v0.73 (MVP Phase 2)
+# Cake — v0.75 (fondant finishes)
 
-## Slice parity
-The recipient's slice was built from half the information and on its own plate. Now:
-- **One plate** (`makePlate`, `PLATE`): the sender's lifted wedge and the recipient's slice page
-  use the same plate. The slice page's smaller plate and its ribbon-coloured torus rim — the red
-  ring — are gone.
-- **One way of plating** (`wedgeOffsetFor`): the recipient's wedge is made by the same
-  `makeWedge` from the **full tier** (`tierTops`: sponge size, index, the tier above), with the
-  same wedge index the sender cut, the same message band, dropped onto the plate the same way.
-  So a fondant slice shows the fondant band with the layered sponge inside, not "a slice of
-  frosting".
-- **Ribbons go with the slice.** Wedges now carry their tier's ribbon, cut to the wedge
-  (`bandGeometry` takes a sweep); before, cutting silently removed it.
-Lighting and backdrop already travelled in the link and were applied on the slice route.
+Flat fondant is retired. Fondant now always wears a **finish**, chosen in a new **Finish** row in
+the Fondant tray (whole cake):
 
-## A finished cake to start with
-A new cake is a **finished single-tier cake in a random curated look**: fondant on, one or two
-fillings, a comfortable shape, a ribbon about half the time. Randomness picks a *look* from
-`LOOKS` (ten colour sets that belong together: fondant, filling, ribbon, candle, backdrop), then
-varies shape, fillings and ribbon within `LOOK_BOUNDS`. Never the same look twice running. The
-words, names, candle count and lighting are the sender's and are left alone. First pass — both
-tables are at the top of `app.js` for tuning later.
+- **Grain** (default) — a faint sugar grain.
+- **Swept** — long palette sweeps down the side, turntable spatula rings on top.
+- **Rustic** — broad palette-knife strokes, plus a hand-worked rim (the top edge's vertices move
+  a little).
+- **Low sun** — the rustic finish under a raking key light (14°). Choosing it lowers the key light;
+  choosing another finish restores the elevation you had. The light travels in the link as usual.
 
-## Shuffle
-A 🎲 **Shuffle** chip at the start of the row re-dresses the cake in a new look for its current
-tier count (a two-tier cake gets two tiers, the upper one narrower). The die tumbles.
+Old links with fondant decode as Grain. Schema: `ff` appended (0 grain · 1 swept · 2 rustic ·
+3 low sun). The random generator picks a finish too (weighted towards Grain and Swept).
 
-Verified: three looks from load + shuffles; sender's lifted slice and recipient's slice match
-(same plate, fondant band, three fillings); no rim; 16 programs at load, 16 after; no errors.
+## How it's done — `frosting.js`
+All procedural, no image files: height fields from seamless noise (and knife strokes stamped into
+a canvas, blurred by hand because canvas `filter` isn't reliable on iOS Safari), turned into
+**normal maps** (relief the light catches) and **roughness maps** (ridges a little shinier). They
+describe shape only, so one set serves every tier and colour; maps are built once per finish and
+cached; they stay **linear** (data, not colour).
+
+Mapping: side textures span the whole circumference once, with `u` set from the true angle
+(`angleUV`) — so a wedge's texture lines up exactly with the whole cake — and need no repeat
+(r128 shares one UV transform across a material's maps, so the message band's would otherwise
+win). Tops are **projected straight down** (`capUV`), so nothing pinches at the centre. The
+message band sits on the finished fondant, with the same normal map.
+
+## Cost
+All four finishes share one shader variant (normal + roughness maps), so switching finish swaps
+textures without a recompile. The warm-up includes it: a fresh recipient of a finished, ribboned
+two-tier cake goes **18 programs at load → 18 opened → 18 cut**.
