@@ -70,6 +70,8 @@
     bakedChance: 0.4,                       // a baked (naked) cake rather than a fondant one
     candles: [1, 3, 5],                     // odd counts only
     finishes: [0, 0, 1, 1, 2, 3],           // fondant finish, weighted: grain and swept most often
+    bakes: [0, 0, 1, 2],                    // Golden most often, then Honey and Butter
+    racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
     // The key light (every slider on the dev panel's Key tab). Light size is baked into the
     // shadow shader, so it's randomised on LOAD only — on Shuffle it would force every material
@@ -109,6 +111,8 @@
     if (window.CakeLook) CakeLook.LOOK.ambientScale = 1;
     lightBeforeRaking = null;
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
+    d.bk = B.bakes[randInt(0, B.bakes.length - 1)];
+    d.rk = B.racks[randInt(0, B.racks.length - 1)];
     if (d.ff === 3) applyFinishLight(0, 3);
     d.sh = sh;
     d.fc = L.fc; d.ic = L.ic; d.cc = L.cc; d.bg = L.bg; d.rc = L.rc;
@@ -307,7 +311,27 @@
   var OCCASION_FALLBACK = 11;   // 'Just because'
 
   var SPONGE_DEFAULT = 0xE9C07A;
-  var SPONGE = SPONGE_DEFAULT;   // the sponge colour of the cake being built — set from cfg.sc at the top of build()
+  var SPONGE = SPONGE_DEFAULT;   // the sponge's CRUST (outside) colour for the cake being built — set at the top of build()
+  var SPONGE_CRUMB = 0xFBE3A1;   // the sponge's CRUMB (inside) colour
+  // Bakes (v0.79): crumb and crust as a pair. These are the vanilla hexes; any other sponge
+  // flavour takes the same browning — its colour is scaled per channel by the bake's ratio to
+  // the vanilla base — so chocolate gets a dark crust and a lighter crumb in the same spirit.
+  var BAKES = [
+    { name: 'Golden', crumb: 0xFBE3A1, crust: 0xD8883A },
+    { name: 'Honey',  crumb: 0xF6D588, crust: 0xBF6A27 },
+    { name: 'Butter', crumb: 0xFFEDB8, crust: 0xE6A24E }
+  ];
+  function spongeColours(cfg) {
+    var base = PALETTES.sponge[clampIndex(cfg.sc, PALETTES.sponge)].hex, B = BAKES[clampIndex(cfg.bk, BAKES)];
+    if ((cfg.sc | 0) === 0) return { crust: B.crust, crumb: B.crumb };
+    function ch(h, k) { return (h >> k) & 255; }
+    function scale(target) {
+      var out = 0;
+      [16, 8, 0].forEach(function (k) { var r = ch(target, k) / Math.max(1, ch(SPONGE_DEFAULT, k)); out |= Math.min(255, Math.round(ch(base, k) * r)) << k; });
+      return out;
+    }
+    return { crust: scale(B.crust), crumb: scale(B.crumb) };
+  }
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
   var TIERS = {
@@ -449,6 +473,8 @@
       frst: String(c.frst || '').replace(/[^0-9]/g, '').slice(0, 3), // frosting STYLE per tier (v0.68); missing → fr on every tier
       fdt: String(c.fdt || '').replace(/[^0-9]/g, '').slice(0, 3),  // fondant on/off per tier (v0.68); missing → fd on every tier
       sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
+      bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79): 0 golden · 1 honey · 2 butter
+      rk: clampInt(c.rk, 0, 2, 0),          // cooling-rack marks on a baked top: 0 none · 1 wires · 2 bars
       ff: clampInt(c.ff, 0, 3, 0)           // fondant finish (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
     };
     // A legacy "smooth shell" (fr 1; 2/3 were reserved) IS fondant now: the field changes meaning,
@@ -501,7 +527,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -510,7 +536,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -740,7 +766,7 @@
   function build(cfg, opts) {
     markHeavy();
     cfg = normalize(cfg);                                // derived arrays (rt, sh) must match the tier count; always normalise
-    SPONGE = PALETTES.sponge[clampIndex(cfg.sc, PALETTES.sponge)].hex;   // every painter and material below reads this
+    var SC = spongeColours(cfg); SPONGE = SC.crust; SPONGE_CRUMB = SC.crumb;   // every painter and material below reads these
     var keepMessageMap = (opts && opts.keepMessage && messageMesh && messageMesh.material[0] && messageMesh.material[0].map) ? messageMesh.material[0].map : null;
     if (keepMessageMap) keepMessageMap.__shared = true;   // survives the clear below
     built.visible = true;
@@ -801,6 +827,7 @@
         });
         if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
         if (TM.maps) CakeFrosting.dressFondant(sideMat, TM.maps, rr);   // the writing sits on the finished fondant
+        else if (!TM.fdOn && window.CakeFrosting) { var bm = CakeFrosting.spongeMaps(cfg.rk); bm.noAlbedo = true; CakeFrosting.dressFondant(sideMat, bm, tier.rs); }   // …or on the baked crust
         nightGlow(sideMat, 0xffffff, true);
       }
       var body;
@@ -853,8 +880,10 @@
       if (rt && rt.on) {
         var rw = ribbonWidth(rt.w);
         // Hugs the fondant's surface, or bridges a naked stack's fillings taut (no tucking in).
+        var rbGeo = CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, rw, rt.p), rw, RIBBON.thick, CYL_SEG, TM.fdOn ? pOpts : { straight: true });
+        if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(rbGeo, rr, 1e3, SPONGE_WOBBLE);   // follows the baked wall's wobble, still bridging the fillings
         var ribbon = new THREE.Mesh(
-          CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, rw, rt.p), rw, RIBBON.thick, CYL_SEG, TM.fdOn ? pOpts : { straight: true }),
+          rbGeo,
           new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide })
         );
         ribbon.position.y = y;
@@ -1295,6 +1324,7 @@
   // Materials for a tier — frosted shell or naked sponge — from a config. Shared by the whole
   // cake, the cut wedges and the slice page so the three can't disagree.
   var semiCache = {}, semiKeys = [];   // semi-naked side textures, by their inputs (see tierMaterials)
+  var SPONGE_WOBBLE = 0.025;           // how far a baked wall strays from round, as a fraction of its radius
   // The sponge's crumb, with no stripes: fillings are solids with their own material now, so
   // nothing about them is painted. One tileable texture, made once.
   var crumbTex = null;
@@ -1323,14 +1353,26 @@
     var rs = tier.rs, hs = tier.hs, scheme = layerScheme(hs, cfg.ly), filling = TM.filling;
     var G = CakeShapes.P.groove, D = CakeShapes.P.disc;
     var textured = !!sideMat;
-    var wall = sideMat || new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, map: makeCrumbTexture(), vertexColors: true });
+    // Outside: the CRUST — sandy, porous, browned — mapped biplanar (wrap on the walls, straight
+    // down on the top, where the rack marks are). Inside: the CRUMB — open foam, soft wrap light.
+    var smaps = window.CakeFrosting ? CakeFrosting.spongeMaps(cfg.rk) : null;
+    var wall = sideMat || new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 1, vertexColors: true });
+    if (!sideMat && smaps) CakeFrosting.dressFondant(wall, smaps, rs);
     // Ends face both ways: of the two faces bounding a gap in a cut cake, one points into it
     // and one away, so single-sided ends vanished from half the angles.
-    var geoms = [], mats = [wall, new THREE.MeshStandardMaterial({ color: SPONGE, roughness: 0.95, side: THREE.DoubleSide, vertexColors: true })];
+    var crumbMat = new THREE.MeshStandardMaterial({ color: SPONGE_CRUMB, roughness: 1, side: THREE.DoubleSide, vertexColors: true });
+    if (window.CakeFrosting) {
+      var cm = CakeFrosting.crumbMaps(partial && viewerMode === 'slice');   // real crumb when it can be seen; the slice page can't wait
+      crumbMat.map = cm.a; crumbMat.normalMap = cm.n; crumbMat.roughnessMap = cm.r;
+      CakeFrosting.wrapLighting(crumbMat, 0.6, new THREE.Color(1, 0.86, 0.62));
+    }
+    var geoms = [], mats = [wall, crumbMat];
     // [2] the top surface of the top layer: plain — sponge, or the buttercream where a scrape
     // covers the top fully. The side texture must not be sampled across the lid.
     var topHex = (TM.style === 4) ? PALETTES.frosting[clampIndex(cfg.frs ? cfg.frs[tier.idx || 0] : cfg.fc, PALETTES.frosting)].hex : SPONGE;
-    mats.push(new THREE.MeshStandardMaterial({ color: topHex, roughness: TM.style === 4 ? 0.75 : 0.95, vertexColors: true }));
+    var lidMat = new THREE.MeshStandardMaterial({ color: topHex, roughness: TM.style === 4 ? 0.75 : 1, vertexColors: true });
+    if (TM.style !== 4 && smaps) CakeFrosting.dressFondant(lidMat, smaps, rs);   // the baked top, rack marks and all
+    mats.push(lidMat);
     var fillMatIndex = {};   // filling end materials start at index 3
     function fillMat(hex) {
       if (fillMatIndex[hex] === undefined) { fillMatIndex[hex] = mats.length; mats.push(new THREE.MeshStandardMaterial({ color: hex, roughness: 0.7, side: THREE.DoubleSide, vertexColors: true })); }
@@ -1366,6 +1408,7 @@
     }
     var geo = CakeShapes.merge(geoms, function (k) { return matOf[k]; });
     geoms.forEach(function (g) { g.dispose(); });
+    if (window.CakeFrosting) CakeFrosting.spongeWobble(geo, rs, hs, SPONGE_WOBBLE);   // baked, not machined
     var mesh = new THREE.Mesh(geo, mats);
     mats.forEach(function (m) { if (m !== sideMat) nightGlow(m, m.color.getHex(), false); });
     return mesh;
@@ -2704,14 +2747,17 @@
       else { t.repeat.x = len / (Math.PI * 2); t.offset.x = theta0 / (Math.PI * 2); }
       side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, map: t, vertexColors: true });
       if (TM.maps) CakeFrosting.dressFondant(side, TM.maps, TM.rr);
+      else if (!TM.fdOn && window.CakeFrosting) { var wbm = CakeFrosting.spongeMaps(cfg.rk); wbm.noAlbedo = true; CakeFrosting.dressFondant(side, wbm, tier.rs); }
     }
     var wseg = Math.max(6, Math.round(CYL_SEG / N) + 2);
     var rr = TM.rr;                                           // the sponge, or the shell when the fondant is on
     // The ribbon goes with the slice: the same band as the whole cake's, cut to this wedge.
     var rtw = cfg.rt && cfg.rt[tier.idx || 0];
     if (rtw && rtw.on) {
+      var wbGeo = CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, ribbonWidth(rtw.w), rtw.p), ribbonWidth(rtw.w), RIBBON.thick, wseg, TM.fdOn ? pOpts : { straight: true }, theta0, len);
+      if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(wbGeo, rr, 1e3, SPONGE_WOBBLE);
       var band = new THREE.Mesh(
-        CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, ribbonWidth(rtw.w), rtw.p), ribbonWidth(rtw.w), RIBBON.thick, wseg, TM.fdOn ? pOpts : { straight: true }, theta0, len),
+        wbGeo,
         new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rtw.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide }));
       band.position.y = tier.y0; g.add(band);
     }
@@ -3362,7 +3408,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'bake', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -3487,6 +3533,8 @@
     syncShape();
     syncFrostTiers();
     Array.prototype.forEach.call($('layers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-ly') === draft.ly); });
+    Array.prototype.forEach.call($('bake-kind').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-bk') === draft.bk); });
+    Array.prototype.forEach.call($('bake-rack').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-rk') === draft.rk); });
     var lo = $('ly-out'); if (lo) lo.textContent = draft.ly;
   }
   // The writing-colour note lives in the Message tray now.
@@ -3564,6 +3612,13 @@
       syncFrosting(); updateColourNote();
       build(draft);
       if (on) frostOn();
+    });
+    // Bake and rack marks (whole cake). Maps and colours only — no shader change.
+    Array.prototype.forEach.call($('bake-kind').children, function (b) {
+      b.addEventListener('click', function () { draft.bk = +b.getAttribute('data-bk'); draft = normalize(draft); syncFrosting(); updateColourNote(); build(draft); });
+    });
+    Array.prototype.forEach.call($('bake-rack').children, function (b) {
+      b.addEventListener('click', function () { draft.rk = +b.getAttribute('data-rk'); draft = normalize(draft); syncFrosting(); build(draft); });
     });
     // Fondant finish (whole cake). Changing it swaps maps only — the shader stays the same.
     Array.prototype.forEach.call($('fond-finish').children, function (b) {

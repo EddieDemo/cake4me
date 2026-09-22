@@ -201,7 +201,8 @@
     '\n vBpTopB = normalize(normalMatrix * vec3(0.0, 0.0, -1.0));\n';
   var BP_FRAG_DECL = BP_VERT_DECL +
     'uniform sampler2D uBpSideN; uniform sampler2D uBpSideR; uniform sampler2D uBpTopN; uniform sampler2D uBpTopR;\n' +
-    'uniform float uBpR; uniform float uBpSpan; uniform float uBpScale;\n';
+    'uniform float uBpR; uniform float uBpSpan; uniform float uBpScale;\n' +
+    'uniform sampler2D uBpSideA; uniform sampler2D uBpTopA; uniform float uBpAlb;\n';
   var BP_FRAG =
     '\n{' +
     '\n  float bpA = ((abs(vBpPos.x) + abs(vBpPos.z) < 1e-5) ? 0.0 : atan(vBpPos.x, vBpPos.z)) / 6.2831853 + 0.5;' +
@@ -217,7 +218,15 @@
     // Never let one projection's bad sample poison the other: mix(a, b, 1) is still NaN if a is.
     '\n  if (bpW > 0.999) normal = pT; else if (bpW < 0.001) normal = pS; else normal = normalize(mix(pS, pT, bpW));' +
     '\n  roughnessFactor *= mix(texture2D(uBpSideR, uvS).g, texture2D(uBpTopR, uvT).g, bpW);' +
+    // Optional colour variation (the sponge crust's browning and pores). The lights read
+    // diffuseColor after this block, so multiplying it here is in time.
+    '\n  if (uBpAlb > 0.5) diffuseColor.rgb *= mix(texture2D(uBpSideA, uvS).rgb, texture2D(uBpTopA, uvT).rgb, bpW);' +
     '\n}\n';
+  var _white = null;
+  function whiteTex() {
+    if (!_white) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 2, 2); _white = new THREE.CanvasTexture(c); _white.__shared = true; }
+    return _white;
+  }
   function dressFondant(mat, maps, R) {
     R = R || 2;
     mat.normalMap = null; mat.roughnessMap = null;
@@ -226,7 +235,9 @@
     var U = {
       uBpSideN: { value: maps.sideN }, uBpSideR: { value: maps.sideR },
       uBpTopN: { value: maps.topN }, uBpTopR: { value: maps.topR },
-      uBpR: { value: R }, uBpSpan: { value: 2 * Math.PI * R * SH / SW }, uBpScale: { value: maps.normalScale }
+      uBpR: { value: R }, uBpSpan: { value: 2 * Math.PI * R * SH / SW }, uBpScale: { value: maps.normalScale },
+      uBpSideA: { value: (maps.sideA && !maps.noAlbedo) ? maps.sideA : whiteTex() }, uBpTopA: { value: (maps.topA && !maps.noAlbedo) ? maps.topA : whiteTex() },
+      uBpAlb: { value: (maps.sideA && !maps.noAlbedo) ? 1 : 0 }
     };
     mat.onBeforeCompile = function (shader) {
       for (var k in U) shader.uniforms[k] = U[k];
@@ -269,6 +280,140 @@
     return geo;
   }
 
+  // =================================================================
+  // SPONGE (v0.79): the crust and the crumb, all procedural so they react to the light.
+  // The crumb is modelled as what it is — a FOAM: a solid full of air cells of mixed sizes,
+  // stretched a little upward because the cake rose ("open chiffon"). The crust is the same
+  // idea at a finer scale — sandy and porous. Rack marks are where the cooling rack's wires
+  // pressed the top: slightly sunken and paler, because the crust browned less there.
+  // =================================================================
+  // Tileable Worley foam: height 1 on the walls, dipping as a hemisphere into each air cell.
+  function foam(W, H, layers, seed) {
+    var h = new Float32Array(W * H); for (var i = 0; i < W * H; i++) h[i] = 1;
+    layers.forEach(function (L, li) {
+      var gx = L.cells, gy = Math.max(1, Math.round(L.cells * H / W / L.stretch)), s = seed + li * 13;
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var fx = x / W * gx, fy = y / H * gy, cx = Math.floor(fx), cy = Math.floor(fy), best = 1e9, rad = 0;
+        for (var oy = -1; oy <= 1; oy++) for (var ox = -1; ox <= 1; ox++) {
+          var ix = cx + ox, iy = cy + oy, wx = ((ix % gx) + gx) % gx, wy = ((iy % gy) + gy) % gy;
+          var px = ix + phash(wx, wy, s), py = iy + phash(wx, wy, s + 1), dx = fx - px, dy = (fy - py) * L.stretch, d = Math.sqrt(dx * dx + dy * dy);
+          if (d < best) { best = d; rad = L.hole[0] + (L.hole[1] - L.hole[0]) * Math.pow(phash(wx, wy, s + 2), L.skew || 1); }
+        }
+        if (best < rad) { var t = best / rad, dip = L.depth * Math.sqrt(1 - t * t), k = y * W + x; if (1 - dip < h[k]) h[k] = 1 - dip; }
+      }
+    });
+    for (var y2 = 0; y2 < H; y2++) for (var x2 = 0; x2 < W; x2++) h[y2 * W + x2] -= 0.06 * fu(x2 / W, y2 / H, Math.round(W / 3), Math.round(H / 3), 1, seed + 99);
+    return h;
+  }
+  function toColour(fn, W, H) {
+    var c = document.createElement('canvas'); c.width = W; c.height = H;
+    var g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var v = fn(x, y), i = (y * W + x) * 4; d[i] = Math.min(255, v[0] * 255); d[i + 1] = Math.min(255, v[1] * 255); d[i + 2] = Math.min(255, v[2] * 255); d[i + 3] = 255; }
+    g.putImageData(img, 0, 0);
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true;
+    return t;
+  }
+  // Rack patterns across the top (texture space = the tier's diameter). 0 plain · 1 wires · 2 bars.
+  var RACKS = [null, { sp: 0.045, w: 0.0065 }, { sp: 0.105, w: 0.013 }];
+  function rackAt(kind, u, v) {
+    var R = RACKS[kind]; if (!R) return 0;
+    var a = 0.35, p = u * Math.cos(a) + v * Math.sin(a);
+    var wob = 0.003 * (fu(p * 3, v * 3, 3, 3, 2, 31) - 0.5);
+    var t = (p + wob) / R.sp, f = t - Math.floor(t), k = Math.max(0, 1 - Math.abs(f - 0.5) / (R.w / R.sp));
+    var str = 0.7 + 0.3 * phash(Math.floor(t), 7, 5);                     // some wires pressed harder
+    return k * k * (3 - 2 * k) * str;
+  }
+  var spongeCache = {};
+  function spongeMaps(rackKind) {
+    rackKind = Math.max(0, Math.min(2, rackKind | 0));
+    if (!spongeCache.side) {
+      var hs = foam(SW, SH, [{ cells: 340, stretch: 1, hole: [0.12, 0.42], depth: 0.55, skew: 2.2 }, { cells: 760, stretch: 1, hole: [0.1, 0.3], depth: 0.35 }], 41);
+      spongeCache.side = {
+        n: toNormal(hs, SW, SH, 2.6), r: toRough(hs, SW, SH, 0.72, 0.4),
+        a: toColour(function (x, y) { var k = (0.95 + 0.06 * (fu(x / SW, y / SH, 40, 8, 3, 5) - 0.5) * 2) * (0.86 + 0.14 * hs[y * SW + x]); return [k, k, k]; }, SW, SH)
+      };
+      spongeCache.topFoam = foam(TW, TW, [{ cells: 170, stretch: 1, hole: [0.12, 0.42], depth: 0.55, skew: 2.2 }, { cells: 380, stretch: 1, hole: [0.1, 0.3], depth: 0.35 }], 43);
+    }
+    if (!spongeCache['top' + rackKind]) {
+      var tf = spongeCache.topFoam, th = new Float32Array(TW * TW), tm = new Float32Array(TW * TW);
+      for (var y = 0; y < TW; y++) for (var x = 0; x < TW; x++) { var m = rackAt(rackKind, x / TW, y / TW), i = y * TW + x; tm[i] = m; th[i] = tf[i] * (1 - 0.5 * m) - 0.25 * m; }
+      spongeCache['top' + rackKind] = {
+        n: toNormal(th, TW, TW, 3.2), r: toRough(th, TW, TW, 0.72, 0.4),
+        a: toColour(function (x, y) { var i = y * TW + x, k = (0.95 + 0.06 * (fu(x / TW, y / TW, 24, 24, 3, 5) - 0.5) * 2) * (0.86 + 0.14 * Math.max(0, th[i] + 0.25 * tm[i])); var pale = 1 + 0.3 * tm[i]; return [k * pale, k * pale * 1.01, k * pale * 1.05]; }, TW, TW)
+      };
+    }
+    var S = spongeCache.side, T = spongeCache['top' + rackKind];
+    return { sideN: S.n, sideR: S.r, sideA: S.a, topN: T.n, topR: T.r, topA: T.a, normalScale: 1.0, displace: 0 };
+  }
+  // The crumb: open chiffon foam, tiled at CRUMB_TILE world units (a cut face's UVs are in
+  // world units). Holes darker (light can't get in), walls warm and pale.
+  var CRUMB_TILE = 1.2, crumbCache = null, crumbPlaceholder = null, crumbQueued = false;
+  // The crumb is only seen once the cake is cut, so it's generated in the background shortly
+  // after load (≈0.3s of work) instead of on the load path. Until then — or for the shader
+  // warm-up, where only the material's SHAPE matters — a tiny placeholder set stands in.
+  // `now` forces it (the slice page needs the real crumb at once).
+  function crumbMaps(now) {
+    if (!crumbCache && !now) {
+      if (!crumbQueued) { crumbQueued = true; setTimeout(function () { crumbMaps(true); }, 900); }
+      if (!crumbPlaceholder) {
+        var mk1 = function (rgb) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 2, 2); var t = new THREE.CanvasTexture(c); t.__shared = true; return t; };
+        crumbPlaceholder = { a: mk1('#f0ece4'), n: mk1('#8080ff'), r: mk1('#f2f2f2') };
+        crumbPlaceholder.a.encoding = THREE.sRGBEncoding;
+      }
+      return crumbPlaceholder;
+    }
+    if (!crumbCache) {
+      var N = 448, h = foam(N, N, [{ cells: 13, stretch: 1.6, hole: [0.1, 0.7], depth: 1, skew: 2.5 }, { cells: 35, stretch: 1.4, hole: [0.2, 0.55], depth: 0.8 }, { cells: 90, stretch: 1.2, hole: [0.15, 0.4], depth: 0.5 }], 17);
+      var set = function (t) { t.repeat.set(1 / CRUMB_TILE, 1 / CRUMB_TILE); return t; };
+      crumbCache = {
+        a: set(toColour(function (x, y) { var k = 0.84 + 0.2 * Math.pow(Math.max(0, h[y * N + x]), 1.3); return [k, k * 0.985, k * 0.95]; }, N, N)),
+        n: set(toNormal(h, N, N, 4.5)), r: set(toRough(h, N, N, 0.95, -0.1))
+      };
+    }
+    return crumbCache;
+  }
+  // Sponge is slightly translucent: light soaks in, so its shaded side stays soft and warm.
+  // The diffuse term is lit by a "wrapped" N·L; the extra light let round the terminator is
+  // tinted warm, like light that travelled through the crumb.
+  var WRAP_DIFF = 'reflectedLight.directDiffuse += ( 1.0 - clearcoatDHR ) * irradiance * BRDF_Diffuse_Lambert( material.diffuseColor );';
+  function wrapLighting(mat, wrap, tint) {
+    var chunk = THREE.ShaderChunk.lights_physical_pars_fragment;
+    if (chunk.indexOf(WRAP_DIFF) < 0) { console.warn('frosting.js: wrap-lighting anchor not found; crumb uses standard lighting'); return mat; }
+    var U = { uWrap: { value: wrap }, uScatter: { value: tint } };
+    mat.onBeforeCompile = function (sh) {
+      sh.uniforms.uWrap = U.uWrap; sh.uniforms.uScatter = U.uScatter;
+      sh.fragmentShader = 'uniform float uWrap; uniform vec3 uScatter;\n' + sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', chunk.replace(WRAP_DIFF,
+        'float wNL = saturate( ( dot( geometry.normal, directLight.direction ) + uWrap ) / ( 1.0 + uWrap ) );' +
+        '\n vec3 wIrr = wNL * directLight.color;\n #ifndef PHYSICALLY_CORRECT_LIGHTS\n wIrr *= PI;\n #endif' +
+        '\n reflectedLight.directDiffuse += ( 1.0 - clearcoatDHR ) * ( irradiance + max( wIrr - irradiance, 0.0 ) * uScatter ) * BRDF_Diffuse_Lambert( material.diffuseColor );'));
+    };
+    mat.customProgramCacheKey = function () { return 'cake-crumb-wrap-1'; };
+    mat.needsUpdate = true;
+    return mat;
+  }
+  // A baked sponge isn't a machined cylinder: the wall leans and bulges a little and has soft
+  // lumps, and the top layer's shoulder is crumbly. Applied to every part of a stack (walls,
+  // lids, fillings, cut ends) by position, so a wedge matches the whole cake and the fillings
+  // keep their inset. amp is a fraction of the radius.
+  function spongeWobble(geo, R, topY, amp) {
+    var pos = geo.attributes.position;
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), rr = Math.sqrt(x * x + z * z);
+      if (rr < 1e-4) continue;
+      var u = Math.atan2(x, z) / (Math.PI * 2) + 0.5;
+      var k = 1 + amp * ((fu(u, y * 0.25 / 1000, 3, 1000, 2, 51) - 0.5) * 1.4 + (fu(u, y * 0.9 / 1000, 18, 1000, 2, 52) - 0.5) * 0.7);   // fu scales v by its period: divide it back out
+      var dy = 0;
+      if (y > topY - 0.1 && rr > R * 0.86) {                             // the crumbly shoulder
+        var e = Math.min(1, (rr - R * 0.86) / (R * 0.14)) * Math.min(1, (y - (topY - 0.1)) / 0.1);
+        dy = -e * (0.035 + 0.03 * fu(u, 0.5, 60, 1, 2, 53));
+        k -= e * 0.012 * fu(u, 0.5, 140, 1, 1, 54);
+      }
+      pos.setXYZ(i, x * k, y + dy, z * k);
+    }
+    pos.needsUpdate = true;
+    return geo;
+  }
+
   // Rustic rim on a one-piece shell: vertices above `yFrom` and near the edge move a little, by
   // angle, so a wedge's rim matches the whole cake's. (Normals are left alone: the finish maps
   // carry the light; recomputing would fold the lathe's seam column.)
@@ -288,5 +433,6 @@
     return geo;
   }
   window.CakeFrosting = { semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
+                          spongeMaps: spongeMaps, crumbMaps: crumbMaps, wrapLighting: wrapLighting, spongeWobble: spongeWobble, CRUMB_TILE: CRUMB_TILE,
                           fondantMaps: fondantMaps, dressFondant: dressFondant, angleUV: angleUV, capUV: capUV, FINISHES: FINISHES };
 })();

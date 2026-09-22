@@ -287,6 +287,11 @@
     shape.moveTo(0, 0); prof.forEach(function (p) { shape.lineTo(p.x, p.y); }); shape.closePath();
     var geo = new THREE.ShapeGeometry(shape, 3);
     geo.translate(0, y0, 0);
+    // UVs in world units (radius, height in the tier) so a tiled crumb texture runs on across
+    // the layers instead of restarting on each.
+    var pos = geo.attributes.position, uv = geo.attributes.uv;
+    for (var i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i), pos.getY(i));
+    uv.needsUpdate = true;
     return geo;
   }
   // Merge geometries into one, with a material group per input, so a stack of solids and their

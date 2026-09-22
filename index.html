@@ -39,6 +39,7 @@
         <button type="button" class="chip" data-tray="tiers" aria-selected="false"><span class="ic" aria-hidden="true">◍</span>Tiers</button>
         <button type="button" class="chip" data-tray="shape" aria-selected="false"><span class="ic" aria-hidden="true">⤢</span>Shape</button>
         <button type="button" class="chip" data-tray="sponge" aria-selected="false"><span class="ic" aria-hidden="true">▤</span>Sponge</button>
+        <button type="button" class="chip" data-tray="bake" aria-selected="false"><span class="ic" aria-hidden="true">♨</span>Bake</button>
         <button type="button" class="chip" data-tray="frosting" aria-selected="false"><span class="ic" aria-hidden="true">◐</span>Frosting</button>
         <button type="button" class="chip" data-tray="fondant" aria-selected="false"><span class="ic" aria-hidden="true">◯</span>Fondant</button>
         <span class="chip-gap" aria-hidden="true"></span>
@@ -151,6 +152,20 @@
             <span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="7" step="1" value="4">
             <span class="rowlab mini">Height</span><input id="f-rp" type="range" min="0" max="9" step="1" value="1">
             <output id="rw-out" hidden>0.32</output></div>
+        </div>
+
+        <!-- Bake: how the sponge came out of the oven — its browning, and the rack it cooled on -->
+        <div class="tray" id="tray-bake" hidden>
+          <div class="rowline"><span class="rowlab">Bake</span><div class="seg small grow" id="bake-kind">
+            <button type="button" data-bk="0" class="on">Golden</button>
+            <button type="button" data-bk="1">Honey</button>
+            <button type="button" data-bk="2">Butter</button>
+          </div></div>
+          <div class="rowline"><span class="rowlab">Top</span><div class="seg small grow" id="bake-rack">
+            <button type="button" data-rk="0" class="on">Plain</button>
+            <button type="button" data-rk="1">Rack wires</button>
+            <button type="button" data-rk="2">Rack bars</button>
+          </div></div>
         </div>
 
         <div class="tray" id="tray-backdrop" hidden>
