@@ -1,32 +1,27 @@
-# Cake — v0.79 (a real baked sponge)
+# Cake — v0.81 (finishes, properly scaled)
 
-The sponge of a naked cake — and inside any cake once it's cut — is now built the way the mocks
-were, all procedural so it reacts to the light:
+## Two new finishes
+- **Combed** — fine vertical grooves pulled with a comb: a hollow the full width of each band
+  meeting its neighbour at a cusp (broad floor, peak almost to a point), spacing that wanders,
+  each groove its own depth, and each line drifting sideways on its own as it rises.
+- **Ridged** — a spatula held to the turning cake: bands of uneven height, each rising and falling
+  a little of its own accord as it goes round.
+The tile row is now **Grain · Swept · Spiral · Combed · Ridged · Rustic · Deep rustic**. Coarse is
+gone (its slot, `ff` 4, is Combed; the few links carrying it show Combed).
 
-- **Crust** (outside): sandy and porous, browned, with a slight sheen. Mapped with the same
-  seamless biplanar shader as fondant (wrap on the walls, straight down on the top), now with an
-  optional colour map, so there's no seam and no stretching over the shoulder.
-- **Crumb** (cut faces): **C · open chiffon** — foam with air cells of mixed sizes, stretched
-  upward. Holes darker, walls warm and pale, with **wrap lighting** so the shaded side stays soft
-  and warm, as translucent sponge does. Cut-face UVs are in world units so the crumb runs on across
-  the layers.
-- **A baked shape**: the walls lean and bulge a little and have soft lumps; the top layer's shoulder
-  is crumbly. Applied to every part of the stack by position, so wedges match the whole cake and the
-  fillings keep their inset. Ribbons follow the wobble while still bridging the fillings.
+## Everything in centimetres
+Patterns are written in world units rather than texture cycles, so the **side and the top match**:
+grooves 3cm apart on both, the same depth, the same smoothness. Each map's normal strength is
+scaled by its pixels-per-unit, so their relief matches too. The fondant wall is straight — the old
+slight bulge left a crease at the shoulder that read as a separate lid.
 
-## New: the Bake chip (cake group)
-- **Bake:** Golden (default) · Honey · Butter — crumb and crust as a pair. Other sponge flavours take
-  the same browning (their colour scaled by the bake's ratio to the vanilla base), so chocolate
-  gets a dark crust and a lighter crumb.
-- **Top:** Plain · Rack wires · Rack bars — cooling-rack marks, sunken and paler where the wires
-  pressed.
-Schema `bk`, `rk` appended; older links decode as Golden, plain. The generator picks both (Golden
-most often; plain or wires most often, bars now and then).
+## Two bugs fixed
+- **Upside-down textures.** A canvas texture is flipped when it's uploaded, so every pattern was
+  read upside down — and because the normals are derived in canvas order, **dips rendered as
+  ridges**. Fixed in one place (`field`), which corrects every finish and the sponge: Rustic's
+  knife lips and the sponge's pores were subtly inside-out.
+- **The pattern stopped at the shoulder.** The side/top blend now holds the side pattern until the
+  surface is nearly flat, so combing and ridges run right up to the top edge.
 
-## Cost
-- Texture generation is ~1.5s of work in total. The crust is needed on load; the **crumb is only
-  seen once cut, so it's generated in the background ~1s after load** (the slice page generates it
-  at once). Worth timing on the phone.
-- Shaders: the crust shares the fondant's biplanar program; the crumb adds one (wrap lighting),
-  covered by the warm-up. Verified: 17 programs in the builder across bakes; a recipient cutting a
-  naked cake: 17 → 17; no errors.
+Verified in the app: Combed, Ridged, Swept and Spiral all render, the tiles show their real grain,
+17 shader programs throughout, no errors.

@@ -29,21 +29,28 @@
   // opening view (front, 0°) and from the builder's writing view (back, 180°). The key is turned
   // up and the room's ambient down, because relief is carried by the key: with the soft default
   // balance (ambient stronger than key) a low sun barely changes the picture.
-  var RAKING = { elevation: 14, azimuth: -80, keyMul: 1.6, ambientMul: 0.7 };
-  var lightBeforeRaking = null;
-  function applyFinishLight(prevFf, ff) {
+  // ---- Lighting presets (v0.80): the Light chip. A preset is just lighting values — they travel
+  // in the link like any lighting. Light SIZE is deliberately not part of a preset: it's baked
+  // into the shadow shader, so changing it would recompile every material (a freeze on a phone).
+  // Low sun used to be a fondant finish; it's a lighting setup, so it lives here now.
+  var LIGHT_PRESETS = [
+    { name: 'Daylight',  keyScale: 1.0,  elevation: 47.5, azimuth: -38.7, kelvin: 5000, ambient: 1.0 },
+    { name: 'Warm',      keyScale: 1.1,  elevation: 32,   azimuth: -62,   kelvin: 3800, ambient: 0.92 },
+    { name: 'Cool',      keyScale: 1.0,  elevation: 42,   azimuth: 30,    kelvin: 6400, ambient: 1.0 },
+    { name: 'Low sun',   keyScale: 1.6,  elevation: 14,   azimuth: -80,   kelvin: 4600, ambient: 0.7 },
+    { name: 'Overhead',  keyScale: 0.9,  elevation: 72,   azimuth: -20,   kelvin: 5200, ambient: 1.05 }
+  ];
+  var lightPreset = 0;
+  // jitter (optional): small random nudges so generated cakes still vary within a preset.
+  function applyLightPreset(i, jitter) {
     if (!window.CakeLook) return;
-    var LK = CakeLook.LOOK, K = LK.keyDir;
-    if (ff === 3 && prevFf !== 3) {
-      lightBeforeRaking = { elevation: K.elevation, azimuth: K.azimuth, keyScale: LK.keyScale, ambientScale: LK.ambientScale };
-      K.elevation = RAKING.elevation; K.azimuth = RAKING.azimuth;
-      LK.keyScale = +Math.min(3, LK.keyScale * RAKING.keyMul).toFixed(2);
-      LK.ambientScale = +Math.max(0, LK.ambientScale * RAKING.ambientMul).toFixed(2);
-    } else if (ff !== 3 && prevFf === 3) {
-      var b = lightBeforeRaking || { elevation: 45, azimuth: -38.7, keyScale: 1, ambientScale: 1 };
-      K.elevation = b.elevation; K.azimuth = b.azimuth; LK.keyScale = b.keyScale; LK.ambientScale = b.ambientScale;
-      lightBeforeRaking = null;
-    }
+    var P = LIGHT_PRESETS[Math.max(0, Math.min(LIGHT_PRESETS.length - 1, i | 0))], LK = CakeLook.LOOK, j = jitter ? 1 : 0;
+    lightPreset = i | 0;
+    LK.keyScale = +(P.keyScale + j * (Math.random() - 0.5) * 0.2).toFixed(2);
+    LK.keyDir.elevation = Math.round(Math.max(8, Math.min(85, P.elevation + j * (Math.random() - 0.5) * 12)));
+    LK.keyDir.azimuth = Math.round(P.azimuth + j * (Math.random() - 0.5) * 50);
+    LK.keyKelvin = Math.round((P.kelvin + j * (Math.random() - 0.5) * 600) / 100) * 100;
+    LK.ambientScale = P.ambient; LK.keyHex = -1;
   }
 
   // ---- Curated looks for the starting cake and the Shuffle chip (v0.73, first pass) ----
@@ -69,8 +76,9 @@
     ribbonChance: 0.5, ribbonW: [2, 5],
     bakedChance: 0.4,                       // a baked (naked) cake rather than a fondant one
     candles: [1, 3, 5],                     // odd counts only
-    finishes: [0, 0, 1, 1, 2, 3],           // fondant finish, weighted: grain and swept most often
-    bakes: [0, 0, 1, 2],                    // Golden most often, then Honey and Butter
+    finishes: [0, 0, 1, 1, 5, 5, 4, 4, 7, 7, 2, 6],   // fondant finish: grain, swept and spiral most often, then combed and ridged
+    sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
+    lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
     // The key light (every slider on the dev panel's Key tab). Light size is baked into the
@@ -93,27 +101,13 @@
       else sh.push({ r: Math.max(0, sh[i - 1].r - randInt(B.topInset[0], B.topInset[1])), h: randInt(B.topH[0], B.topH[1]) });
     }
     var baked = Math.random() < B.bakedChance;
-    d.sc = Math.random() < B.spongeVanillaChance ? 0 : randInt(1, PALETTES.sponge.length - 1);
+    d.sp = B.sponges[randInt(0, B.sponges.length - 1)];
     d.n = B.candles[randInt(0, B.candles.length - 1)];
-    // The key light, within reasonable ranges.
-    if (window.CakeLook) {
-      var LK = CakeLook.LOOK, K = B.key;
-      LK.keyScale = +randRange(K.strength[0], K.strength[1]).toFixed(2);
-      LK.keyDir.elevation = Math.round(randRange(K.elevation[0], K.elevation[1]));
-      LK.keyDir.azimuth = Math.round(randRange(K.azimuth[0], K.azimuth[1]));
-      LK.keyKelvin = Math.round(randRange(K.kelvin[0], K.kelvin[1]) / 100) * 100;
-      LK.keyHex = -1;
-      if (onLoad) LK.pcss.lightSize = +randRange(K.lightSize[0], K.lightSize[1]).toFixed(2);
-    }
-    // A random finish; if it's Low sun, the light becomes a low sun (the random key light above
-    // is what a later change of finish restores to). Ambient is reset first so shuffles
-    // can't compound the dimming.
-    if (window.CakeLook) CakeLook.LOOK.ambientScale = 1;
-    lightBeforeRaking = null;
+    // The lighting: a preset, nudged a little. (Light size varies on load only — see LIGHT_PRESETS.)
+    applyLightPreset(B.lights[randInt(0, B.lights.length - 1)], true);
+    if (onLoad && window.CakeLook) CakeLook.LOOK.pcss.lightSize = +randRange(B.key.lightSize[0], B.key.lightSize[1]).toFixed(2);
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
-    d.bk = B.bakes[randInt(0, B.bakes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
-    if (d.ff === 3) applyFinishLight(0, 3);
     d.sh = sh;
     d.fc = L.fc; d.ic = L.ic; d.cc = L.cc; d.bg = L.bg; d.rc = L.rc;
     d.fcs = sh.map(function () { return L.fc; }); d.frs = d.fcs.slice();
@@ -316,22 +310,24 @@
   // Bakes (v0.79): crumb and crust as a pair. These are the vanilla hexes; any other sponge
   // flavour takes the same browning — its colour is scaled per channel by the bake's ratio to
   // the vanilla base — so chocolate gets a dark crust and a lighter crumb in the same spirit.
-  var BAKES = [
-    { name: 'Golden', crumb: 0xFBE3A1, crust: 0xD8883A },
-    { name: 'Honey',  crumb: 0xF6D588, crust: 0xBF6A27 },
-    { name: 'Butter', crumb: 0xFFEDB8, crust: 0xE6A24E }
+  // The sponges (v0.80): one curated list, each a crumb + crust pair in baked-in tones — muted, a
+  // little brown, the crust always browner than the crumb — so none of them reads as icing.
+  // `crumb` picks the crumb texture's flavour detail (frosting.js).
+  var SPONGES = [
+    { name: 'Classic vanilla', crumb: 0xFBE3A1, crust: 0xD8883A, detail: 'plain' },
+    { name: 'Honey sponge',    crumb: 0xF6D588, crust: 0xBF6A27, detail: 'plain' },
+    { name: 'Butter sponge',   crumb: 0xFFEDB8, crust: 0xE6A24E, detail: 'plain' },
+    { name: 'Lemon',           crumb: 0xFAE59A, crust: 0xD9963E, detail: 'lemon' },
+    { name: 'Chocolate',       crumb: 0x7B5238, crust: 0x4B2E1E, detail: 'tight' },
+    { name: 'Coffee',          crumb: 0xC0936A, crust: 0x8A5634, detail: 'plain' },
+    { name: 'Red velvet',      crumb: 0x9C3F36, crust: 0x6A2A25, detail: 'velvet' },
+    { name: 'Carrot',          crumb: 0xD6A873, crust: 0x9A5F31, detail: 'carrot' },
+    { name: 'Matcha',          crumb: 0xB9B97C, crust: 0x8E7E4A, detail: 'plain' }
   ];
-  function spongeColours(cfg) {
-    var base = PALETTES.sponge[clampIndex(cfg.sc, PALETTES.sponge)].hex, B = BAKES[clampIndex(cfg.bk, BAKES)];
-    if ((cfg.sc | 0) === 0) return { crust: B.crust, crumb: B.crumb };
-    function ch(h, k) { return (h >> k) & 255; }
-    function scale(target) {
-      var out = 0;
-      [16, 8, 0].forEach(function (k) { var r = ch(target, k) / Math.max(1, ch(SPONGE_DEFAULT, k)); out |= Math.min(255, Math.round(ch(base, k) * r)) << k; });
-      return out;
-    }
-    return { crust: scale(B.crust), crumb: scale(B.crumb) };
-  }
+  // Links from before v0.80 stored a flavour (sc) and a bake (bk); map them onto the list.
+  var SC_TO_SP = [0, 4, 6, 3, 8, 7, 2];               // vanilla, chocolate, red velvet, lemon, matcha, carrot, strawberry → butter
+  function spongeOf(cfg) { return SPONGES[clampIndex(cfg.sp, SPONGES)]; }
+  function spongeColours(cfg) { var S = spongeOf(cfg); return { crust: S.crust, crumb: S.crumb }; }
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
   var TIERS = {
@@ -473,9 +469,11 @@
       frst: String(c.frst || '').replace(/[^0-9]/g, '').slice(0, 3), // frosting STYLE per tier (v0.68); missing → fr on every tier
       fdt: String(c.fdt || '').replace(/[^0-9]/g, '').slice(0, 3),  // fondant on/off per tier (v0.68); missing → fd on every tier
       sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
-      bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79): 0 golden · 1 honey · 2 butter
+      bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
+      sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
+          : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
       rk: clampInt(c.rk, 0, 2, 0),          // cooling-rack marks on a baked top: 0 none · 1 wires · 2 bars
-      ff: clampInt(c.ff, 0, 3, 0)           // fondant finish (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
+      ff: (function (f) { return f === 3 ? 2 : f; })(clampInt(c.ff, 0, 7, 0))   // 3 was Low sun (now a light preset) → Rustic; 4 was Coarse → Combed   // fondant finish; 3 was Low sun (now a light preset) → Rustic (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
     };
     // A legacy "smooth shell" (fr 1; 2/3 were reserved) IS fondant now: the field changes meaning,
     // the picture doesn't. Reserved buttercream styles fall back to none.
@@ -527,7 +525,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -536,7 +534,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -1362,7 +1360,7 @@
     // and one away, so single-sided ends vanished from half the angles.
     var crumbMat = new THREE.MeshStandardMaterial({ color: SPONGE_CRUMB, roughness: 1, side: THREE.DoubleSide, vertexColors: true });
     if (window.CakeFrosting) {
-      var cm = CakeFrosting.crumbMaps(partial && viewerMode === 'slice');   // real crumb when it can be seen; the slice page can't wait
+      var cm = CakeFrosting.crumbMaps(partial && viewerMode === 'slice', spongeOf(cfg).detail);   // real crumb when it can be seen; the slice page can't wait
       crumbMat.map = cm.a; crumbMat.normalMap = cm.n; crumbMat.roughnessMap = cm.r;
       CakeFrosting.wrapLighting(crumbMat, 0.6, new THREE.Color(1, 0.86, 0.62));
     }
@@ -3293,7 +3291,7 @@
   var els = {
     builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swFrc: $('sw-frc'), swIc: $('sw-ic'), swSc: $('sw-sc'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swFrc: $('sw-frc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
     copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
@@ -3391,7 +3389,7 @@
     els.nOut.textContent = draft.n;
     syncTiers(draft.t);
     // frosting swatches: see syncFrostTiers (per tier)
-    syncSwatches(els.swSc, draft.sc);
+    Array.prototype.forEach.call($('sw-sp').children, function (b, i) { b.setAttribute('aria-pressed', i === draft.sp ? 'true' : 'false'); });
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
     // ribbon swatches: see syncRibbon (per tier)
@@ -3408,7 +3406,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'bake', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop', 'light'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -3527,13 +3525,13 @@
     var anyFd = draft.fds.some(function (v) { return v; });
     var frow = $('fond-finish-row'); if (frow) frow.classList.toggle('dim', !anyFd);
     Array.prototype.forEach.call($('fond-finish').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-ff') === draft.ff); });
+    Array.prototype.forEach.call($('light-presets').children, function (b, i) { b.classList.toggle('on', i === lightPreset); });
   }
   function syncFrosting() {
     syncRibbon();
     syncShape();
     syncFrostTiers();
     Array.prototype.forEach.call($('layers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-ly') === draft.ly); });
-    Array.prototype.forEach.call($('bake-kind').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-bk') === draft.bk); });
     Array.prototype.forEach.call($('bake-rack').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-rk') === draft.rk); });
     var lo = $('ly-out'); if (lo) lo.textContent = draft.ly;
   }
@@ -3614,22 +3612,8 @@
       if (on) frostOn();
     });
     // Bake and rack marks (whole cake). Maps and colours only — no shader change.
-    Array.prototype.forEach.call($('bake-kind').children, function (b) {
-      b.addEventListener('click', function () { draft.bk = +b.getAttribute('data-bk'); draft = normalize(draft); syncFrosting(); updateColourNote(); build(draft); });
-    });
     Array.prototype.forEach.call($('bake-rack').children, function (b) {
       b.addEventListener('click', function () { draft.rk = +b.getAttribute('data-rk'); draft = normalize(draft); syncFrosting(); build(draft); });
-    });
-    // Fondant finish (whole cake). Changing it swaps maps only — the shader stays the same.
-    Array.prototype.forEach.call($('fond-finish').children, function (b) {
-      b.addEventListener('click', function () {
-        var ff = +b.getAttribute('data-ff'), prev = draft.ff;
-        if (ff === prev) return;
-        applyFinishLight(prev, ff);
-        draft.ff = ff; draft = normalize(draft);
-        updateRoomLights();
-        syncFrosting(); build(draft);
-      });
     });
     // Buttercream style: None is a style, so there's no toggle. Per tier, or every tier with "All".
     Array.prototype.forEach.call($('frost-style').children, function (b) {
@@ -3691,7 +3675,32 @@
 
     makeSwatches(els.swFc, PALETTES.frosting, 'fc');      // fondant colours
     makeSwatches(els.swFrc, PALETTES.frosting, 'frc');    // buttercream colours
-    makeSwatches(els.swSc, PALETTES.sponge, 'sc');
+    // Sponges: split swatches — the crust as a ring round the crumb, a slice seen end-on.
+    SPONGES.forEach(function (S, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'swatch split'; b.title = S.name; b.setAttribute('aria-label', S.name);
+      b.style.setProperty('--crumb', '#' + ('000000' + S.crumb.toString(16)).slice(-6));
+      b.style.setProperty('--crust', '#' + ('000000' + S.crust.toString(16)).slice(-6));
+      b.addEventListener('click', function () { draft.sp = i; draft = normalize(draft); syncFrosting(); updateColourNote(); build(draft); });
+      $('sw-sp').appendChild(b);
+    });
+    // Finishes: small lit previews, in the order they're shown.
+    [[0, 'Grain'], [1, 'Swept'], [5, 'Spiral'], [4, 'Combed'], [7, 'Ridged'], [2, 'Rustic'], [6, 'Deep rustic']].forEach(function (f) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'tile'; b.setAttribute('data-ff', f[0]);
+      var im = document.createElement('img'); im.alt = ''; im.src = window.CakeFrosting ? CakeFrosting.finishPreview(f[0], 28) : '';
+      var t = document.createElement('span'); t.textContent = f[1];
+      b.appendChild(im); b.appendChild(t);
+      b.addEventListener('click', function () {
+        var ff = f[0]; if (ff === draft.ff) return;
+        draft.ff = ff; draft = normalize(draft); syncFrosting(); build(draft);   // maps only: same shader
+      });
+      $('fond-finish').appendChild(b);
+    });
+    // Lighting presets.
+    LIGHT_PRESETS.forEach(function (P, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = P.name; b.setAttribute('data-lp', i);
+      b.addEventListener('click', function () { applyLightPreset(i, false); updateRoomLights(); syncFrosting(); });
+      $('light-presets').appendChild(b);
+    });
     makeSwatches(els.swIc, PALETTES.filling, 'ic');
     makeSwatches(els.swCc, PALETTES.candle, 'cc');
     makeSwatches(els.swRc, PALETTES.ribbon, 'rc');

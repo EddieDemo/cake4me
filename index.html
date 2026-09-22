@@ -39,7 +39,6 @@
         <button type="button" class="chip" data-tray="tiers" aria-selected="false"><span class="ic" aria-hidden="true">◍</span>Tiers</button>
         <button type="button" class="chip" data-tray="shape" aria-selected="false"><span class="ic" aria-hidden="true">⤢</span>Shape</button>
         <button type="button" class="chip" data-tray="sponge" aria-selected="false"><span class="ic" aria-hidden="true">▤</span>Sponge</button>
-        <button type="button" class="chip" data-tray="bake" aria-selected="false"><span class="ic" aria-hidden="true">♨</span>Bake</button>
         <button type="button" class="chip" data-tray="frosting" aria-selected="false"><span class="ic" aria-hidden="true">◐</span>Frosting</button>
         <button type="button" class="chip" data-tray="fondant" aria-selected="false"><span class="ic" aria-hidden="true">◯</span>Fondant</button>
         <span class="chip-gap" aria-hidden="true"></span>
@@ -49,6 +48,7 @@
         <span class="chip-gap" aria-hidden="true"></span>
         <span class="grp-label" aria-hidden="true">scene</span>
         <button type="button" class="chip" data-tray="backdrop" aria-selected="false"><span class="ic" aria-hidden="true">🖼</span>Backdrop</button>
+        <button type="button" class="chip" data-tray="light" aria-selected="false"><span class="ic" aria-hidden="true">☀</span>Light</button>
       </div>
 
       <div class="trays" id="trays">
@@ -89,18 +89,21 @@
         </div>
 
         <div class="tray" id="tray-sponge" hidden>
-          <div class="rowline"><span class="rowlab">Sponge</span><div class="swatches" id="sw-sc" data-c="sc"></div></div>
+          <div class="rowline"><span class="rowlab">Sponge</span><div class="swatches" id="sw-sp"></div></div>
           <div class="rowline"><span class="rowlab">Filling</span><div class="swatches" id="sw-ic" data-c="ic"></div></div>
           <div class="rowline"><span class="rowlab">Fillings</span><div class="seg small grow" id="layers">
             <button type="button" data-ly="1">0</button>
             <button type="button" data-ly="2">1</button>
             <button type="button" data-ly="3" class="on">2</button>
             <button type="button" data-ly="4">3</button>
-          </div><output id="ly-out" hidden>3</output></div>
+          </div><output id="ly-out" hidden>3</output>
+          <div class="seg small icons" id="bake-rack" title="The top: plain, or marked by a cooling rack">
+            <button type="button" data-rk="0" class="on" aria-label="Plain top">○</button>
+            <button type="button" data-rk="1" aria-label="Rack wires">▤</button>
+            <button type="button" data-rk="2" aria-label="Rack bars">☰</button>
+          </div></div>
         </div>
 
-        <!-- Frosting: buttercream spread on the sponge. Styles: none, semi-naked (rustic and
-             smooth reserved). Colour per tier. -->
         <div class="tray" id="tray-frosting" hidden>
           <div class="seg small" id="frost-tiers">
             <button type="button" data-tier="all" class="on">All</button>
@@ -127,12 +130,7 @@
           </div>
           <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-fondant"><span class="knob"></span><span class="tlabel">Fondant</span></label>
             <div id="fond-opts" class="dim grow"><div class="swatches" id="sw-fc" data-c="fc"></div></div></div>
-          <div class="rowline" id="fond-finish-row"><span class="rowlab">Finish</span><div class="seg small grow" id="fond-finish">
-            <button type="button" data-ff="0" class="on">Grain</button>
-            <button type="button" data-ff="1">Swept</button>
-            <button type="button" data-ff="2">Rustic</button>
-            <button type="button" data-ff="3" title="Rustic, with a low raking light">Low sun</button>
-          </div></div>
+          <div class="rowline" id="fond-finish-row"><span class="rowlab">Finish</span><div class="tiles" id="fond-finish"></div></div>
         </div>
 
         <div class="tray" id="tray-candles" hidden>
@@ -154,18 +152,8 @@
             <output id="rw-out" hidden>0.32</output></div>
         </div>
 
-        <!-- Bake: how the sponge came out of the oven — its browning, and the rack it cooled on -->
-        <div class="tray" id="tray-bake" hidden>
-          <div class="rowline"><span class="rowlab">Bake</span><div class="seg small grow" id="bake-kind">
-            <button type="button" data-bk="0" class="on">Golden</button>
-            <button type="button" data-bk="1">Honey</button>
-            <button type="button" data-bk="2">Butter</button>
-          </div></div>
-          <div class="rowline"><span class="rowlab">Top</span><div class="seg small grow" id="bake-rack">
-            <button type="button" data-rk="0" class="on">Plain</button>
-            <button type="button" data-rk="1">Rack wires</button>
-            <button type="button" data-rk="2">Rack bars</button>
-          </div></div>
+        <div class="tray" id="tray-light" hidden>
+          <div class="rowline"><span class="rowlab">Light</span><div class="seg small grow" id="light-presets"></div></div>
         </div>
 
         <div class="tray" id="tray-backdrop" hidden>

@@ -96,7 +96,10 @@
     for (var o = 0; o < oct; o++) { a += amp * pnoise(u * cx * f, v * cy * f, cx * f, cy * f, s + o); t += amp; amp *= 0.5; f *= 2; }
     return a / t;
   }
-  function field(W, H, fn) { var a = new Float32Array(W * H); for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) a[y * W + x] = fn(x / W, y / H, x, y); return a; }
+  // A canvas texture is flipped when it's uploaded, so paint with v measured from the BOTTOM.
+  // Without this every pattern was read upside down — and because the normals are derived in
+  // canvas order, dips rendered as ridges (v0.81).
+  function field(W, H, fn) { var a = new Float32Array(W * H); for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) a[y * W + x] = fn(x / W, 1 - y / H, x, y); return a; }
   // Separable box blur with wrap, in place (canvas `filter` isn't reliable on iOS Safari).
   function blur(a, W, H, r, passes) {
     var tmp = new Float32Array(W * H);
@@ -151,36 +154,118 @@
   }
   // Side textures span the full circumference (≈ 4 mock tiles), tops the full diameter.
   var SW = 1024, SH = 192, TW = 512;
-  var FINISHES = [
-    { name: 'Grain',  normalScale: 0.35, rough: [0.6, 0.06], displace: 0,
-      side: function () { return field(SW, SH, function (u, v) { return fu(u, v, 340, 64, 2, 1) * 0.6 + fu(u, v, 72, 14, 2, 2) * 0.4; }); },
-      top:  function () { return field(TW, TW, function (u, v) { return fu(u, v, 170, 170, 2, 1) * 0.6 + fu(u, v, 36, 36, 2, 2) * 0.4; }); },
-      strength: 2.2 },
-    { name: 'Swept',  normalScale: 0.6, rough: [0.55, 0.25], displace: 0,
-      side: function () { return field(SW, SH, function (u, v) { var ph = fu(u, 0, 16, 1, 2, 6) * 5; return 0.5 + 0.28 * Math.sin(v * Math.PI * 2 * 4 + ph) + fu(u, v, 200, 36, 2, 7) * 0.12; }); },
-      top:  function () { return field(TW, TW, function (u, v) { var dx = u - 0.5, dy = v - 0.5, r = Math.sqrt(dx * dx + dy * dy), a = Math.atan2(dy, dx); return 0.5 + 0.3 * Math.sin(r * 90 + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 4); }); },
-      strength: 5 },
-    { name: 'Rustic', normalScale: 1.0, rough: [0.62, 0.35], displace: 0.05,
-      side: function () { return blur(strokes(SW, SH, 110, [60, 150], [22, 48], 11), SW, SH, 2, 2); },
-      top:  function () { return blur(strokes(TW, TW, 90, [60, 150], [22, 48], 23), TW, TW, 2, 2); },
-      strength: 6 }
-  ];
-  // Low sun = the rustic maps (same name, so the same cached textures) with a little more relief;
-  // app.js turns the light into a low raking sun.
-  FINISHES[3] = Object.assign({}, FINISHES[2], { normalScale: 1.3 });
+  // ---- Finishes in WORLD units (v0.81) ----
+  // Side textures wrap the circumference once and cover a band of height SPAN; top textures
+  // cover the diameter. Writing the patterns in centimetres — not in texture cycles — is what
+  // keeps the sides and the top at the same scale, and each map's normal strength is scaled by
+  // its pixels-per-unit so their relief matches too.
+  var REF_R = 2.2, CIRC = 2 * Math.PI * REF_R, SPAN = CIRC * SH / SW;
+  var PX_SIDE = SW / CIRC, PX_TOP = TW / (2 * REF_R);
+  function sideField(fn) { return field(SW, SH, function (u, v) { return fn(u * CIRC, v * SPAN, u); }); }
+  function topField(fn) { return field(TW, TW, function (u, v) { return fn((u - 0.5) * 2 * REF_R, (v - 0.5) * 2 * REF_R); }); }
+  function strokesAt(W, H, count, lenR, widR, seed, ref) {
+    var k = W / ref;
+    return blur(strokes(W, H, count, [lenR[0] * k, lenR[1] * k], [widR[0] * k, widR[1] * k], seed), W, H, Math.max(1, Math.round(2 * k)), 2);
+  }
+  // A groove: a hollow running the full width of its band, meeting its neighbour at a cusp —
+  // a broad floor with a peak that comes almost to a point.
+  function scoopProfile(f) { return 1 - Math.pow(Math.sin(Math.PI * f), 0.42); }
+  // Combed: fine vertical grooves pulled with a comb. The spacing wanders, each groove has its
+  // own depth, and each line drifts sideways on its own as it rises (not in unison).
+  function combSide(x, y, u) {
+    var sp = 0.26;
+    var warp = 2.2 * (fu(u, 0.5, 4, 1, 2, 12) - 0.5) + 1.1 * (fu(u, 0.5, 11, 1, 2, 14) - 0.5) + 0.5 * (fu(u, 0.5, 27, 1, 2, 16) - 0.5);
+    var drift = 0.55 * (fu(u, y / 12, 40, 1, 2, 11) - 0.5) * (0.25 + 0.75 * Math.min(1, y / 1.6));
+    var t0 = x / sp + warp + drift, i0 = Math.floor(t0), n = Math.max(4, Math.round(CIRC / sp)), id0 = ((i0 % n) + n) % n;
+    var p1 = phash(id0, 11, 2) * 6.28, p2 = phash(id0, 13, 3) * 6.28;
+    var sway = 0.095 * Math.sin(y * 1.25 + p1) + 0.038 * Math.sin(y * 3.1 + p2);
+    var t = t0 + sway, i = Math.floor(t), f = t - i, id = ((i % n) + n) % n;
+    var dep = 0.6 + 0.55 * phash(id, 5, 6), fade = 0.78 + 0.22 * fu(u * 2 + id * 0.21, y / 5, 1000, 1, 1, 13);
+    return 0.92 - 0.5 * (1 - scoopProfile(f)) * dep * fade + 0.03 * fu(u, y / SPAN, 300, 50, 1, 7);
+  }
+  // Ridged: a spatula held against the turning cake. Bands of uneven height, each drifting up
+  // and down a little of its own accord as it goes round.
+  function ridgeSide(x, y, u) {
+    var wave = 0.11 * (fu(u, y / 40, 4, 1, 2, 21) - 0.5) + 0.05 * (fu(u, y / 40, 15, 1, 2, 22) - 0.5) + 0.02 * (fu(u, y / 40, 37, 1, 2, 24) - 0.5);
+    var yy0 = y + wave, t0 = yy0 / 0.3 + 0.95 * Math.sin(yy0 * 1.5) + 0.45 * Math.sin(yy0 * 3.9 + 1.1) + 0.2 * Math.sin(yy0 * 9.7), i0 = Math.floor(t0);
+    var th = u * Math.PI * 2, q1 = phash(i0 + 70, 17, 4) * 6.28, q2 = phash(i0 + 71, 19, 5) * 6.28;
+    var band = 0.105 * Math.sin(th + q1) + 0.052 * Math.sin(th * 2 + q2) + 0.026 * Math.sin(th * 3 + q1 * 0.5);
+    var t = t0 + band, i = Math.floor(t), f = t - i;
+    var dep = 0.6 + 0.55 * phash(i + 50, 7, 8), body = 0.03 * (fu(u, (y + i * 0.7) / 6, 60, 1, 2, 26) - 0.5);
+    return 0.92 - 0.5 * (1 - scoopProfile(f)) * dep + body;
+  }
+  function smoothTop(crownDip) {
+    return function (x, z) {
+      var r = Math.hypot(x, z) / REF_R, crown = crownDip * Math.max(0, (r - 0.9) / 0.1);
+      return 0.5 + crown + 0.04 * fu(x / (2 * REF_R) + 0.5, z / (2 * REF_R) + 0.5, 40, 40, 2, 9);
+    };
+  }
+  // Swept and Spiral share their sides: long sweeps at the same groove spacing as the top.
+  var GROOVE = 0.3, SWEEP_CYCLES = Math.max(1, Math.round(SPAN / GROOVE)), SWEEP_G = SPAN / SWEEP_CYCLES;
+  function sweepSide(x, y, u) { var ph = fu(u, 0, 16, 1, 2, 6) * 2.2; return 0.5 + 0.3 * Math.sin(2 * Math.PI * y / SWEEP_G + ph); }
+  function grainAt(u, v, a, b) { return fu(u, v, a, b, 2, 1) * 0.6 + fu(u, v, Math.round(a / 4.7), Math.round(b / 4.7), 2, 2) * 0.4; }
+  var FINISHES = [];
+  FINISHES[0] = { name: 'Grain', normalScale: 0.35, rough: [0.6, 0.06], displace: 0, k: 2.2,
+    side: function () { return field(SW, SH, function (u, v) { return grainAt(u, v, 340, 64); }); },
+    top:  function () { return field(TW, TW, function (u, v) { return grainAt(u, v, 170, 170); }); } };
+  FINISHES[1] = { name: 'Swept', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
+    side: function () { return sideField(sweepSide); },
+    top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 2.2); }); } };
+  FINISHES[2] = { name: 'Rustic', normalScale: 1.0, rough: [0.62, 0.35], displace: 0.05, k: 6,
+    side: function () { return strokesAt(SW, SH, 110, [60, 150], [22, 48], 11, 1024); },
+    top:  function () { return strokesAt(TW, TW, 90, [60, 150], [22, 48], 23, 512); } };
+  FINISHES[3] = FINISHES[2];                             // retired "Low sun" → Rustic (its lighting is in the link)
+  FINISHES[4] = { name: 'Combed', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
+    side: function () { return sideField(combSide); }, top: function () { return topField(smoothTop(-0.1)); } };
+  FINISHES[5] = { name: 'Spiral', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
+    side: function () { return sideField(sweepSide); },
+    top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE - a + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 0.8); }); } };
+  FINISHES[6] = { name: 'Deep rustic', normalScale: 1.45, rough: [0.62, 0.42], displace: 0.085, k: 8.5,
+    side: function () { return strokesAt(SW, SH, 80, [90, 200], [32, 64], 71, 1024); },
+    top:  function () { return strokesAt(TW, TW, 64, [90, 200], [32, 64], 73, 512); } };
+  FINISHES[7] = { name: 'Ridged', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
+    side: function () { return sideField(ridgeSide); }, top: function () { return topField(smoothTop(-0.12)); } };
+  var FINISH_COUNT = 8;
   var mapCache = {};
   function fondantMaps(finish) {
-    finish = Math.max(0, Math.min(3, finish | 0));
+    finish = Math.max(0, Math.min(FINISH_COUNT - 1, finish | 0));
     var F = FINISHES[finish], key = F.name;
     if (!mapCache[key]) {
       var hs = F.side(), ht = F.top();
+      if (F.soften) blur(hs, SW, SH, 1, 1);
+      // World patterns are written in centimetres, so their normal strength scales with each
+      // map's pixels-per-unit; the older patterns keep their own.
+      var kS = F.world ? F.k * PX_SIDE / 100 : F.k, kT = F.world ? F.k * PX_TOP / 100 : F.k;
       mapCache[key] = {
-        sideN: toNormal(hs, SW, SH, F.strength), sideR: toRough(hs, SW, SH, F.rough[0], F.rough[1]),
-        topN: toNormal(ht, TW, TW, F.strength), topR: toRough(ht, TW, TW, F.rough[0], F.rough[1])
+        sideN: toNormal(hs, SW, SH, kS), sideR: toRough(hs, SW, SH, F.rough[0], F.rough[1]),
+        topN: toNormal(ht, TW, TW, kT), topR: toRough(ht, TW, TW, F.rough[0], F.rough[1])
       };
     }
     var m = mapCache[key];
     return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace };
+  }
+  // A small lit preview of a finish's top, for the builder's tiles: the height field shaded by a
+  // light from the upper left, in a neutral cream. Cheap — drawn at tile size, cached.
+  var previewCache = {};
+  function finishPreview(finish, N) {
+    var key = finish + '@' + N;
+    if (previewCache[key]) return previewCache[key];
+    var F = FINISHES[finish], M = N * 2, sideOne = !!F.world, src = sideOne ? F.side() : F.top();
+    var FW = sideOne ? SW : TW, FH = sideOne ? SH : TW, patch = sideOne ? Math.round(SH * 1.0) : FW;
+    var h = new Float32Array(M * M);
+    for (var yy = 0; yy < M; yy++) for (var xx = 0; xx < M; xx++) h[yy * M + xx] = src[(Math.round(yy * patch / M) % FH) * FW + (Math.round(xx * patch / M) % FW)];
+    var st = (sideOne ? F.k * PX_SIDE / 100 : F.k) * (patch / M) * 1.4;
+    var c = document.createElement('canvas'); c.width = c.height = M;
+    var g = c.getContext('2d'), img = g.createImageData(M, M), d = img.data;
+    var L = [-0.55, 0.55, 0.63];
+    for (var y = 0; y < M; y++) for (var x = 0; x < M; x++) {
+      var xr = (x + 1) % M, xl = (x - 1 + M) % M, yd = (y + 1) % M, yu = (y - 1 + M) % M;
+      var nx = -(h[y * M + xr] - h[y * M + xl]) * st, ny = (h[yd * M + x] - h[yu * M + x]) * st, l = Math.sqrt(nx * nx + ny * ny + 1);
+      var sh = Math.max(0, (nx * L[0] + ny * L[1] + L[2]) / l), k = 0.55 + 0.5 * sh, i = (y * M + x) * 4;
+      d[i] = 244 * k; d[i + 1] = 226 * k; d[i + 2] = 214 * k; d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return (previewCache[key] = c.toDataURL());
   }
   // Put a finish on a material by BIPLANAR mapping in the shader (v0.77): the normal and
   // roughness maps are sampled twice — wrapped around the side by angle and height, and
@@ -210,7 +295,7 @@
     '\n  float bpU = (fwidth(bpA) > fwidth(bpA2) + 1e-5) ? bpA2 : bpA;' + // pick whichever has no jump here (no mip seam)
     '\n  vec2 uvS = vec2(bpU, vBpPos.y / uBpSpan);' +
     '\n  vec2 uvT = vec2(vBpPos.x / (2.0 * uBpR) + 0.5, 0.5 - vBpPos.z / (2.0 * uBpR));' +
-    '\n  float bpW = smoothstep(0.35, 0.85, abs(normalize(vBpN).y));' +
+    '\n  float bpW = smoothstep(0.72, 0.97, abs(normalize(vBpN).y));' +   // the side pattern carries over the shoulder
     '\n  vec3 nS = texture2D(uBpSideN, uvS).xyz * 2.0 - 1.0; nS.xy *= uBpScale;' +
     '\n  vec3 nT = texture2D(uBpTopN, uvT).xyz * 2.0 - 1.0; nT.xy *= uBpScale;' +
     '\n  vec3 pS = normalize(vBpSideT * nS.x + vBpUp * nS.y + normal * nS.z);' +
@@ -347,14 +432,19 @@
   }
   // The crumb: open chiffon foam, tiled at CRUMB_TILE world units (a cut face's UVs are in
   // world units). Holes darker (light can't get in), walls warm and pale.
-  var CRUMB_TILE = 1.2, crumbCache = null, crumbPlaceholder = null, crumbQueued = false;
+  var CRUMB_TILE = 1.2, crumbPlaceholder = null, crumbQueued = false;
   // The crumb is only seen once the cake is cut, so it's generated in the background shortly
   // after load (≈0.3s of work) instead of on the load path. Until then — or for the shader
   // warm-up, where only the material's SHAPE matters — a tiny placeholder set stands in.
   // `now` forces it (the slice page needs the real crumb at once).
-  function crumbMaps(now) {
-    if (!crumbCache && !now) {
-      if (!crumbQueued) { crumbQueued = true; setTimeout(function () { crumbMaps(true); }, 900); }
+  // Flavour details live in the crumb, not just its colour: carrot has orange and dark spice
+  // flecks, lemon a faint scatter of zest, chocolate a slightly tighter crumb, red velvet darker
+  // cell walls so the red reads deep rather than flat. The foam itself is shared.
+  var crumbFoam = null, crumbSets = {};
+  function crumbMaps(now, variant) {
+    variant = variant || 'plain';
+    if (!crumbFoam && !now) {
+      if (!crumbQueued) { crumbQueued = true; setTimeout(function () { crumbMaps(true, variant); }, 900); }
       if (!crumbPlaceholder) {
         var mk1 = function (rgb) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 2, 2); var t = new THREE.CanvasTexture(c); t.__shared = true; return t; };
         crumbPlaceholder = { a: mk1('#f0ece4'), n: mk1('#8080ff'), r: mk1('#f2f2f2') };
@@ -362,15 +452,32 @@
       }
       return crumbPlaceholder;
     }
-    if (!crumbCache) {
-      var N = 448, h = foam(N, N, [{ cells: 13, stretch: 1.6, hole: [0.1, 0.7], depth: 1, skew: 2.5 }, { cells: 35, stretch: 1.4, hole: [0.2, 0.55], depth: 0.8 }, { cells: 90, stretch: 1.2, hole: [0.15, 0.4], depth: 0.5 }], 17);
-      var set = function (t) { t.repeat.set(1 / CRUMB_TILE, 1 / CRUMB_TILE); return t; };
-      crumbCache = {
-        a: set(toColour(function (x, y) { var k = 0.84 + 0.2 * Math.pow(Math.max(0, h[y * N + x]), 1.3); return [k, k * 0.985, k * 0.95]; }, N, N)),
-        n: set(toNormal(h, N, N, 4.5)), r: set(toRough(h, N, N, 0.95, -0.1))
-      };
+    var N = 448;
+    if (!crumbFoam) {
+      var h0 = foam(N, N, [{ cells: 13, stretch: 1.6, hole: [0.1, 0.7], depth: 1, skew: 2.5 }, { cells: 35, stretch: 1.4, hole: [0.2, 0.55], depth: 0.8 }, { cells: 90, stretch: 1.2, hole: [0.15, 0.4], depth: 0.5 }], 17);
+      crumbFoam = { h: h0, n: toNormal(h0, N, N, 4.5), r: toRough(h0, N, N, 0.95, -0.1) };
     }
-    return crumbCache;
+    if (!crumbSets[variant]) {
+      var h = crumbFoam.h, tile = variant === 'tight' ? CRUMB_TILE / 1.45 : CRUMB_TILE;
+      var rep = function (t) { var c = t.clone(); c.needsUpdate = true; c.repeat.set(1 / tile, 1 / tile); c.__shared = true; return c; };
+      var fleck = function (x, y, seed, dens) { return phash(Math.floor(x / 2), Math.floor(y / 2), seed) > 1 - dens; };
+      var a = toColour(function (x, y) {
+        var v = Math.max(0, h[y * N + x]), k;
+        if (variant === 'velvet') k = 0.66 + 0.36 * Math.pow(v, 1.6);   // darker walls: a deep red, not a flat one
+        else k = 0.84 + 0.2 * Math.pow(v, 1.3);
+        var c = [k, k * 0.985, k * 0.95];
+        if (variant === 'carrot') {                                      // carrot shreds and spice
+          if (fleck(x, y, 81, 0.012)) c = [k * 1.05, k * 0.62, k * 0.3];
+          else if (fleck(x, y, 83, 0.008)) c = [k * 0.45, k * 0.33, k * 0.25];
+        } else if (variant === 'lemon') {                                // zest
+          if (fleck(x, y, 85, 0.006)) c = [k * 1.08, k * 1.02, k * 0.45];
+        }
+        return c;
+      }, N, N);
+      a.repeat.set(1 / tile, 1 / tile);
+      crumbSets[variant] = { a: a, n: rep(crumbFoam.n), r: rep(crumbFoam.r) };
+    }
+    return crumbSets[variant];
   }
   // Sponge is slightly translucent: light soaks in, so its shaded side stays soft and warm.
   // The diffuse term is lit by a "wrapped" N·L; the extra light let round the terminator is
@@ -433,6 +540,7 @@
     return geo;
   }
   window.CakeFrosting = { semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
+                          finishPreview: finishPreview, FINISH_COUNT: FINISH_COUNT,
                           spongeMaps: spongeMaps, crumbMaps: crumbMaps, wrapLighting: wrapLighting, spongeWobble: spongeWobble, CRUMB_TILE: CRUMB_TILE,
                           fondantMaps: fondantMaps, dressFondant: dressFondant, angleUV: angleUV, capUV: capUV, FINISHES: FINISHES };
 })();
