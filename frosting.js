@@ -165,7 +165,9 @@
       top:  function () { return blur(strokes(TW, TW, 90, [60, 150], [22, 48], 23), TW, TW, 2, 2); },
       strength: 6 }
   ];
-  FINISHES[3] = FINISHES[2];                             // raking = rustic maps; app.js lowers the key light
+  // Low sun = the rustic maps (same name, so the same cached textures) with a little more relief;
+  // app.js turns the light into a low raking sun.
+  FINISHES[3] = Object.assign({}, FINISHES[2], { normalScale: 1.3 });
   var mapCache = {};
   function fondantMaps(finish) {
     finish = Math.max(0, Math.min(3, finish | 0));

@@ -23,13 +23,27 @@
   var OCCASION_DEFAULT = 0;       // Birthday — used when the picker is hidden
   // "Low sun" is the rustic finish shown under a raking key light, which is what makes the
   // strokes come alive. Choosing it lowers the key; choosing another finish restores it.
-  var RAKING = { elevation: 14 };
-  var keyElevBeforeRaking = null;
+  // The light is fixed to the ROOM, like a low window: it doesn't follow the camera, so the lit
+  // side turns past as the cake spins and the shadow sweeps round. It comes from almost exactly
+  // the side (azimuth −80°), which rakes across the visible face both from the recipient's
+  // opening view (front, 0°) and from the builder's writing view (back, 180°). The key is turned
+  // up and the room's ambient down, because relief is carried by the key: with the soft default
+  // balance (ambient stronger than key) a low sun barely changes the picture.
+  var RAKING = { elevation: 14, azimuth: -80, keyMul: 1.6, ambientMul: 0.7 };
+  var lightBeforeRaking = null;
   function applyFinishLight(prevFf, ff) {
     if (!window.CakeLook) return;
-    var K = CakeLook.LOOK.keyDir;
-    if (ff === 3 && prevFf !== 3) { keyElevBeforeRaking = K.elevation; K.elevation = RAKING.elevation; }
-    else if (ff !== 3 && prevFf === 3) { K.elevation = keyElevBeforeRaking !== null ? keyElevBeforeRaking : 45; keyElevBeforeRaking = null; }
+    var LK = CakeLook.LOOK, K = LK.keyDir;
+    if (ff === 3 && prevFf !== 3) {
+      lightBeforeRaking = { elevation: K.elevation, azimuth: K.azimuth, keyScale: LK.keyScale, ambientScale: LK.ambientScale };
+      K.elevation = RAKING.elevation; K.azimuth = RAKING.azimuth;
+      LK.keyScale = +Math.min(3, LK.keyScale * RAKING.keyMul).toFixed(2);
+      LK.ambientScale = +Math.max(0, LK.ambientScale * RAKING.ambientMul).toFixed(2);
+    } else if (ff !== 3 && prevFf === 3) {
+      var b = lightBeforeRaking || { elevation: 45, azimuth: -38.7, keyScale: 1, ambientScale: 1 };
+      K.elevation = b.elevation; K.azimuth = b.azimuth; LK.keyScale = b.keyScale; LK.ambientScale = b.ambientScale;
+      lightBeforeRaking = null;
+    }
   }
 
   // ---- Curated looks for the starting cake and the Shuffle chip (v0.73, first pass) ----
@@ -89,9 +103,13 @@
       LK.keyHex = -1;
       if (onLoad) LK.pcss.lightSize = +randRange(K.lightSize[0], K.lightSize[1]).toFixed(2);
     }
+    // A random finish; if it's Low sun, the light becomes a low sun (the random key light above
+    // is what a later change of finish restores to). Ambient is reset first so shuffles
+    // can't compound the dimming.
+    if (window.CakeLook) CakeLook.LOOK.ambientScale = 1;
+    lightBeforeRaking = null;
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
-    keyElevBeforeRaking = null;
-    if (d.ff === 3 && window.CakeLook) { keyElevBeforeRaking = CakeLook.LOOK.keyDir.elevation; CakeLook.LOOK.keyDir.elevation = RAKING.elevation; }
+    if (d.ff === 3) applyFinishLight(0, 3);
     d.sh = sh;
     d.fc = L.fc; d.ic = L.ic; d.cc = L.cc; d.bg = L.bg; d.rc = L.rc;
     d.fcs = sh.map(function () { return L.fc; }); d.frs = d.fcs.slice();

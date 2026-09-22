@@ -1,32 +1,21 @@
-# Cake — v0.75 (fondant finishes)
+# Cake — v0.76 (Low sun, done properly)
 
-Flat fondant is retired. Fondant now always wears a **finish**, chosen in a new **Finish** row in
-the Fondant tray (whole cake):
+In v0.75 "Low sun" only lowered the key light, so it looked almost the same as Rustic: the light
+kept whatever direction it had (often from roughly behind the camera, which lights the face evenly),
+and the app's room light — ambient stronger than key, the soft balance we tuned — drowned out
+what relief there was.
 
-- **Grain** (default) — a faint sugar grain.
-- **Swept** — long palette sweeps down the side, turntable spatula rings on top.
-- **Rustic** — broad palette-knife strokes, plus a hand-worked rim (the top edge's vertices move
-  a little).
-- **Low sun** — the rustic finish under a raking key light (14°). Choosing it lowers the key light;
-  choosing another finish restores the elevation you had. The light travels in the link as usual.
+Choosing **Low sun** now turns the light into a low sun, **fixed to the room** like a low window:
+- elevation **14°**, azimuth **−80°** — almost exactly from the side, which rakes across the
+  visible face both from the recipient's opening view (front) and from the builder's writing view
+  (back). As the cake spins, the lit side turns past and the shadow sweeps round.
+- key **×1.6**, room ambient **×0.7** — relief is carried by the key.
+- a little more relief in the maps (normal strength 1.3 vs Rustic's 1.0, same textures).
+Choosing another finish restores the key's elevation, direction and strength and the ambient
+exactly as they were. The random generator applies the same preset when it rolls Low sun (and
+resets ambient first, so repeated shuffles can't compound the dimming).
 
-Old links with fondant decode as Grain. Schema: `ff` appended (0 grain · 1 swept · 2 rustic ·
-3 low sun). The random generator picks a finish too (weighted towards Grain and Swept).
+The whole scene reads a little dusky under a low sun — the backdrop is measured from the lit floor,
+so it follows. That's the mood; tune `RAKING` in `app.js` if it's too much.
 
-## How it's done — `frosting.js`
-All procedural, no image files: height fields from seamless noise (and knife strokes stamped into
-a canvas, blurred by hand because canvas `filter` isn't reliable on iOS Safari), turned into
-**normal maps** (relief the light catches) and **roughness maps** (ridges a little shinier). They
-describe shape only, so one set serves every tier and colour; maps are built once per finish and
-cached; they stay **linear** (data, not colour).
-
-Mapping: side textures span the whole circumference once, with `u` set from the true angle
-(`angleUV`) — so a wedge's texture lines up exactly with the whole cake — and need no repeat
-(r128 shares one UV transform across a material's maps, so the message band's would otherwise
-win). Tops are **projected straight down** (`capUV`), so nothing pinches at the centre. The
-message band sits on the finished fondant, with the same normal map.
-
-## Cost
-All four finishes share one shader variant (normal + roughness maps), so switching finish swaps
-textures without a recompile. The warm-up includes it: a fresh recipient of a finished, ribboned
-two-tier cake goes **18 programs at load → 18 opened → 18 cut**.
+No new shaders: 18 programs throughout.
