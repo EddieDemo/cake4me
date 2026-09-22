@@ -106,6 +106,7 @@
     // The lighting: a preset, nudged a little. (Light size varies on load only — see LIGHT_PRESETS.)
     applyLightPreset(B.lights[randInt(0, B.lights.length - 1)], true);
     if (onLoad && window.CakeLook) CakeLook.LOOK.pcss.lightSize = +randRange(B.key.lightSize[0], B.key.lightSize[1]).toFixed(2);
+    d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
     d.sh = sh;
@@ -470,6 +471,7 @@
       fdt: String(c.fdt || '').replace(/[^0-9]/g, '').slice(0, 3),  // fondant on/off per tier (v0.68); missing → fd on every tier
       sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
       bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
+      sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
           : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
       rk: clampInt(c.rk, 0, 2, 0),          // cooling-rack marks on a baked top: 0 none · 1 wires · 2 bars
@@ -525,7 +527,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -534,7 +536,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -765,6 +767,7 @@
     markHeavy();
     cfg = normalize(cfg);                                // derived arrays (rt, sh) must match the tier count; always normalise
     var SC = spongeColours(cfg); SPONGE = SC.crust; SPONGE_CRUMB = SC.crumb;   // every painter and material below reads these
+    if (window.CakeFrosting) CakeFrosting.setSeed(cfg.sd);   // …and every texture and the baked wobble read this
     var keepMessageMap = (opts && opts.keepMessage && messageMesh && messageMesh.material[0] && messageMesh.material[0].map) ? messageMesh.material[0].map : null;
     if (keepMessageMap) keepMessageMap.__shared = true;   // survives the clear below
     built.visible = true;

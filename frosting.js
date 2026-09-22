@@ -83,7 +83,16 @@
   // derived from vertex positions, so a wedge's texture lines up exactly with the whole cake.
   // Normal and roughness maps are DATA: they stay linear, never sRGB.
   // =================================================================
-  function phash(x, y, s) { var n = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return n - Math.floor(n); }
+  // ---- The cake's texture seed (v0.83) ----
+  // Every pattern here is built from this one hash, so shifting it rearranges all of them at
+  // once — a different comb, a different set of knife strokes, rings that wander differently —
+  // while the recipe (spacing, depth, profile, wander) stays put, so a Rings is still a Rings.
+  // The seed travels in the link, so the recipient's cake, their slices and the sender's all
+  // match. Set it with setSeed() before anything is generated.
+  var SEED = 0;
+  function setSeed(n) { n = (n | 0) % 1000; SEED = (n < 0 ? n + 1000 : n) * 0.6180339887; return SEED; }
+  function seedOf() { return SEED; }
+  function phash(x, y, s) { var n = Math.sin(x * 127.1 + y * 311.7 + (s + SEED) * 74.7) * 43758.5453; return n - Math.floor(n); }
   // Periodic value noise: tiles with period (px, py) lattice cells.
   function pnoise(x, y, px, py, s) {
     var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
@@ -248,10 +257,19 @@
   FINISHES[7] = { name: 'Ridged', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
     side: function () { return sideField(ridgeSide); }, top: function () { return topField(smoothTop(-0.12)); } };
   var FINISH_COUNT = 10;
-  var mapCache = {};
+  // Each cache now holds the last few (finish, seed) sets and lets older ones go: with seeds,
+  // two cakes no longer share one set of textures.
+  function trimCache(cache, keys, max) {
+    while (keys.length > max) {
+      var old = keys.shift(), set = cache[old];
+      if (set) Object.keys(set).forEach(function (k) { if (set[k] && set[k].dispose) set[k].dispose(); });
+      delete cache[old];
+    }
+  }
+  var mapCache = {}, mapKeys = [];
   function fondantMaps(finish) {
     finish = Math.max(0, Math.min(FINISH_COUNT - 1, finish | 0));
-    var F = FINISHES[finish], key = F.name;
+    var F = FINISHES[finish], key = F.name + '@' + SEED.toFixed(4);
     if (!mapCache[key]) {
       var hs = F.side(), ht = F.top();
       if (F.soften) { blur(hs, SW, SH, 1, 1); blur(ht, TW, TW, 1, 1); }
@@ -262,6 +280,7 @@
         sideN: toNormal(hs, SW, SH, kS), sideR: toRough(hs, SW, SH, F.rough[0], F.rough[1]),
         topN: toNormal(ht, TW, TW, kT), topR: toRough(ht, TW, TW, F.rough[0], F.rough[1])
       };
+      mapKeys.push(key); trimCache(mapCache, mapKeys, 3);
     }
     var m = mapCache[key];
     return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace };
@@ -430,9 +449,17 @@
     var str = 0.7 + 0.3 * phash(Math.floor(t), 7, 5);                     // some wires pressed harder
     return k * k * (3 - 2 * k) * str;
   }
-  var spongeCache = {};
+  var spongeCache = {}, spongeSeed = null;
   function spongeMaps(rackKind) {
     rackKind = Math.max(0, Math.min(2, rackKind | 0));
+    if (spongeSeed !== SEED) {                           // a new seed: a new crust and new rack marks
+      Object.keys(spongeCache).forEach(function (k) {
+        var set = spongeCache[k];
+        if (set && set.n) Object.keys(set).forEach(function (t) { if (set[t] && set[t].dispose) set[t].dispose(); });
+        delete spongeCache[k];
+      });
+      spongeSeed = SEED;
+    }
     if (!spongeCache.side) {
       var hs = foam(SW, SH, [{ cells: 340, stretch: 1, hole: [0.12, 0.42], depth: 0.55, skew: 2.2 }, { cells: 760, stretch: 1, hole: [0.1, 0.3], depth: 0.35 }], 41);
       spongeCache.side = {
@@ -475,9 +502,14 @@
       return crumbPlaceholder;
     }
     var N = 448;
+    if (crumbFoam && crumbFoam.seed !== SEED) {          // a new seed: a new crumb
+      [crumbFoam.n, crumbFoam.r].forEach(function (t) { if (t && t.dispose) t.dispose(); });
+      Object.keys(crumbSets).forEach(function (k) { Object.keys(crumbSets[k]).forEach(function (t) { if (crumbSets[k][t].dispose) crumbSets[k][t].dispose(); }); delete crumbSets[k]; });
+      crumbFoam = null;
+    }
     if (!crumbFoam) {
       var h0 = foam(N, N, [{ cells: 13, stretch: 1.6, hole: [0.1, 0.7], depth: 1, skew: 2.5 }, { cells: 35, stretch: 1.4, hole: [0.2, 0.55], depth: 0.8 }, { cells: 90, stretch: 1.2, hole: [0.15, 0.4], depth: 0.5 }], 17);
-      crumbFoam = { h: h0, n: toNormal(h0, N, N, 4.5), r: toRough(h0, N, N, 0.95, -0.1) };
+      crumbFoam = { h: h0, n: toNormal(h0, N, N, 4.5), r: toRough(h0, N, N, 0.95, -0.1), seed: SEED };
     }
     if (!crumbSets[variant]) {
       var h = crumbFoam.h, tile = variant === 'tight' ? CRUMB_TILE / 1.45 : CRUMB_TILE;
@@ -561,7 +593,7 @@
     pos.needsUpdate = true;
     return geo;
   }
-  window.CakeFrosting = { semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
+  window.CakeFrosting = { setSeed: setSeed, seedOf: seedOf, semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
                           finishPreview: finishPreview, FINISH_COUNT: FINISH_COUNT,
                           spongeMaps: spongeMaps, crumbMaps: crumbMaps, wrapLighting: wrapLighting, spongeWobble: spongeWobble, CRUMB_TILE: CRUMB_TILE,
                           fondantMaps: fondantMaps, dressFondant: dressFondant, angleUV: angleUV, capUV: capUV, FINISHES: FINISHES };
