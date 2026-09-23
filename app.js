@@ -166,6 +166,7 @@
   function ribbonHandFor(cfg, tier, TM, w, rt) {
     if (!window.CakeFrosting) return null;
     var H = CakeFrosting.ribbonHand(tier.idx || 0);
+    H.amp = 0; H.lift = 0;                                // no gathering: it read as bunched-up fabric
     var y = ribbonY(TM, tier, w, rt.p), bottom, top;
     if (TM.fdOn) { bottom = FONDANT_BASE_FILLET; top = TM.hh - Math.min(CakeShapes.P.capRim, TM.capH * 0.9); }
     else { bottom = CakeShapes.P.disc.spongeFillet; top = tier.hs - CakeShapes.P.disc.spongeFillet; }
@@ -540,7 +541,7 @@
     out.fr = out.frsty[0]; out.fd = out.fds[0];
     // `fc` is the OUTERMOST layer's bottom-tier colour (bow, bleed, older readers).
     out.fc = out.fds[0] ? out.fcs[0] : (out.frsty[0] ? out.frs[0] : out.fcs[0]);
-    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)) }; })
+    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)), a: (t.a === undefined ? undefined : clampInt(t.a, -4, 4, 0)) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
     // Positions: live `p` wins; else the link string `rbp` (one digit per tier); else −1 (legacy).
