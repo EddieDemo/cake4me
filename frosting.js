@@ -305,6 +305,74 @@
     }
     return h;
   }
+  // ---- Sweep and Broad sweep (v0.89) ----
+  // A spatula pulled UP the side at 45°, stroke after stroke as the decorator turns the cake,
+  // each overlapping the last; then folded over the rim and carried on inward along a 45° spiral
+  // wound the SAME way, the tool keeping its width so the strokes overlap more as they close on
+  // the centre. Carved (the lower height wins), so every crest is a real intersection, and
+  // rasterised along each stroke.
+  var SWEEPS = {
+    tight: { spacing: 0.34, width: 0.36, depth: 0.85, lean: 0.05, sway: 1.0, wid: [0.75, 1], flat: 0.6 },
+    broad: { spacing: 0.62, width: 0.74, depth: 0.70, lean: 0.06, sway: 1.2, wid: [0.70, 1], flat: 0.8 }
+  };
+  function sweepSideField(o) {
+    var W = SW, H = SH, h = new Float32Array(W * H);
+    for (var i = 0; i < W * H; i++) h[i] = 0.92 + 0.03 * (fu((i % W) / W, 1 - Math.floor(i / W) / H, 300, 50, 1, 7) - 0.5);
+    var N = Math.max(4, Math.round(CIRC / (o.spacing * Math.SQRT2))), hw = o.width * 0.5, M = 24;
+    var dirx = Math.SQRT1_2, diry = Math.SQRT1_2, len = Math.hypot(CIRC, CIRC) * 1.2, steps = Math.round(len * PX_SIDE * 2.2);
+    for (var k = 0; k < N; k++) {
+      var lean = (phash(k, 31, 7) - 0.5) * 2 * o.lean, p1 = phash(k, 11, 2) * 6.28, p2 = phash(k, 13, 3) * 6.28;
+      var hwk = hw * (o.wid[0] + (o.wid[1] - o.wid[0]) * phash(k, 41, 9)), dep = o.depth * (0.6 + 0.55 * phash(k, 5, 6));
+      var x0 = (k / N) * CIRC, y0 = -SPAN * 0.6;
+      for (var st = 0; st < steps; st++) {
+        var along = st / (steps - 1) * len;
+        var cy = y0 + along * diry;
+        if (cy < -SPAN * 0.7 || cy > SPAN * 1.2) continue;
+        var wob = o.sway * (0.035 * Math.sin(along * 0.45 + p1) + 0.012 * Math.sin(along * 0.95 + p2));
+        var cx = x0 + along * dirx + wob + lean * along * 0.35;
+        for (var j = -M; j <= M; j++) {
+          var d = (j / M) * hwk, wx = cx - diry * d, wy = cy + dirx * d;
+          var u = ((wx / CIRC) % 1 + 1) % 1, v = wy / SPAN;
+          if (v < 0 || v > 1) continue;
+          var xi = Math.min(W - 1, Math.round(u * W)), yi = Math.min(H - 1, Math.max(0, Math.round((1 - v) * H)));
+          var tt = Math.abs(j) / M, carved = 1 - dep * Math.pow(1 - tt * tt, o.flat), idx = yi * W + xi;
+          if (carved < h[idx]) h[idx] = carved;
+        }
+      }
+    }
+    return h;
+  }
+  function sweepTopField(o) {
+    var W = TW, h = new Float32Array(W * W);
+    for (var i = 0; i < W * W; i++) h[i] = 0.92 + 0.03 * (fu((i % W) / W, 1 - Math.floor(i / W) / W, 40, 40, 2, 33) - 0.5);
+    var N = Math.max(4, Math.round(CIRC / (o.spacing * Math.SQRT2))), hw = o.width * 0.5, M = 20, steps = 700;
+    for (var k = 0; k < N; k++) {
+      var th0 = (k / N) * Math.PI * 2, p1 = phash(k, 11, 2) * 6.28, p2 = phash(k, 13, 3) * 6.28;
+      var hwk = hw * (o.wid[0] + (o.wid[1] - o.wid[0]) * phash(k, 41, 9)), dep = o.depth * 0.55 * (0.6 + 0.55 * phash(k, 5, 6));
+      for (var st = 0; st < steps; st++) {
+        var t = st / (steps - 1) * 3.2;                  // r = R·e^(−t) with θ changing by t: a 45° spiral
+        var sw = o.sway * (0.05 * Math.sin(t * 1.6 + p1) + 0.02 * Math.sin(t * 3.1 + p2));
+        var r = REF_R * Math.exp(-t), th = th0 - t + sw;
+        var r2 = REF_R * Math.exp(-(t + 0.01)), th2 = th0 - (t + 0.01) + sw;
+        var cx = Math.sin(th) * r, cz = Math.cos(th) * r;
+        var dx = Math.sin(th2) * r2 - cx, dz = Math.cos(th2) * r2 - cz, dl = Math.hypot(dx, dz);
+        if (dl < 1e-6) continue; dx /= dl; dz /= dl;
+        for (var j = -M; j <= M; j++) {
+          var d = (j / M) * hwk, wx = cx - dz * d, wz = cz + dx * d;
+          var u = wx / (2 * REF_R) + 0.5, v = wz / (2 * REF_R) + 0.5;
+          if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+          var xi = Math.min(W - 1, Math.round(u * W)), yi = Math.min(W - 1, Math.round((1 - v) * W));
+          var tt = Math.abs(j) / M, carved = 1 - dep * Math.pow(1 - tt * tt, o.flat), idx = yi * W + xi;
+          if (carved < h[idx]) h[idx] = carved;
+        }
+      }
+    }
+    return h;
+  }
+  FINISHES[10] = { name: 'Sweep', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 5.5, world: true, soften: 2,
+    side: function () { return sweepSideField(SWEEPS.tight); }, top: function () { return sweepTopField(SWEEPS.tight); } };
+  FINISHES[11] = { name: 'Broad sweep', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 5.5, world: true, soften: 2,
+    side: function () { return sweepSideField(SWEEPS.broad); }, top: function () { return sweepTopField(SWEEPS.broad); } };
   FINISHES[4] = { name: 'Combed', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
     side: function () { return sideField(combSide); }, top: function () { return spatulaTop(TW); } };
   FINISHES[5] = { name: 'Spiral', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
@@ -337,7 +405,7 @@
     side: function () { return sideField(ridgeSide); }, top: function () { return topField(whirlTop); } };
   FINISHES[7] = { name: 'Ridged', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
     side: function () { return sideField(ridgeSide); }, top: function () { return topField(smoothTop(-0.12)); } };
-  var FINISH_COUNT = 10;
+  var FINISH_COUNT = 12;
   // Each cache now holds the last few (finish, seed) sets and lets older ones go: with seeds,
   // two cakes no longer share one set of textures.
   function trimCache(cache, keys, max) {
@@ -353,7 +421,7 @@
     var F = FINISHES[finish], key = F.name + '@' + SEED.toFixed(4);
     if (!mapCache[key]) {
       var hs = F.side(), ht = F.top();
-      if (F.soften) { blur(hs, SW, SH, 1, 1); blur(ht, TW, TW, 1, 1); }
+      if (F.soften) { var sr = F.soften === 2 ? 2 : 1; blur(hs, SW, SH, sr, sr); blur(ht, TW, TW, 1, 1); }
       // World patterns are written in centimetres, so their normal strength scales with each
       // map's pixels-per-unit; the older patterns keep their own.
       var kS = F.world ? F.k * PX_SIDE / 100 : F.k, kT = F.world ? F.k * PX_TOP / 100 : F.k;

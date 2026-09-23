@@ -76,7 +76,7 @@
     ribbonChance: 0.5, ribbonW: [2, 5],
     bakedChance: 0.4,                       // a baked (naked) cake rather than a fondant one
     candles: [1, 3, 5],                     // odd counts only
-    finishes: [0, 0, 8, 8, 9, 9, 4, 4, 7, 7, 2, 6],   // fondant finish: the spatula ones most often, then the rest
+    finishes: [0, 0, 8, 8, 9, 9, 4, 4, 7, 7, 10, 10, 11, 2, 6],   // icing finish: the tooled ones most often, then the rest
     sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
@@ -504,7 +504,7 @@
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
           : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
       rk: clampInt(c.rk, 0, 2, 0),          // cooling-rack marks on a baked top: 0 none · 1 wires · 2 bars
-      ff: (function (f) { return f === 3 ? 2 : f; })(clampInt(c.ff, 0, 9, 0))   // 3 was Low sun (now a light preset) → Rustic; 4 was Coarse → Combed   // fondant finish; 3 was Low sun (now a light preset) → Rustic (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
+      ff: (function (f) { return f === 3 ? 2 : f; })(clampInt(c.ff, 0, 11, 0))   // 3 was Low sun (now a light preset) → Rustic; 4 was Coarse → Combed   // fondant finish; 3 was Low sun (now a light preset) → Rustic (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
     };
     // A legacy "smooth shell" (fr 1; 2/3 were reserved) IS fondant now: the field changes meaning,
     // the picture doesn't. Reserved buttercream styles fall back to none.
@@ -3729,7 +3729,7 @@
     // Finishes: small lit previews, in the order they're shown.
     // Swept (1) and Spiral (5) are retired — Rings and Whirl replaced them — but old links
     // carrying them still decode and render.
-    [[0, 'Smooth'], [8, 'Rings'], [9, 'Whirl'], [4, 'Combed'], [7, 'Ridged'], [2, 'Rustic'], [6, 'Deep rustic']].forEach(function (f) {
+    [[0, 'Smooth'], [8, 'Rings'], [9, 'Whirl'], [4, 'Combed'], [7, 'Ridged'], [10, 'Sweep'], [11, 'Broad sweep'], [2, 'Rustic'], [6, 'Deep rustic']].forEach(function (f) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'tile'; b.setAttribute('data-ff', f[0]);
       var im = document.createElement('img'); im.alt = ''; im.src = window.CakeFrosting ? CakeFrosting.finishPreview(f[0], 28) : '';
       var t = document.createElement('span'); t.textContent = f[1];

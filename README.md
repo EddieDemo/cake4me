@@ -1,14 +1,14 @@
-# Cake — v0.88 (Combed, by hand)
+# Cake — v0.89 (Sweep and Broad sweep)
 
-**The sides** keep their peak thickness, and gain variety: each groove leans a few degrees its own
-way as it rises, wanders more, and has its own width (60–100% of its band, so a narrow groove
-leaves flat icing either side).
+Two new icing finishes, from the reference photo:
+- **Sweep** — a spatula pulled up the side at 45°, stroke after stroke as the cake turns, each
+  overlapping the last; then folded over the rim and carried inward on a 45° spiral wound the
+  **same way**, so each sweep reads as one stroke over the edge. The tool keeps its width, so the
+  strokes overlap more as they close on the centre.
+- **Broad sweep** — the same with a wider tool and softer facets.
+Both are carved (the lower height wins), so the crests are real intersections, and rasterised
+along each stroke. They carry the sugarpaste grain underneath like every other finish, and vary
+with the cake's seed.
 
-**The top** is the comb carried over the rim: a spatula of **fixed width** pulled from the rim in
-to the centre, once per groove, as the decorator works round the cake. The tool doesn't narrow as
-it converges — the strokes simply overlap more, and near the centre each cuts over its neighbour,
-leaving the small scar a real spatula would. It's **carved** (the lower height wins), so the crests
-are real intersections, and it's rasterised along each stroke rather than tested per pixel, which
-would have been far too slow to generate.
-
-Everything comes from the cake's seed as usual. 17 shader programs, no errors.
+Tiles: **Smooth · Rings · Whirl · Combed · Ridged · Sweep · Broad sweep · Rustic · Deep rustic**
+(`ff` 10 and 11). The generator includes both, Sweep a little more often. 17 programs, no errors.
