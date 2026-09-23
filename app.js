@@ -106,6 +106,7 @@
     // The lighting: a preset, nudged a little. (Light size varies on load only — see LIGHT_PRESETS.)
     applyLightPreset(B.lights[randInt(0, B.lights.length - 1)], true);
     if (onLoad && window.CakeLook) CakeLook.LOOK.pcss.lightSize = +randRange(B.key.lightSize[0], B.key.lightSize[1]).toFixed(2);
+    d.rm = Math.random() < 0.7 ? 0 : 1;                  // satin mostly, grosgrain now and then
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
@@ -116,7 +117,7 @@
     d.frsty = sh.map(function () { return 0; });
     d.ly = 1 + (sh[0].h <= 2 ? B.fillings[0] : randInt(B.fillings[0], B.fillings[1]));
     d.rt = [0, 1, 2].map(function (i) {
-      return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]), p: randInt(0, 9) };
+      return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]), p: randInt(0, 9), a: randInt(-2, 2) };
     });
     return normalize(d);
   }
@@ -159,6 +160,32 @@
       bottom = CakeShapes.P.disc.spongeFillet; top = tier.hs - CakeShapes.P.disc.spongeFillet;
     }
     return bottom + (Math.max(0, Math.min(9, p)) / 9) * Math.max(0, top - bottom - width);
+  }
+  // How far the band may tilt before it would ride off the wall: the angle slider asks, the
+  // wall decides. A ribbon flush with the top or bottom of a tier simply tilts less.
+  function ribbonHandFor(cfg, tier, TM, w, rt) {
+    if (!window.CakeFrosting) return null;
+    var H = CakeFrosting.ribbonHand(tier.idx || 0);
+    var y = ribbonY(TM, tier, w, rt.p), bottom, top;
+    if (TM.fdOn) { bottom = FONDANT_BASE_FILLET; top = TM.hh - Math.min(CakeShapes.P.capRim, TM.capH * 0.9); }
+    else { bottom = CakeShapes.P.disc.spongeFillet; top = tier.hs - CakeShapes.P.disc.spongeFillet; }
+    var room = Math.max(0, Math.min(y - bottom, top - (y + w))) * 0.9;
+    var asked = (rt.a || 0) * 0.014;                      // ±4 steps ≈ ±5.6mm at the rim
+    H.tilt = Math.sign(asked) * Math.min(Math.abs(asked), room);
+    return H;
+  }
+  // (the gift box already has a `ribbonMat` variable in this scope — hence the longer name)
+  // The fondant wall swells slightly at mid-height, so a ribbon at a fixed radius would sink
+  // into it. Sit it on the wall's actual radius at its own height (the widest point it covers).
+  function ribbonRadius(TM, rr, bodyH, pOpts, y, w) {
+    if (!TM.fdOn) return rr;
+    var prof = CakeShapes.bodyProfile(rr, bodyH, null, pOpts);
+    return Math.max(CakeShapes.radiusAt(prof, y), CakeShapes.radiusAt(prof, y + w), CakeShapes.radiusAt(prof, y + w * 0.5));
+  }
+  function makeRibbonMaterial(cfg, rt) {
+    var hex = PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex;
+    return window.CakeFrosting ? CakeFrosting.ribbonMaterial(hex, cfg.rm)
+                               : new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, side: THREE.DoubleSide });
   }
   function serializeRibbons(rt) {
     return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
@@ -471,6 +498,7 @@
       fdt: String(c.fdt || '').replace(/[^0-9]/g, '').slice(0, 3),  // fondant on/off per tier (v0.68); missing → fd on every tier
       sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
       bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
+      rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
           : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
@@ -519,6 +547,10 @@
     var rbpStr = String(c.rbp || '').replace(/[^0-9]/g, '');
     out.rt.forEach(function (t, i) { if (t.p === undefined || (t.p < 0 && rbpStr.length > i)) t.p = rbpStr.length > i ? +rbpStr[i] : -1; });
     out.rbp = out.rt.every(function (t) { return t.p < 0; }) ? '' : out.rt.map(function (t) { return String(t.p < 0 ? 1 : t.p); }).join('');
+    // Angle: 0–8 in the link (4 = level), ±4 steps of tilt in the builder.
+    var rbaStr = String(c.rba || '').replace(/[^0-8]/g, '');
+    out.rt.forEach(function (t, i) { if (t.a === undefined) t.a = rbaStr.length > i ? +rbaStr[i] - 4 : 0; else t.a = clampInt(t.a, -4, 4, 0); });
+    out.rba = out.rt.map(function (t) { return String((t.a || 0) + 4); }).join('');
     // Legacy summary kept in step with the per-tier truth (the bow, older readers).
     var firstOn = out.rt.filter(function (t) { return t.on; })[0];
     out.rb = firstOn ? 1 : 0; if (firstOn) out.rc = firstOn.c;
@@ -527,7 +559,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -536,7 +568,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -881,12 +913,11 @@
       if (rt && rt.on) {
         var rw = ribbonWidth(rt.w);
         // Hugs the fondant's surface, or bridges a naked stack's fillings taut (no tucking in).
-        var rbGeo = CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, rw, rt.p), rw, RIBBON.thick, CYL_SEG, TM.fdOn ? pOpts : { straight: true });
+        var rbY = ribbonY(TM, tier, rw, rt.p), hand = ribbonHandFor(cfg, tier, TM, rw, rt);
+        var rbR = ribbonRadius(TM, rr, bodyH, pOpts, rbY, rw);
+        var rbGeo = CakeShapes.ribbon(rbR, rbY, rw, CYL_SEG, 0, Math.PI * 2, hand);
         if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(rbGeo, rr, 1e3, SPONGE_WOBBLE);   // follows the baked wall's wobble, still bridging the fillings
-        var ribbon = new THREE.Mesh(
-          rbGeo,
-          new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide })
-        );
+        var ribbon = new THREE.Mesh(rbGeo, makeRibbonMaterial(cfg, rt));
         ribbon.position.y = y;
         tg.add(ribbon);
       }
@@ -2755,11 +2786,10 @@
     // The ribbon goes with the slice: the same band as the whole cake's, cut to this wedge.
     var rtw = cfg.rt && cfg.rt[tier.idx || 0];
     if (rtw && rtw.on) {
-      var wbGeo = CakeShapes.bandGeometry(rr, bodyH, null, ribbonY(TM, tier, ribbonWidth(rtw.w), rtw.p), ribbonWidth(rtw.w), RIBBON.thick, wseg, TM.fdOn ? pOpts : { straight: true }, theta0, len);
+      var wRw = ribbonWidth(rtw.w), wHand = ribbonHandFor(cfg, tier, TM, wRw, rtw), wRbY = ribbonY(TM, tier, wRw, rtw.p);
+      var wbGeo = CakeShapes.ribbon(ribbonRadius(TM, rr, bodyH, pOpts, wRbY, wRw), wRbY, wRw, wseg, theta0, len, wHand);
       if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(wbGeo, rr, 1e3, SPONGE_WOBBLE);
-      var band = new THREE.Mesh(
-        wbGeo,
-        new THREE.MeshStandardMaterial({ color: PALETTES.ribbon[clampIndex(rtw.c, PALETTES.ribbon)].hex, roughness: 0.5, side: THREE.DoubleSide }));
+      var band = new THREE.Mesh(wbGeo, makeRibbonMaterial(cfg, rtw));
       band.position.y = tier.y0; g.add(band);
     }
     if (!TM.fdOn) {
@@ -3505,6 +3535,8 @@
     syncSwatches(els.swRc, rt.c);
     var rw = $('f-rw'); if (rw) rw.value = rt.w;
     var rp = $('f-rp'); if (rp) rp.value = rt.p < 0 ? 1 : rt.p;
+    var ra = $('f-ra'); if (ra) ra.value = rt.a || 0;
+    Array.prototype.forEach.call($('rib-material').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-rm') === draft.rm); });
     var out = $('rw-out'); if (out) out.textContent = ribbonWidth(rt.w).toFixed(2);
   }
   function syncTierPills(id, all) {
@@ -3665,6 +3697,13 @@
       if (e.target.checked && draft.rt[curTier].p < 0) draft.rt[curTier].p = 1;   // a new ribbon starts near the base
       draft = normalize(draft);
       syncRibbon(); build(draft);
+    });
+    $('f-ra').addEventListener('input', function (e) {
+      draft.rt[curTier].a = +e.target.value; draft = normalize(draft);
+      syncRibbon(); scheduleBuild();
+    });
+    Array.prototype.forEach.call($('rib-material').children, function (b) {
+      b.addEventListener('click', function () { draft.rm = +b.getAttribute('data-rm'); draft = normalize(draft); syncRibbon(); build(draft); });
     });
     $('f-rp').addEventListener('input', function (e) {
       draft.rt[curTier].p = +e.target.value; draft = normalize(draft);
@@ -4049,7 +4088,7 @@
       var next = {};
       for (var k in config) next[k] = config[k];
       for (var j in partial) next[j] = partial[j];
-      if ('rbt' in partial || 'rbp' in partial) delete next.rt;   // an explicit ribbon string beats the live per-tier array
+      if ('rbt' in partial || 'rbp' in partial || 'rba' in partial) delete next.rt;   // an explicit ribbon string beats the live per-tier array
       if ('tp' in partial) delete next.sh;               // likewise an explicit shape string
       if ('fct' in partial) delete next.fcs;             // an explicit per-tier fondant string
       if ('frt' in partial) delete next.frs;             // an explicit per-tier buttercream string

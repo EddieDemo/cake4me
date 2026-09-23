@@ -1,25 +1,22 @@
-# Cake — v0.83 (seeded textures)
+# Cake — v0.84 (the ribbon becomes cloth)
 
-Every cake now has its own **texture seed** — one number, `sd` (0–999) — that arranges every
-pattern on it: which grooves the comb left and how deep, where the knife strokes fell, how the
-rings wander, the crust's pores, the crumb's cells, the rack marks, even the baked wobble in the
-sponge's walls. The recipes don't change — spacing, depth, profile, wander are fixed — so a Rings
-is still clearly a Rings; only the arrangement differs.
+- **Selvedge and shape.** The band is a real cross-section now: a fine cord at each woven edge
+  with the middle cupped in toward the cake (`CakeShapes.ribbon`).
+- **Satin and grosgrain.** Two materials, chosen by the icons in the Ribbon tray (`rm`). Both have
+  a woven normal and roughness map, and both use an **anisotropic highlight**: a shader patch that
+  smears the highlight *along* satin's threads (and *across* grosgrain's ribs) instead of leaving a
+  round spot. The peak is clamped — at grazing angles it runs away and blows the ribbon out to
+  white. One shared program for every ribbon.
+- **Tied by hand.** From the cake's seed: a few millimetres off level, and a gathered stretch that
+  narrows the band and lifts it off the cake, so a gather reads as a gather.
+- **Angle slider**, per tier (`rba`, ±4 steps ≈ ±5.6mm at the rim), beside Width and Height. It's
+  an ask, not a command: the wall decides. The tilt is clamped to the room left between the band
+  and the top and bottom of the tier's straight wall, so a ribbon flush with either simply tilts
+  less rather than riding off the cake. Verified with position 9 and angle +4.
+- The generator ties ribbons with a small random angle and picks satin most of the time.
 
-Every pattern in `frosting.js` is built from one hash, so the seed is injected there once
-(`setSeed`, called at the top of every build from `cfg.sd`) and reaches all of them.
+One thing found on the way: the fondant wall swells slightly at mid-height, so a ribbon at a fixed
+radius sank inside it and vanished. It now sits on the wall's actual radius at its own height.
 
-- **In the link**, so the recipient's cake, their slices and the sender's all match. Older links
-  carry no seed and decode as 0, which is the look they were made with.
-- **The generator rolls one** per cake, and **Shuffle rerolls it**.
-- **Caching**: two cakes no longer share one set of textures, so each cache keeps the last few sets
-  and disposes the rest — the fondant maps keep 3 (about 4 MB each); the sponge and crumb keep the
-  current seed's only.
-
-Cost, measured in the test renderer: a new seed regenerates a finish in ~2.4s there, which is
-dominated by that renderer's shader work; the texture generation itself is ~0.3s and unchanged.
-Worth timing a Shuffle on the phone.
-
-Verified: three seeds of Rings and two of Rustic all differ and stay in character; the sponge's
-crust and crumb change with the seed too; link round trip; legacy links decode as seed 0;
-17 shader programs, no errors.
+Verified: satin level, satin angled, grosgrain and the clamped case all render; link round trip;
+18 shader programs (one new, for the ribbon), no errors.

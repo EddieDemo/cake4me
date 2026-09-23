@@ -593,7 +593,80 @@
     pos.needsUpdate = true;
     return geo;
   }
-  window.CakeFrosting = { setSeed: setSeed, seedOf: seedOf, semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
+  // =================================================================
+  // RIBBON (v0.84): cloth, not a painted stripe.
+  //  · a fine SELVEDGE — a thin cord at each woven edge — with the middle cupped in
+  //  · an ANISOTROPIC highlight: satin's threads run the ribbon's length, so the highlight
+  //    smears along them instead of sitting as a round spot (grosgrain smears across its ribs)
+  //  · hand-tied imperfection: a few millimetres off level, and a gathered stretch that narrows
+  //    and lifts off the cake, all from the cake's seed
+  // =================================================================
+  var RW = 1024, RH = 64, ribCloth = {};
+  function ribbonCloth(kind) {
+    if (ribCloth[kind]) return ribCloth[kind];
+    var h, nk, rf;
+    if (kind === 1) {                                   // grosgrain: fine ribs ACROSS the ribbon
+      h = field(RW, RH, function (u, v) { return 0.5 + 0.3 * Math.sin(u * Math.PI * 2 * 300) + 0.06 * fu(u, v, 300, 10, 1, 7); });
+      nk = 1.5; rf = function (u) { return 0.55 + 0.12 * Math.sin(u * Math.PI * 2 * 300); };
+    } else {                                            // satin: threads running its length
+      h = field(RW, RH, function (u, v) { return 0.5 + 0.28 * Math.sin(v * Math.PI * 2 * 34) + 0.12 * fu(u, v, 260, 8, 3, 5); });
+      nk = 0.55; rf = function (u, v) { return 0.24 + 0.12 * fu(u, v, 80, 6, 1, 5); };
+    }
+    var rough = document.createElement('canvas'); rough.width = RW; rough.height = RH;
+    var g = rough.getContext('2d'), img = g.createImageData(RW, RH), d = img.data;
+    for (var y = 0; y < RH; y++) for (var x = 0; x < RW; x++) { var q = rf(x / RW, y / RH) * 255, i = (y * RW + x) * 4; d[i] = d[i + 1] = d[i + 2] = q; d[i + 3] = 255; }
+    g.putImageData(img, 0, 0);
+    var rt = new THREE.CanvasTexture(rough); rt.wrapS = rt.wrapT = THREE.RepeatWrapping; rt.__shared = true;
+    ribCloth[kind] = { n: toNormal(h, RW, RH, nk), r: rt };
+    return ribCloth[kind];
+  }
+  // The anisotropic highlight. three's standard material spreads its highlight evenly; this
+  // patches the specular term to an anisotropic GGX with two roughnesses — along the threads and
+  // across them — with the thread direction (the circumference) passed from the vertex shader.
+  var RIB_SPEC = 'reflectedLight.directSpecular += ( 1.0 - clearcoatDHR ) * irradiance * BRDF_Specular_GGX( directLight, geometry.viewDir, geometry.normal, material.specularColor, material.specularRoughness);';
+  var ANISO_FN = [
+    'vec3 BRDF_Aniso( const in IncidentLight dl, const in vec3 V, const in vec3 N, const in vec3 T, const in vec3 B, const in vec3 F0, const in float ax, const in float ay ) {',
+    '  vec3 H = normalize( dl.direction + V );',
+    '  float dotNL = saturate( dot( N, dl.direction ) ), dotNV = saturate( dot( N, V ) );',
+    '  float dotNH = saturate( dot( N, H ) ), dotVH = saturate( dot( V, H ) );',
+    '  float a2 = ax * ay;',
+    '  vec3 v = vec3( ay * dot( T, H ), ax * dot( B, H ), a2 * dotNH );',
+    '  float D = min( a2 * pow2( a2 / max( dot( v, v ), 1e-5 ) ) / PI, 40.0 );',   // clamped: the peak runs away at grazing angles and blows out to white
+    '  float k = pow2( ax + ay ) / 8.0;',
+    '  float G = ( dotNL / ( dotNL * ( 1.0 - k ) + k ) ) * ( dotNV / ( dotNV * ( 1.0 - k ) + k ) );',
+    '  vec3 F = F0 + ( 1.0 - F0 ) * exp2( ( -5.55473 * dotVH - 6.98316 ) * dotVH );',
+    '  return F * ( G * D ) / ( 4.0 * max( dotNL * dotNV, 1e-4 ) );',
+    '}'].join('\n');
+  function ribbonMaterial(colourHex, kind) {
+    kind = kind | 0;
+    var cloth = ribbonCloth(kind);
+    var m = new THREE.MeshStandardMaterial({ color: colourHex, roughness: 1, metalness: kind === 1 ? 0.05 : 0.2, side: THREE.DoubleSide });
+    m.normalMap = cloth.n; m.normalScale = new THREE.Vector2(kind === 1 ? 1.1 : 0.9, kind === 1 ? 1.1 : 0.9);
+    m.roughnessMap = cloth.r;
+    var chunk = THREE.ShaderChunk.lights_physical_pars_fragment;
+    if (chunk.indexOf(RIB_SPEC) < 0) { console.warn('frosting.js: ribbon sheen anchor missing'); return m; }
+    var ax = kind === 1 ? 0.12 : 0.5, ay = kind === 1 ? 0.5 : 0.055;   // grosgrain smears across its ribs instead
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uAx = { value: ax }; sh.uniforms.uAy = { value: ay };
+      sh.vertexShader = 'varying vec3 vRibT;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+        '#include <begin_vertex>\n float rA = (abs(position.x)+abs(position.z) < 1e-5) ? 0.0 : atan(position.x, position.z);\n vRibT = normalize(normalMatrix * vec3(cos(rA), 0.0, -sin(rA)));');
+      // The function goes in WITH the chunk it patches: three's light structs are declared there.
+      sh.fragmentShader = 'varying vec3 vRibT;\nuniform float uAx; uniform float uAy;\n' +
+        sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', ANISO_FN + '\n' + chunk.replace(RIB_SPEC,
+          'vec3 aT = normalize( vRibT - geometry.normal * dot( vRibT, geometry.normal ) );' +
+          '\n vec3 aB = normalize( cross( geometry.normal, aT ) );' +
+          '\n reflectedLight.directSpecular += ( 1.0 - clearcoatDHR ) * irradiance * BRDF_Aniso( directLight, geometry.viewDir, geometry.normal, aT, aB, material.specularColor, uAx, uAy );'));
+    };
+    m.customProgramCacheKey = function () { return 'cake-ribbon-aniso-1'; };
+    return m;
+  }
+  // How this ribbon was tied: from the cake's seed, so the sender and the recipient see the same
+  // one. `tilt` is in world units (the requested angle, already clamped by app.js).
+  function ribbonHand(tierIdx) {
+    var r1 = phash(tierIdx + 3, 17, 1.3), r2 = phash(tierIdx + 5, 23, 2.7), r3 = phash(tierIdx + 7, 29, 3.9);
+    return { tiltAt: r1 * Math.PI * 2, at: r2 * Math.PI * 2, amp: 0.020 + 0.010 * r3, width: 0.6 + 0.2 * r1, freq: 7 + 2 * r2, lift: 0.7 + 0.3 * r3 };
+  }
+  window.CakeFrosting = { ribbonMaterial: ribbonMaterial, ribbonHand: ribbonHand, setSeed: setSeed, seedOf: seedOf, semiNakedTexture: semiNakedTexture, SEMI: SEMI, noise2: noise2, displaceRim: displaceRim,
                           finishPreview: finishPreview, FINISH_COUNT: FINISH_COUNT,
                           spongeMaps: spongeMaps, crumbMaps: crumbMaps, wrapLighting: wrapLighting, spongeWobble: spongeWobble, CRUMB_TILE: CRUMB_TILE,
                           fondantMaps: fondantMaps, dressFondant: dressFondant, angleUV: angleUV, capUV: capUV, FINISHES: FINISHES };

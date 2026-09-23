@@ -324,6 +324,50 @@
   // Rotate a face geometry so its +x (radius) points along (sin θ, cos θ).
   function faceAt(geo, theta) { geo.rotateY(theta - Math.PI / 2); return geo; }
 
-  window.CakeShapes = { P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, shell: shell, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
+  // ---- A ribbon (v0.84) ----
+  // A band with a fine SELVEDGE — a thin cord at each woven edge — and its middle cupped in
+  // toward the cake, built as a closed cross-section so the edges are real. Optional
+  // hand-tied imperfection: `tilt` lifts one side; `crumple` gathers a stretch of it, which
+  // narrows the band there and lifts it off the cake, the way a real gather does.
+  var RIB = { thick: 0.018, bead: 0.5, cup: 0.25, edge: 0.03, across: 30 };
+  function ribbonProfile(r0, y0, w) {
+    var pts = [new THREE.Vector2(r0, y0)];
+    for (var i = 0; i <= RIB.across; i++) {
+      var t = i / RIB.across;
+      var e = Math.exp(-Math.pow(t / RIB.edge, 2)) + Math.exp(-Math.pow((1 - t) / RIB.edge, 2));
+      pts.push(new THREE.Vector2(r0 + RIB.thick * (1 + RIB.bead * e - RIB.cup * Math.sin(Math.PI * t)), y0 + w * t));
+    }
+    pts.push(new THREE.Vector2(r0, y0 + w));
+    return pts;
+  }
+  function ribbon(r0, y0, w, seg, phi0, phiLen, hand) {
+    var geo = new THREE.LatheGeometry(ribbonProfile(r0, y0, w), seg, phi0 || 0, phiLen === undefined ? Math.PI * 2 : phiLen);
+    if (hand) {
+      var pos = geo.attributes.position, H = hand;
+      for (var i = 0; i < pos.count; i++) {
+        var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), rr = Math.sqrt(x * x + z * z);
+        if (rr < 1e-4) continue;
+        var th = Math.atan2(x, z), t = (y - y0) / w, dy = 0, k = 1;
+        if (H.tilt) dy += H.tilt * Math.cos(th - H.tiltAt);                       // a few millimetres off level
+        if (H.amp) {
+          var d = Math.atan2(Math.sin(th - H.at), Math.cos(th - H.at));
+          var win = Math.exp(-Math.pow(d / H.width, 2));
+          var pleat = Math.sin(d * H.freq) * 0.6 + Math.sin(d * H.freq * 2.3 + 1.1) * 0.4;
+          k += H.amp * pleat * win * (0.45 + 0.55 * Math.sin(Math.PI * Math.max(0, Math.min(1, t))));
+          dy += H.lift * win * pleat * w * 0.35;
+          // a gather takes the band in a little and lifts it off the cake, which is what makes
+          // it read as a gather rather than a bump
+          dy += (t - 0.5) * w * 0.22 * win * Math.abs(pleat);
+          k += 0.6 * RIB.thick * win * Math.abs(pleat) / Math.max(0.2, rr);
+        }
+        pos.setXYZ(i, x * k, y + dy, z * k);
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+    }
+    return geo;
+  }
+  window.CakeShapes = { RIB: RIB, ribbon: ribbon,
+                        P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, shell: shell, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
                         disc: disc, discTop: discTop, discFace: discFace, merge: merge, faceAt: faceAt, bakeAO: bakeAO };
 })();
