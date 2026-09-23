@@ -1,17 +1,16 @@
-# Cake — v0.90 (waxy candles in holders)
+# Cake — v0.91 (candles placed by hand)
 
-**Waxy candles.** The candle is a real shape now — a gently uneven wall, a shoulder that rounds
-over, a thin raised rim and a shallow melted pool round the wick — with a wax material: light soaks
-into it (warm wrap lighting, so the shadow side stays soft), a soft sheen that's glossier in the
-melted pool, very fine drawing lines, and the top glowing from within while the flame burns. The
-glow is **per candle**: an instance attribute follows each flame, so blowing one out puts out its
-glow. Still one draw call for all the candles.
+Every candle now differs a little from its neighbours, all from the cake's seed, so the recipient
+sees exactly the candles the sender did:
+- **Pushed in by hand** — each holder sits a little higher or lower on its spike (±3.5mm-ish,
+  never touching the icing) and leans by up to about four degrees; the flame stays upright, as
+  real flames do.
+- **Burned a little differently** — up to ~13% shorter, most only slightly. Static: no live
+  burning.
+- **Quality-control colour** — each candle a touch off its nominal hue, saturation and lightness;
+  pale yellows kept on a tighter leash so they don't drift green.
+Tunable in one place: `CANDLE_HAND = { push, lean, burn }` in app.js.
 
-**Holders.** Every candle stands in a small white holder — a cup with a rolled lip, a moulded rib
-and a ring round its foot — on a spike pushed into the cake, with a couple of millimetres of spike
-showing below the cup (`HOLDER.gap`). One instanced mesh for all of them; each rib faces its own way.
-
-**Taller.** Candles are ~23% taller than before (0.5 → 0.62; 0.42 → 0.52 when packed tight).
-
-Shaders: two new programs (wax, holder), both compiled up front — a recipient goes 18 at load → 18
-lit → 18 blown out, no errors.
+Verified: a recipient's cake loads in ~1.5s and lights and blows out with no errors or new
+shaders. The full visual check didn't complete in my test renderer, so the look itself is best
+judged on the phone.

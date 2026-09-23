@@ -1160,30 +1160,36 @@
     new THREE.Color(candleHex).getHSL(hsl);
 
     var flameBase = flames.length;
+    var params = [];
     pts.forEach(function (p, i) {
-      m.makeScale(radius, height, radius);
-      m.setPosition(p.x, p.y + lift + height / 2, p.z);
+      var C = candleHand(i, height);
+      params.push(C);
+      composeCandle(m, p, C, radius, lift, 1);
       bodies.setMatrixAt(i, m);
-      m.makeRotationY(((i * 0.618) % 1) * Math.PI * 2);   // each holder's rib faces its own way
-      m.setPosition(p.x, p.y, p.z);
+      composeHolder(m, p, C, i);
       holders.setMatrixAt(i, m);
       if (bodies.setColorAt) {
-        // Slight per-candle drift so a hundred of them don't look stamped.
-        var d1 = (Math.sin(i * 12.9898) * 43758.5453) % 1, d2 = (Math.sin(i * 78.233) * 43758.5453) % 1;
-        col.setHSL((hsl.h + (d1 - 0.5) * 0.03 + 1) % 1, hsl.s,
-                   Math.max(0, Math.min(1, hsl.l + (d2 - 0.5) * 0.06)));
+        // Quality control: each candle a touch off its nominal colour — hue, saturation and
+        // lightness — seeded, so the recipient sees the same box of candles. Pale yellows drift
+        // towards green quickly, so their hue is kept on a tighter leash.
+        var yellow = hsl.h > 0.1 && hsl.h < 0.2;
+        col.setHSL((hsl.h + (C.c1 - 0.5) * 0.035 * (yellow ? 0.35 : 1) + 1) % 1,
+                   Math.max(0, Math.min(1, hsl.s + (C.c2 - 0.5) * 0.14)),
+                   Math.max(0, Math.min(1, hsl.l + (C.c3 - 0.5) * 0.07)));
         bodies.setColorAt(i, col);
       }
 
       var wick = new THREE.Mesh(wickGeo, wickMat);
-      wick.position.set(p.x, p.y + lift + height + 0.03, p.z);
+      var top = candleTop(p, C, lift, 1);                 // where this candle's top really is: leaning, burned down
+      wick.position.set(top.x, top.y + 0.03, top.z);
+      wick.quaternion.copy(C.q);
       built.add(wick);
       wicks.push(wick);
 
       var flame = new THREE.Sprite(flameMat.clone());   // own material: lean is per-sprite rotation
       flame.material.__shared = false;
       flame.scale.set(fs * 0.7, fs, 1);
-      flame.position.set(p.x, p.y + lift + height + 0.16, p.z);
+      flame.position.set(top.x, top.y + 0.16, top.z);    // flames stay upright while the candle leans
       built.add(flame);
       // The halo: same pivot, follows the flame in the update loop. Skipped on every other
       // candle past the budget so 100 candles is still 150 sprites, not 200.
@@ -1195,8 +1201,8 @@
         halo.renderOrder = -1;                           // behind the core
         built.add(halo);
       }
-      flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: p.x, z: p.z,
-                    k: 1, lit: 1, y: p.y + lift + height + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i });
+      flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: top.x, z: top.z,
+                    k: 1, lit: 1, y: top.y + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i });
     });
     bodies.instanceMatrix.needsUpdate = true;
     if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
@@ -1208,7 +1214,7 @@
     if (animateFrom < pts.length) {
       var count = pts.length - animateFrom;
       var stagger = Math.min(12, 1200 / Math.max(1, count));
-      spawn = { bodies: bodies, pts: pts, radius: radius, height: height, lift: lift, from: animateFrom,
+      spawn = { bodies: bodies, pts: pts, radius: radius, height: height, lift: lift, params: params, from: animateFrom,
                 stagger: stagger, start: performance.now(), done: false };
       // Hide new ones immediately
       for (var i = animateFrom; i < pts.length; i++) {
@@ -1219,15 +1225,41 @@
 
   var _m4 = new THREE.Matrix4();
   function setCandleScale(sp, i, k) {
-    var p = sp.pts[i];
-    var m = _m4;
-    m.makeScale(sp.radius * Math.max(0.001, k), sp.height * Math.max(0.001, k), sp.radius * Math.max(0.001, k));
-    m.setPosition(p.x, p.y + (sp.lift || 0) + (sp.height * k) / 2, p.z);
+    var p = sp.pts[i], C = sp.params[i], m = _m4;
+    composeCandle(m, p, C, sp.radius, sp.lift || 0, Math.max(0.001, k));
     sp.bodies.setMatrixAt(i, m);
     var f = flames[i];
     if (f) { f.k = k; f.sprite.visible = k > 0.05; }
     var w = wicks[i];
-    if (w) { w.visible = k > 0.5; w.position.y = p.y + (sp.lift || 0) + sp.height * k + 0.03; }
+    if (w) { var tp = candleTop(p, C, sp.lift || 0, k); w.visible = k > 0.5; w.position.set(tp.x, tp.y + 0.03, tp.z); }
+  }
+  // ---- Each candle placed by hand (v0.91), all from the cake's seed ----
+  //  · pushed in a little more or less: the spike showing varies
+  //  · leaning up to about four degrees (the flame stays upright, as real flames do)
+  //  · burned down a little differently: up to ~13% shorter, most only slightly
+  //  · and a touch off its nominal colour (see placeCandles)
+  var CANDLE_HAND = { push: 0.035, lean: 0.07, burn: 0.13 };
+  var _eu = new THREE.Euler(), _v3 = new THREE.Vector3(), _s3 = new THREE.Vector3(), _q2 = new THREE.Quaternion(), _m5 = new THREE.Matrix4();
+  function candleHand(i, height) {
+    var sd = window.CakeFrosting ? CakeFrosting.seedOf() : 0;
+    function h(k) { var n = Math.sin(i * 127.1 + k * 311.7 + sd * 74.7) * 43758.5453; return n - Math.floor(n); }
+    var dGap = Math.max(0.006 - HOLDER.gap, (h(1) - 0.5) * 2 * CANDLE_HAND.push);
+    _eu.set((h(2) - 0.5) * 2 * CANDLE_HAND.lean, 0, (h(3) - 0.5) * 2 * CANDLE_HAND.lean);
+    return { dGap: dGap, q: new THREE.Quaternion().setFromEuler(_eu), h: height * (1 - CANDLE_HAND.burn * Math.pow(h(4), 1.4)),
+             rib: ((i * 0.618) % 1) * Math.PI * 2, c1: h(5), c2: h(6), c3: h(7) };
+  }
+  // The candle: stands in its holder, leaning with it, scaled k (for the pop-in).
+  function composeCandle(m, p, C, radius, lift, k) {
+    _v3.set(0, C.dGap + lift + (C.h * k) / 2, 0).applyQuaternion(C.q).add(_s3.set(p.x, p.y, p.z));
+    m.compose(_v3, C.q, _s3.set(radius * k, C.h * k, radius * k));
+  }
+  function composeHolder(m, p, C) {
+    _q2.setFromAxisAngle(_s3.set(0, 1, 0), C.rib).premultiply(C.q);   // the rib faces its own way; the whole holder leans
+    _v3.set(0, C.dGap, 0).applyQuaternion(C.q).add(_s3.set(p.x, p.y, p.z));
+    m.compose(_v3, _q2, _s3.set(1, 1, 1));
+  }
+  function candleTop(p, C, lift, k) {
+    return new THREE.Vector3(0, C.dGap + lift + C.h * k, 0).applyQuaternion(C.q).add(new THREE.Vector3(p.x, p.y, p.z));
   }
   function updateSpawn(now) {
     if (!spawn || spawn.done) return;
