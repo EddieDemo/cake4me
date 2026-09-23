@@ -213,25 +213,66 @@
   var GROOVE = 0.3, SWEEP_CYCLES = Math.max(1, Math.round(SPAN / GROOVE)), SWEEP_G = SPAN / SWEEP_CYCLES;
   function sweepSide(x, y, u) { var ph = fu(u, 0, 16, 1, 2, 6) * 2.2; return 0.5 + 0.3 * Math.sin(2 * Math.PI * y / SWEEP_G + ph); }
   function grainAt(u, v, a, b) { return fu(u, v, a, b, 2, 1) * 0.6 + fu(u, v, Math.round(a / 4.7), Math.round(b / 4.7), 2, 2) * 0.4; }
+  // The sugarpaste grain: the old Grain recipe at four times the fidelity, at a third of the
+  // depth (doubling the fidelity at the same depth reads harsher, not finer). It is both the
+  // plain "Grain" finish and the underlay beneath every other one.
+  var GRAIN_MULT = 4, GRAIN_AMP = 0.3;
+  function grainField(W, H, a, b) { return field(W, H, function (u, v) { return fu(u, v, a * GRAIN_MULT, b * GRAIN_MULT, 2, 1) * 0.6 + fu(u, v, Math.round(a / 4.7) * GRAIN_MULT, Math.round(b / 4.7) * GRAIN_MULT, 2, 2) * 0.4; }); }
+  var grainCache = {};
+  function grainMaps() {
+    var key = 'g@' + SEED.toFixed(4);
+    if (!grainCache[key]) {
+      Object.keys(grainCache).forEach(function (k) { [grainCache[k].sideN, grainCache[k].topN].forEach(function (t) { if (t && t.dispose) t.dispose(); }); delete grainCache[k]; });
+      grainCache[key] = { sideN: toNormal(grainField(SW, SH, 340, 64), SW, SH, 2.2 * GRAIN_AMP), topN: toNormal(grainField(TW, TW, 170, 170), TW, TW, 2.2 * GRAIN_AMP) };
+    }
+    return grainCache[key];
+  }
+  // Rustic, carved rather than painted (v0.86): each stroke takes a hollow OUT of the icing, so
+  // where two overlap the crest between them is a real intersection — the same cusped peaks as
+  // Rings, Whirl, Combed and Ridged, as though one tool made them all.
+  // Each stroke is a hollow taken OUT; `depth` varies per stroke so the crests between them read.
+  function carve(W, H, count, lenR, widR, depth, seed) {
+    var h = new Float32Array(W * H); for (var i = 0; i < W * H; i++) h[i] = 1;
+    var rs = function (k) { return phash(k, seed, 1.7); };
+    for (var n = 0; n < count; n++) {
+      var cx = rs(n * 9 + 1) * W, cy = rs(n * 9 + 2) * H;
+      var A = (lenR[0] + (lenR[1] - lenR[0]) * rs(n * 9 + 3)) * W, B = (widR[0] + (widR[1] - widR[0]) * rs(n * 9 + 4)) * W;
+      var th = rs(n * 9 + 5) * Math.PI * 2, cur = (rs(n * 9 + 6) - 0.5) * 2.4, dep = depth * (0.45 + 0.55 * rs(n * 9 + 7));
+      var ct = Math.cos(th), st = Math.sin(th), rad = Math.ceil(Math.max(A, B) * 1.25);
+      for (var ox = -W; ox <= W; ox += W) {
+        var y0 = Math.max(0, Math.floor(cy - rad)), y1 = Math.min(H - 1, Math.ceil(cy + rad));
+        for (var y = y0; y <= y1; y++) for (var xx = Math.floor(cx + ox - rad); xx <= Math.ceil(cx + ox + rad); xx++) {
+          var px = ((xx % W) + W) % W, dx = xx - (cx + ox), dy = y - cy;
+          var u = (dx * ct + dy * st) / A, v = (-dx * st + dy * ct) / B - cur * Math.pow((dx * ct + dy * st) / A, 2);
+          var t = Math.sqrt(u * u + v * v); if (t > 1) continue;
+          var k = y * W + px, d = dep * Math.pow(1 - Math.pow(t, 4), 0.5);
+          if (1 - d < h[k]) h[k] = 1 - d;
+        }
+      }
+    }
+    return blur(h, W, H, 1, 1);
+  }
   var FINISHES = [];
-  FINISHES[0] = { name: 'Grain', normalScale: 0.35, rough: [0.6, 0.06], displace: 0, k: 2.2,
-    side: function () { return field(SW, SH, function (u, v) { return grainAt(u, v, 340, 64); }); },
-    top:  function () { return field(TW, TW, function (u, v) { return grainAt(u, v, 170, 170); }); } };
+  // Smooth icing: nothing but the fine grain (the underlay carries it) — the one finish that
+  // really is rolled fondant; the tooled ones read as buttercream.
+  FINISHES[0] = { name: 'Smooth', normalScale: 0.0001, rough: [0.6, 0.06], displace: 0, k: 0.001,
+    side: function () { return field(SW, SH, function () { return 0.5; }); },
+    top:  function () { return field(TW, TW, function () { return 0.5; }); } };
   FINISHES[1] = { name: 'Swept', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
     side: function () { return sideField(sweepSide); },
     top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 2.2); }); } };
-  FINISHES[2] = { name: 'Rustic', normalScale: 1.0, rough: [0.62, 0.35], displace: 0.05, k: 6,
-    side: function () { return strokesAt(SW, SH, 110, [60, 150], [22, 48], 11, 1024); },
-    top:  function () { return strokesAt(TW, TW, 90, [60, 150], [22, 48], 23, 512); } };
+  FINISHES[2] = { name: 'Rustic', normalScale: 1.0, rough: [0.62, 0.3], displace: 0.05, k: 4.5, world: true,
+    side: function () { return carve(SW, SH, 260, [0.07, 0.13], [0.026, 0.045], 0.62, 11); },
+    top:  function () { return carve(TW, TW, 95, [0.14, 0.26], [0.052, 0.09], 0.62, 23); } };
   FINISHES[3] = FINISHES[2];                             // retired "Low sun" → Rustic (its lighting is in the link)
   FINISHES[4] = { name: 'Combed', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
     side: function () { return sideField(combSide); }, top: function () { return topField(smoothTop(-0.1)); } };
   FINISHES[5] = { name: 'Spiral', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
     side: function () { return sideField(sweepSide); },
     top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE - a + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 0.8); }); } };
-  FINISHES[6] = { name: 'Deep rustic', normalScale: 1.45, rough: [0.62, 0.42], displace: 0.085, k: 8.5,
-    side: function () { return strokesAt(SW, SH, 80, [90, 200], [32, 64], 71, 1024); },
-    top:  function () { return strokesAt(TW, TW, 64, [90, 200], [32, 64], 73, 512); } };
+  FINISHES[6] = { name: 'Deep rustic', normalScale: 1.35, rough: [0.62, 0.38], displace: 0.085, k: 6, world: true,
+    side: function () { return carve(SW, SH, 190, [0.09, 0.17], [0.036, 0.065], 0.95, 71); },
+    top:  function () { return carve(TW, TW, 70, [0.18, 0.34], [0.072, 0.13], 0.95, 73); } };
   // Rings and Whirl (v0.82): the spatula treatment all the way through — Ridged's sides, and a
   // top of rings (or one continuous pass) with the same cusped grooves, uneven depths and wander.
   function ringTop(x, z) {
@@ -282,8 +323,9 @@
       };
       mapKeys.push(key); trimCache(mapCache, mapKeys, 3);
     }
-    var m = mapCache[key];
-    return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace };
+    var m = mapCache[key], g = grainMaps();
+    return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace,
+             grainSideN: g.sideN, grainTopN: g.topN, grain: 0.5 };   // the sugarpaste grain, under every pattern
   }
   // A small lit preview of a finish's top, for the builder's tiles: the height field shaded by a
   // light from the upper left, in a neutral cream. Cheap — drawn at tile size, cached.
@@ -328,7 +370,8 @@
   var BP_FRAG_DECL = BP_VERT_DECL +
     'uniform sampler2D uBpSideN; uniform sampler2D uBpSideR; uniform sampler2D uBpTopN; uniform sampler2D uBpTopR;\n' +
     'uniform float uBpR; uniform float uBpSpan; uniform float uBpScale;\n' +
-    'uniform sampler2D uBpSideA; uniform sampler2D uBpTopA; uniform float uBpAlb;\n';
+    'uniform sampler2D uBpSideA; uniform sampler2D uBpTopA; uniform float uBpAlb;\n' +
+    'uniform sampler2D uBpSideG; uniform sampler2D uBpTopG; uniform float uBpGrain;\n';
   var BP_FRAG =
     '\n{' +
     '\n  float bpA = ((abs(vBpPos.x) + abs(vBpPos.z) < 1e-5) ? 0.0 : atan(vBpPos.x, vBpPos.z)) / 6.2831853 + 0.5;' +
@@ -347,7 +390,20 @@
     // Optional colour variation (the sponge crust's browning and pores). The lights read
     // diffuseColor after this block, so multiplying it here is in time.
     '\n  if (uBpAlb > 0.5) diffuseColor.rgb *= mix(texture2D(uBpSideA, uvS).rgb, texture2D(uBpTopA, uvT).rgb, bpW);' +
+    // The sugarpaste grain, mixed in UNDER whatever pattern this finish has, so a patterned
+    // fondant still reads as rolled icing rather than as clay.
+    '\n  if (uBpGrain > 0.001) {' +
+    '\n    vec3 gS = texture2D(uBpSideG, uvS).xyz * 2.0 - 1.0, gT = texture2D(uBpTopG, uvT).xyz * 2.0 - 1.0;' +
+    '\n    vec3 gN = mix(gS, gT, bpW) * uBpGrain;' +
+    '\n    vec3 t1 = normalize(vBpSideT - normal * dot(vBpSideT, normal));' +
+    '\n    normal = normalize(normal + t1 * gN.x + normalize(cross(normal, t1)) * gN.y);' +
+    '\n  }' +
     '\n}\n';
+  var _flat = null;
+  function flatTex() {
+    if (!_flat) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#8080ff'; g.fillRect(0, 0, 2, 2); _flat = new THREE.CanvasTexture(c); _flat.__shared = true; }
+    return _flat;
+  }
   var _white = null;
   function whiteTex() {
     if (!_white) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 2, 2); _white = new THREE.CanvasTexture(c); _white.__shared = true; }
@@ -363,7 +419,9 @@
       uBpTopN: { value: maps.topN }, uBpTopR: { value: maps.topR },
       uBpR: { value: R }, uBpSpan: { value: 2 * Math.PI * R * SH / SW }, uBpScale: { value: maps.normalScale },
       uBpSideA: { value: (maps.sideA && !maps.noAlbedo) ? maps.sideA : whiteTex() }, uBpTopA: { value: (maps.topA && !maps.noAlbedo) ? maps.topA : whiteTex() },
-      uBpAlb: { value: (maps.sideA && !maps.noAlbedo) ? 1 : 0 }
+      uBpAlb: { value: (maps.sideA && !maps.noAlbedo) ? 1 : 0 },
+      uBpSideG: { value: maps.grainSideN || flatTex() }, uBpTopG: { value: maps.grainTopN || flatTex() },
+      uBpGrain: { value: maps.grain || 0 }
     };
     mat.onBeforeCompile = function (shader) {
       for (var k in U) shader.uniforms[k] = U[k];

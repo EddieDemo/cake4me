@@ -76,7 +76,7 @@
     ribbonChance: 0.5, ribbonW: [2, 5],
     bakedChance: 0.4,                       // a baked (naked) cake rather than a fondant one
     candles: [1, 3, 5],                     // odd counts only
-    finishes: [0, 0, 1, 5, 8, 8, 9, 9, 4, 4, 7, 7, 2, 6],   // fondant finish: the spatula ones most often, then the rest
+    finishes: [0, 0, 8, 8, 9, 9, 4, 4, 7, 7, 2, 6],   // fondant finish: the spatula ones most often, then the rest
     sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
@@ -3581,7 +3581,7 @@
     // inkContrast is a real (linear-luminance) WCAG ratio now; 3:1 is the large-text minimum.
     note.textContent = inkContrast(ink, outer) < 3.0
       ? 'Low contrast — this may be hard to read on the cake'
-      : (draft.fds[0] ? 'Auto picks dark or light to suit the fondant' : draft.frsty[0] ? 'Auto picks dark or light to suit the frosting' : 'Auto picks dark or light to suit the sponge');
+      : (draft.fds[0] ? 'Auto picks dark or light to suit the icing' : draft.frsty[0] ? 'Auto picks dark or light to suit the frosting' : 'Auto picks dark or light to suit the sponge');
   }
   function updateCta() {
     var el = $('cta-price');
@@ -3727,7 +3727,9 @@
       $('sw-sp').appendChild(b);
     });
     // Finishes: small lit previews, in the order they're shown.
-    [[0, 'Grain'], [1, 'Swept'], [5, 'Spiral'], [8, 'Rings'], [9, 'Whirl'], [4, 'Combed'], [7, 'Ridged'], [2, 'Rustic'], [6, 'Deep rustic']].forEach(function (f) {
+    // Swept (1) and Spiral (5) are retired — Rings and Whirl replaced them — but old links
+    // carrying them still decode and render.
+    [[0, 'Smooth'], [8, 'Rings'], [9, 'Whirl'], [4, 'Combed'], [7, 'Ridged'], [2, 'Rustic'], [6, 'Deep rustic']].forEach(function (f) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'tile'; b.setAttribute('data-ff', f[0]);
       var im = document.createElement('img'); im.alt = ''; im.src = window.CakeFrosting ? CakeFrosting.finishPreview(f[0], 28) : '';
       var t = document.createElement('span'); t.textContent = f[1];

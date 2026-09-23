@@ -1,10 +1,15 @@
-# Cake — v0.85
+# Cake — v0.87
 
-**No more bunching.** The gathered stretch is gone. The ribbon keeps its fine selvedge, its cloth
-(satin or grosgrain), the anisotropic sheen and the few millimetres off level — the hand-tied cues
-that worked — without the pleats, which read as bunched-up fabric rather than as a tied ribbon.
+Renamed, on the evidence of what the finishes actually look like: the tooled ones (Rings, Whirl,
+Combed, Ridged, Rustic) are spatula and comb marks in something soft — buttercream — not rolled
+fondant, which can't hold a combed groove.
 
-**The angle slider now sticks.** It wasn't a touch problem: `normalize` rebuilt each ribbon without
-carrying the new angle across, so every rebuild threw the slider's value away and the thumb sprang
-back — which is exactly what a slider that won't drag looks like. Verified: dragging to +3 leaves
-the ribbon at +3 and the link carrying it.
+- The **Fondant** chip is now **Icing** (its toggle too). The ids stay `fondant` underneath.
+- The **Grain** finish is now **Smooth** — the one finish that really is rolled fondant.
+- The writing's contrast note says "to suit the icing".
+
+Nothing else changed: links, finishes and textures are identical.
+
+Noted for later: a **poured glaze** (glossy, pooling on top, running down in drips) and **royal
+icing** (stiff peaks, chalk-matte, sets hard) would be genuinely different materials rather than
+variations of what we have.
