@@ -751,7 +751,92 @@
   cakeGroup.add(built);
 
   // Shared candle resources (never disposed)
-  var candleGeo = new THREE.CylinderGeometry(1, 1, 1, 10);   // unit; scaled per instance
+  // A wax candle (v0.90), unit radius and height, centred like the old cylinder so the instance
+  // transforms are unchanged: a gently uneven wall, a shoulder that rounds over, a thin raised
+  // rim and a shallow melted pool round the wick. UV v runs up the candle (for the glow and the
+  // drawing lines), u round it.
+  var candleGeo = (function () {
+    var p = [new THREE.Vector2(0, -0.5), new THREE.Vector2(0.96, -0.5)];
+    for (var i = 0; i <= 16; i++) p.push(new THREE.Vector2(1 + 0.012 * Math.sin(i * 1.3), -0.5 + 0.94 * (i / 16)));
+    p.push(new THREE.Vector2(0.985, 0.475), new THREE.Vector2(0.9, 0.5), new THREE.Vector2(0.8, 0.504),
+           new THREE.Vector2(0.7, 0.492), new THREE.Vector2(0.35, 0.482), new THREE.Vector2(0, 0.48));
+    var g = new THREE.LatheGeometry(p, 24), pos = g.attributes.position, uv = g.attributes.uv;
+    for (var j = 0; j < pos.count; j++) uv.setY(j, pos.getY(j) + 0.5);
+    uv.needsUpdate = true;
+    return g;
+  })();
+  // How candles stand: in a small white holder — a cup on a spike pushed into the cake, with a
+  // couple of millimetres of spike showing below the cup.
+  var HOLDER = { gap: 0.05, cupH: 2.0, floor: 0.4, wall: 0.2 };   // cupH/floor/wall in candle radii
+  var holderGeos = {};
+  function holderGeo(r) {
+    var key = r.toFixed(3);
+    if (holderGeos[key]) return holderGeos[key];
+    var ri = r * 1.02, ro = ri + r * HOLDER.wall, h = r * HOLDER.cupH, gap = HOLDER.gap, p = [];
+    p.push(new THREE.Vector2(0, gap), new THREE.Vector2(ro * 0.92, gap), new THREE.Vector2(ro * 0.96, gap + 0.006),
+           new THREE.Vector2(ro * 1.03, gap + 0.012), new THREE.Vector2(ro * 0.97, gap + 0.02),     // a ring round the foot
+           new THREE.Vector2(ro, gap + h * 0.8), new THREE.Vector2(ro * 1.05, gap + h * 0.95),      // the wall, a rolled lip
+           new THREE.Vector2(ro * 1.04, gap + h), new THREE.Vector2(ri, gap + h),
+           new THREE.Vector2(ri * 0.98, gap + h * HOLDER.floor * 0.5), new THREE.Vector2(0, gap + h * HOLDER.floor * 0.5));
+    var cup = new THREE.LatheGeometry(p, 24);
+    var rib = new THREE.BoxGeometry(r * 0.18, h * 0.72, r * 0.12); rib.translate(0, gap + h * 0.52, ro + r * 0.03);   // the moulded rib
+    var spike = new THREE.CylinderGeometry(r * 0.32, r * 0.25, gap + 0.02, 12); spike.translate(0, (gap - 0.02) / 2, 0);
+    var merged = CakeShapes.merge([cup, rib, spike], function () { return 0; });
+    [cup, rib, spike].forEach(function (g) { g.dispose(); });
+    merged.clearGroups();
+    merged.__shared = true;
+    return (holderGeos[key] = merged);
+  }
+  // Wax: light soaks into it (warm wrap lighting), a soft sheen that's glossier in the melted
+  // pool, very fine drawing lines, and the top glowing from within while the flame is lit —
+  // per candle, through an instance attribute, so blowing one out puts out its glow.
+  var waxMaps = null;
+  function makeWaxMaps() {
+    if (waxMaps) return waxMaps;
+    function tex(W, H, fn, srgb) {
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      var g = c.getContext('2d'), im = g.createImageData(W, H);
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var v = fn(x / W, 1 - y / H, x, y), i = (y * W + x) * 4; im.data[i] = v[0] * 255; im.data[i + 1] = v[1] * 255; im.data[i + 2] = v[2] * 255; im.data[i + 3] = 255; }
+      g.putImageData(im, 0, 0);
+      var t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; if (srgb) t.encoding = THREE.sRGBEncoding; t.__shared = true; return t;
+    }
+    var WW = 128, WH = 256, h = new Float32Array(WW * WH);
+    for (var y = 0; y < WH; y++) for (var x = 0; x < WW; x++) {
+      var u = x / WW, v = 1 - y / WH;
+      h[y * WW + x] = 0.5 + 0.05 * Math.sin(u * Math.PI * 2 * 34 + 3 * Math.sin(u * 6.28 * 3 + v * 4)) + 0.04 * Math.sin(u * 6.28 * 11 + v * 9.1);
+    }
+    waxMaps = {
+      n: tex(WW, WH, function (u, v, x, y) {
+        var xl = (x - 1 + WW) % WW, xr = (x + 1) % WW, yu = Math.max(0, y - 1), yd = Math.min(WH - 1, y + 1);
+        var dx = (h[y * WW + xr] - h[y * WW + xl]) * 1.6, dy = (h[yd * WW + x] - h[yu * WW + x]) * 1.6, nx = -dx, ny = dy, l = Math.sqrt(nx * nx + ny * ny + 1);
+        return [nx / l * 0.5 + 0.5, ny / l * 0.5 + 0.5, 1 / l * 0.5 + 0.5];
+      }, false),
+      r: tex(4, WH, function (u, v) { var q = v > 0.965 ? 0.12 : 0.42; return [q, q, q]; }, false),
+      glow: tex(4, WH, function (u, v) { var q = Math.pow(Math.max(0, (v - 0.55) / 0.45), 2.2); return [q, q * 0.82, q * 0.55]; }, true)
+    };
+    return waxMaps;
+  }
+  function makeWaxMaterial(hex) {
+    var W = makeWaxMaps();
+    var m = new THREE.MeshStandardMaterial({ color: hex, roughness: 1, roughnessMap: W.r, normalMap: W.n,
+      emissive: new THREE.Color(1, 0.7, 0.4), emissiveMap: W.glow, emissiveIntensity: 1.1 });
+    m.normalScale = new THREE.Vector2(0.3, 0.3);
+    if (window.CakeFrosting) CakeFrosting.wrapLighting(m, 0.75, new THREE.Color(1, 0.82, 0.6));
+    var wrapCompile = m.onBeforeCompile;
+    m.onBeforeCompile = function (sh) {
+      if (wrapCompile) wrapCompile(sh);
+      sh.vertexShader = 'attribute float aLit;\nvarying float vLit;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLit = aLit;');
+      sh.fragmentShader = 'varying float vLit;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vLit;');
+    };
+    m.customProgramCacheKey = function () { return 'cake-candle-wax-1'; };
+    return m;
+  }
+  var holderMat = new THREE.MeshStandardMaterial({ color: 0xFBFAF7, roughness: 0.34 });
+  if (window.CakeFrosting) {
+    CakeFrosting.wrapLighting(holderMat, 0.5, new THREE.Color(1, 0.95, 0.9));    // plastic that light soaks into a little
+    holderMat.customProgramCacheKey = function () { return 'cake-candle-holder-1'; };
+  }
+  holderMat.__shared = true;
   var wickGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6);
   var wickMat = new THREE.MeshStandardMaterial({ color: 0x2b1d14, roughness: 1 });
   var flameTex = makeFlameTexture();
@@ -1057,20 +1142,31 @@
     // Thinner, shorter candles when they're packed tight.
     var dense = n > 60;
     var radius = dense ? 0.05 : 0.065;
-    var height = dense ? 0.42 : 0.5;
+    var height = dense ? 0.52 : 0.62;                   // v0.90: ~23% taller than before
     var fs = dense ? 0.22 : 0.28;
+    // Each candle stands in its holder: lifted by the spike showing, and the cup's floor.
+    var lift = HOLDER.gap + radius * HOLDER.cupH * HOLDER.floor * 0.5;
 
-    var bodyMat = new THREE.MeshStandardMaterial({ color: candleHex, roughness: 0.45 });
-    var bodies = new THREE.InstancedMesh(candleGeo, bodyMat, pts.length);
+    var bodyMat = makeWaxMaterial(candleHex);
+    var bGeo = candleGeo.clone();                        // its own copy: it carries this set's per-candle glow
+    var litAttr = new THREE.InstancedBufferAttribute(new Float32Array(pts.length).fill(1), 1);
+    bGeo.setAttribute('aLit', litAttr);
+    var bodies = new THREE.InstancedMesh(bGeo, bodyMat, pts.length);
+    bodies.__litAttr = litAttr;
+    var holders = new THREE.InstancedMesh(holderGeo(radius), holderMat, pts.length);
     var m = new THREE.Matrix4();
     var col = new THREE.Color();
     var hsl = { h: 0, s: 0, l: 0 };
     new THREE.Color(candleHex).getHSL(hsl);
 
+    var flameBase = flames.length;
     pts.forEach(function (p, i) {
       m.makeScale(radius, height, radius);
-      m.setPosition(p.x, p.y + height / 2, p.z);
+      m.setPosition(p.x, p.y + lift + height / 2, p.z);
       bodies.setMatrixAt(i, m);
+      m.makeRotationY(((i * 0.618) % 1) * Math.PI * 2);   // each holder's rib faces its own way
+      m.setPosition(p.x, p.y, p.z);
+      holders.setMatrixAt(i, m);
       if (bodies.setColorAt) {
         // Slight per-candle drift so a hundred of them don't look stamped.
         var d1 = (Math.sin(i * 12.9898) * 43758.5453) % 1, d2 = (Math.sin(i * 78.233) * 43758.5453) % 1;
@@ -1080,14 +1176,14 @@
       }
 
       var wick = new THREE.Mesh(wickGeo, wickMat);
-      wick.position.set(p.x, p.y + height + 0.03, p.z);
+      wick.position.set(p.x, p.y + lift + height + 0.03, p.z);
       built.add(wick);
       wicks.push(wick);
 
       var flame = new THREE.Sprite(flameMat.clone());   // own material: lean is per-sprite rotation
       flame.material.__shared = false;
       flame.scale.set(fs * 0.7, fs, 1);
-      flame.position.set(p.x, p.y + height + 0.16, p.z);
+      flame.position.set(p.x, p.y + lift + height + 0.16, p.z);
       built.add(flame);
       // The halo: same pivot, follows the flame in the update loop. Skipped on every other
       // candle past the budget so 100 candles is still 150 sprites, not 200.
@@ -1100,17 +1196,19 @@
         built.add(halo);
       }
       flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: p.x, z: p.z,
-                    k: 1, lit: 1, y: p.y + height + 0.16, leanX: 0, leanZ: 0 });
+                    k: 1, lit: 1, y: p.y + lift + height + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i });
     });
     bodies.instanceMatrix.needsUpdate = true;
     if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
     built.add(bodies);
+    holders.instanceMatrix.needsUpdate = true;
+    built.add(holders);
 
     // Pop-in for new candles: outer ring first, staggered, capped at ~1.2s total.
     if (animateFrom < pts.length) {
       var count = pts.length - animateFrom;
       var stagger = Math.min(12, 1200 / Math.max(1, count));
-      spawn = { bodies: bodies, pts: pts, radius: radius, height: height, from: animateFrom,
+      spawn = { bodies: bodies, pts: pts, radius: radius, height: height, lift: lift, from: animateFrom,
                 stagger: stagger, start: performance.now(), done: false };
       // Hide new ones immediately
       for (var i = animateFrom; i < pts.length; i++) {
@@ -1124,12 +1222,12 @@
     var p = sp.pts[i];
     var m = _m4;
     m.makeScale(sp.radius * Math.max(0.001, k), sp.height * Math.max(0.001, k), sp.radius * Math.max(0.001, k));
-    m.setPosition(p.x, p.y + (sp.height * k) / 2, p.z);
+    m.setPosition(p.x, p.y + (sp.lift || 0) + (sp.height * k) / 2, p.z);
     sp.bodies.setMatrixAt(i, m);
     var f = flames[i];
     if (f) { f.k = k; f.sprite.visible = k > 0.05; }
     var w = wicks[i];
-    if (w) { w.visible = k > 0.5; w.position.y = p.y + sp.height * k + 0.03; }
+    if (w) { w.visible = k > 0.5; w.position.y = p.y + (sp.lift || 0) + sp.height * k + 0.03; }
   }
   function updateSpawn(now) {
     if (!spawn || spawn.done) return;
@@ -1792,6 +1890,10 @@
     updateShadow();
     for (var i = 0; i < flames.length; i++) {
       var f = flames[i];
+      if (f.glow) {                                      // the candle's inner glow goes with its flame
+        var gv = Math.max(0, Math.min(1, f.lit * f.k));
+        if (Math.abs(f.glow.array[f.gi] - gv) > 0.01) { f.glow.array[f.gi] = gv; f.glow.needsUpdate = true; }
+      }
       var lx = f.leanX * leanNow, lz = f.leanZ * leanNow;
       camera.matrixWorld.extractBasis(_right, _upv, _fwd);
       var s = f.base * f.k * f.lit * (1 + 0.10 * Math.sin(t * 3.1 + f.phase) + 0.04 * Math.sin(t * 21 + f.phase * 3));
