@@ -1,15 +1,14 @@
-# Cake — v0.87
+# Cake — v0.88 (Combed, by hand)
 
-Renamed, on the evidence of what the finishes actually look like: the tooled ones (Rings, Whirl,
-Combed, Ridged, Rustic) are spatula and comb marks in something soft — buttercream — not rolled
-fondant, which can't hold a combed groove.
+**The sides** keep their peak thickness, and gain variety: each groove leans a few degrees its own
+way as it rises, wanders more, and has its own width (60–100% of its band, so a narrow groove
+leaves flat icing either side).
 
-- The **Fondant** chip is now **Icing** (its toggle too). The ids stay `fondant` underneath.
-- The **Grain** finish is now **Smooth** — the one finish that really is rolled fondant.
-- The writing's contrast note says "to suit the icing".
+**The top** is the comb carried over the rim: a spatula of **fixed width** pulled from the rim in
+to the centre, once per groove, as the decorator works round the cake. The tool doesn't narrow as
+it converges — the strokes simply overlap more, and near the centre each cuts over its neighbour,
+leaving the small scar a real spatula would. It's **carved** (the lower height wins), so the crests
+are real intersections, and it's rasterised along each stroke rather than tested per pixel, which
+would have been far too slow to generate.
 
-Nothing else changed: links, finishes and textures are identical.
-
-Noted for later: a **poured glaze** (glossy, pooling on top, running down in drips) and **royal
-icing** (stiff peaks, chalk-matte, sets hard) would be genuinely different materials rather than
-variations of what we have.
+Everything comes from the cake's seed as usual. 17 shader programs, no errors.

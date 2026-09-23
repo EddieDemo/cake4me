@@ -181,16 +181,25 @@
   function scoopProfile(f) { return 1 - Math.pow(Math.sin(Math.PI * f), 0.42); }
   // Combed: fine vertical grooves pulled with a comb. The spacing wanders, each groove has its
   // own depth, and each line drifts sideways on its own as it rises (not in unison).
+  // How varied a comb's hand is: each groove leans its own way, wanders, and has its own width.
+  var COMB = { sp: 0.26, lean: 0.10, sway: 1.6, wid: [0.62, 1] };
+  function grooveAt(f, wid) {                            // a narrower groove leaves flat icing either side
+    var lo = (1 - wid) / 2;
+    if (f < lo || f > 1 - lo) return 1;
+    return scoopProfile((f - lo) / wid);
+  }
   function combSide(x, y, u) {
-    var sp = 0.26;
+    var sp = COMB.sp;
     var warp = 2.2 * (fu(u, 0.5, 4, 1, 2, 12) - 0.5) + 1.1 * (fu(u, 0.5, 11, 1, 2, 14) - 0.5) + 0.5 * (fu(u, 0.5, 27, 1, 2, 16) - 0.5);
     var drift = 0.55 * (fu(u, y / 12, 40, 1, 2, 11) - 0.5) * (0.25 + 0.75 * Math.min(1, y / 1.6));
     var t0 = x / sp + warp + drift, i0 = Math.floor(t0), n = Math.max(4, Math.round(CIRC / sp)), id0 = ((i0 % n) + n) % n;
     var p1 = phash(id0, 11, 2) * 6.28, p2 = phash(id0, 13, 3) * 6.28;
     var sway = 0.095 * Math.sin(y * 1.25 + p1) + 0.038 * Math.sin(y * 3.1 + p2);
-    var t = t0 + sway, i = Math.floor(t), f = t - i, id = ((i % n) + n) % n;
+    var lean = (phash(id0, 31, 7) - 0.5) * 2 * COMB.lean;
+    var t = t0 + sway * COMB.sway + lean * y / sp, i = Math.floor(t), f = t - i, id = ((i % n) + n) % n;
     var dep = 0.6 + 0.55 * phash(id, 5, 6), fade = 0.78 + 0.22 * fu(u * 2 + id * 0.21, y / 5, 1000, 1, 1, 13);
-    return 0.92 - 0.5 * (1 - scoopProfile(f)) * dep * fade + 0.03 * fu(u, y / SPAN, 300, 50, 1, 7);
+    var wid = COMB.wid[0] + (COMB.wid[1] - COMB.wid[0]) * phash(id, 41, 9);
+    return 0.92 - 0.5 * (1 - grooveAt(f, wid)) * dep * fade + 0.03 * fu(u, y / SPAN, 300, 50, 1, 7);
   }
   // Ridged: a spatula held against the turning cake. Bands of uneven height, each drifting up
   // and down a little of its own accord as it goes round.
@@ -265,8 +274,39 @@
     side: function () { return carve(SW, SH, 260, [0.07, 0.13], [0.026, 0.045], 0.62, 11); },
     top:  function () { return carve(TW, TW, 95, [0.14, 0.26], [0.052, 0.09], 0.62, 23); } };
   FINISHES[3] = FINISHES[2];                             // retired "Low sun" → Rustic (its lighting is in the link)
+  // The comb carried over the rim and in to the centre: a spatula of FIXED width pulled from the
+  // rim inward, once per groove, as the decorator works round the cake. The tool doesn't narrow
+  // as it converges — the strokes simply overlap more, and near the centre each cuts over its
+  // neighbour. Carved (the lower height wins) and rasterised along each stroke rather than
+  // tested per pixel, which would be far too slow.
+  function spatulaTop(W) {
+    var h = new Float32Array(W * W);
+    for (var i = 0; i < W * W; i++) h[i] = 0.92 + 0.03 * (fu(i % W / W, 1 - Math.floor(i / W) / W, 40, 40, 2, 33) - 0.5);
+    var n = Math.max(6, Math.round(CIRC / COMB.sp)), HW = COMB.sp * 0.5, steps = W, M = 18;
+    for (var k = 0; k < n; k++) {
+      var lean = (phash(k, 31, 7) - 0.5) * 2 * COMB.lean * 0.8;
+      var p1 = phash(k, 11, 2) * 6.28, p2 = phash(k, 13, 3) * 6.28;
+      var hw = HW * (COMB.wid[0] + (COMB.wid[1] - COMB.wid[0]) * phash(k, 41, 9));
+      var dep = 0.5 * (0.6 + 0.55 * phash(k, 5, 6));
+      for (var st = 0; st < steps; st++) {
+        var r = REF_R * (1 - st / (steps - 1));
+        var wob = COMB.sway * (0.05 * Math.sin(r * 1.5 + p1) + 0.02 * Math.sin(r * 3.4 + p2));
+        var th = (k / n) * Math.PI * 2 + lean * (REF_R - r) / REF_R + wob;
+        var cx = Math.sin(th) * r, cz = Math.cos(th) * r, px = Math.cos(th), pz = -Math.sin(th);
+        for (var j = -M; j <= M; j++) {
+          var d = (j / M) * hw, wx = cx + px * d, wz = cz + pz * d;
+          var u = wx / (2 * REF_R) + 0.5, v = wz / (2 * REF_R) + 0.5;
+          if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+          var xi = Math.min(W - 1, Math.max(0, Math.round(u * W))), yi = Math.min(W - 1, Math.max(0, Math.round((1 - v) * W)));
+          var t = Math.abs(j) / M, carved = 1 - dep * Math.pow(1 - t * t, 0.6), idx = yi * W + xi;
+          if (carved < h[idx]) h[idx] = carved;          // the later stroke wins where they overlap
+        }
+      }
+    }
+    return h;
+  }
   FINISHES[4] = { name: 'Combed', normalScale: 1.0, rough: [0.55, 0.2], displace: 0, k: 4, world: true, soften: true,
-    side: function () { return sideField(combSide); }, top: function () { return topField(smoothTop(-0.1)); } };
+    side: function () { return sideField(combSide); }, top: function () { return spatulaTop(TW); } };
   FINISHES[5] = { name: 'Spiral', normalScale: 0.6, rough: [0.55, 0.2], displace: 0, k: 5, world: true,
     side: function () { return sideField(sweepSide); },
     top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE - a + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 0.8); }); } };
