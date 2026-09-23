@@ -667,6 +667,57 @@
 
   var scene = new THREE.Scene();
   var camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  // ---- Screen-space ambient occlusion (v0.92) ----
+  // A real effect, not a painted one: after the frame is drawn, the actual geometry on screen is
+  // rendered again as depth and normals, and every pixel is darkened by how much nearby geometry
+  // crowds it — under the candle holders, in the icing's grooves, beneath the ribbon, where the
+  // tiers meet. Computed at half resolution (it's soft by nature) and multiplied onto the frame.
+  // Flames, sprites, confetti and anything transparent are left out, so they don't occlude.
+  // kernelRadius: how far round a point it looks (world units). maxDistance: how far BEHIND a point
+  // something may be and still count — small, or thin things like candles cast dark halos on
+  // whatever is far behind them. strength: how much of it to apply.
+  var AO = { on: true, scale: 0.5, kernelRadius: 0.12, minDistance: 0.0002, maxDistance: 0.004, kernelSize: 16, strength: 0.6, pass: null, w: 0, h: 0, mix: null };
+  var _aoSize = new THREE.Vector2();
+  function renderAO() {
+    if (!AO.on || !THREE.SSAOPass || !THREE.SimplexNoise) return;
+    renderer.getDrawingBufferSize(_aoSize);
+    var w = Math.max(1, Math.round(_aoSize.x * AO.scale)), h = Math.max(1, Math.round(_aoSize.y * AO.scale));
+    if (!AO.pass) {
+      AO.pass = new THREE.SSAOPass(scene, camera, w, h);
+      // half the samples of the default: it's blurred afterwards anyway, and phones will thank us
+      var P0 = AO.pass; P0.kernel = []; P0.kernelSize = AO.kernelSize; P0.generateSampleKernel();
+      P0.ssaoMaterial.defines.KERNEL_SIZE = AO.kernelSize; P0.ssaoMaterial.uniforms.kernel.value = P0.kernel; P0.ssaoMaterial.needsUpdate = true;
+      AO.w = w; AO.h = h;
+    } else if (w !== AO.w || h !== AO.h) { AO.pass.setSize(w, h); AO.w = w; AO.h = h; }
+    var P = AO.pass, U = P.ssaoMaterial.uniforms;
+    // the camera moves and zooms: keep the pass's copy of it current
+    U.cameraNear.value = camera.near; U.cameraFar.value = camera.far;
+    U.cameraProjectionMatrix.value.copy(camera.projectionMatrix);
+    U.cameraInverseProjectionMatrix.value.copy(camera.projectionMatrixInverse);
+    P.kernelRadius = AO.kernelRadius; P.minDistance = AO.minDistance; P.maxDistance = AO.maxDistance;
+    // depth and normals, without the things that shouldn't occlude
+    P.overrideVisibility();
+    scene.traverse(function (o) {
+      if (o.isSprite || o.isPoints || o.isLine || (o.material && !Array.isArray(o.material) && o.material.transparent) || (o.userData && o.userData.noAO)) o.visible = false;
+    });
+    P.renderOverride(renderer, P.normalMaterial, P.normalRenderTarget, 0x7777ff, 1.0);
+    P.restoreVisibility();
+    U.kernelRadius.value = P.kernelRadius; U.minDistance.value = P.minDistance; U.maxDistance.value = P.maxDistance;
+    P.renderPass(renderer, P.ssaoMaterial, P.ssaoRenderTarget);
+    P.renderPass(renderer, P.blurMaterial, P.blurRenderTarget);
+    // multiply the occlusion onto the frame already on screen, at AO.strength
+    if (!AO.mix) {
+      AO.mix = new THREE.ShaderMaterial({
+        uniforms: { tAO: { value: null }, uStrength: { value: AO.strength } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform sampler2D tAO; uniform float uStrength; varying vec2 vUv; void main(){ float a = texture2D(tAO, vUv).r; gl_FragColor = vec4(vec3(mix(1.0, a, uStrength)), 1.0); }',
+        blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+        blendSrcAlpha: THREE.DstAlphaFactor, blendDstAlpha: THREE.ZeroFactor, depthTest: false, depthWrite: false
+      });
+    }
+    AO.mix.uniforms.tAO.value = P.blurRenderTarget.texture; AO.mix.uniforms.uStrength.value = AO.strength;
+    P.renderPass(renderer, AO.mix, null);
+  }
   camera.position.set(0, 6.2, 12.4);
   camera.lookAt(0, 1.35, 0);
 
@@ -1969,6 +2020,7 @@
       else CakeStage.finishCalibrate(renderer);        // the readback happens a frame later, when the GPU is done
     }
     renderer.render(scene, camera);
+    renderAO();                                          // real occlusion from the geometry on screen
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
     else tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
@@ -4247,6 +4299,7 @@
     look: window.CakeLook ? CakeLook.LOOK : null,
     relight: updateRoomLights,
     get tierGroups() { return tierGroups; },
+    ao: AO,
     __tierAt: function (x, y) { return tierAt(x, y); }, __tm: function (i) { var t=tierTops(config)[i]; var TM=tierMaterials(config, t); return { frosting: TM.frosting.toString(16), hasBase: !!TM.base, style: TM.style, fdOn: TM.fdOn, msgTier: messageMesh && messageMesh.__tier ? messageMesh.__tier.idx : null }; }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
     renderer: renderer,               // for cake.renderer.info.programs — count should not grow after load
     relook: function () {
