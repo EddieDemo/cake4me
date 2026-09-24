@@ -7,7 +7,7 @@
   <meta name="description" content="Someone sent you a cake.">
   <meta property="og:title" content="Someone sent you a cake 🎂">
   <meta property="og:description" content="Open it, blow out the candles, share a slice.">
-  <link rel="stylesheet" href="style.css?v=0.98">
+  <link rel="stylesheet" href="style.css?v=0.99">
 </head>
 <body class="mode-builder">
   <!-- v0.9: the cake (and the box) are objects you hold — spin, tilt, twist. No hash = builder. Hash = viewer. -->
@@ -142,6 +142,11 @@
           <div class="rowline" id="count-row"><span class="rowlab">Candles</span><input id="f-n" type="range" min="0" max="6" value="1"><output id="n-out" for="f-n">1</output></div>
           <div class="rowline" id="age-row" hidden><span class="rowlab">Age</span><input id="f-age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="e.g. 30" autocomplete="off"></div>
           <div class="hint" id="count-hint" hidden>Bigger birthday? Try number candles.</div>
+          <div class="rowline" id="sparkler-row"><span class="rowlab">Sparklers</span><div class="seg small grow" id="sparklers">
+            <button type="button" data-sk="0" class="on">None</button>
+            <button type="button" data-sk="1">One</button>
+            <button type="button" data-sk="2">Two</button>
+          </div></div>
           <div class="rowline" id="style-row"><span class="rowlab">Style</span><div class="pills" id="candle-styles"></div></div>
           <div class="rowline"><span class="rowlab">Colour</span><div class="swatches" id="sw-cc" data-c="cc"></div></div>
         </div>
@@ -283,19 +288,19 @@
 
   <script src="vendor/three.min.js"></script>
   <!-- Screen-space ambient occlusion (three r128 examples, unmodified) -->
-  <script src="vendor/SimplexNoise.js?v=0.98"></script>
-  <script src="vendor/Pass.js?v=0.98"></script>
-  <script src="vendor/CopyShader.js?v=0.98"></script>
-  <script src="vendor/SSAOShader.js?v=0.98"></script>
-  <script src="vendor/SSAOPass.js?v=0.98"></script>
-  <script src="color.js?v=0.98"></script>
-  <script src="pcss.js?v=0.98"></script>
-  <script src="stage.js?v=0.98"></script>
-  <script src="look.js?v=0.98"></script>
-  <script src="shapes.js?v=0.98"></script>
-  <script src="digits.js?v=0.98"></script>
-  <script src="frosting.js?v=0.98"></script>
-  <script src="dev.js?v=0.98"></script>
-  <script src="app.js?v=0.98"></script>
+  <script src="vendor/SimplexNoise.js?v=0.99"></script>
+  <script src="vendor/Pass.js?v=0.99"></script>
+  <script src="vendor/CopyShader.js?v=0.99"></script>
+  <script src="vendor/SSAOShader.js?v=0.99"></script>
+  <script src="vendor/SSAOPass.js?v=0.99"></script>
+  <script src="color.js?v=0.99"></script>
+  <script src="pcss.js?v=0.99"></script>
+  <script src="stage.js?v=0.99"></script>
+  <script src="look.js?v=0.99"></script>
+  <script src="shapes.js?v=0.99"></script>
+  <script src="digits.js?v=0.99"></script>
+  <script src="frosting.js?v=0.99"></script>
+  <script src="dev.js?v=0.99"></script>
+  <script src="app.js?v=0.99"></script>
 </body>
 </html>

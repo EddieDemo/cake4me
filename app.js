@@ -80,6 +80,7 @@
     sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     numberChance: 0.3,                      // how often a random cake gets number candles
+    sparklers: [0.2, 0.05],                 // chance of one sparkler, of two
     candleStyles: [0, 0, 0, 1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7],   // classic most, then twisted, striped, gold, all-mixed…
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
@@ -112,6 +113,7 @@
     // Number candles now and then, spelling a random age: children's birthdays and grown-up ones.
     d.cm = Math.random() < B.numberChance ? 1 : 0;
     d.cs = B.candleStyles[randInt(0, B.candleStyles.length - 1)];
+    var sr = Math.random(); d.sk = sr < B.sparklers[1] ? 2 : sr < B.sparklers[0] + B.sparklers[1] ? 1 : 0;
     d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
@@ -200,6 +202,7 @@
     function show(id, on) { var el = $(id); el.hidden = !on; el.style.display = on ? '' : 'none'; }   // not relying on CSS for this
     show('count-row', !numbers); show('age-row', numbers); show('style-row', !numbers);
     Array.prototype.forEach.call($('candle-styles').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cs') === draft.cs); });
+    Array.prototype.forEach.call($('sparklers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-sk') === draft.sk); });
     show('count-hint', !numbers && draft.n >= BUILDER_MAX_CANDLES);
     var ag = $('f-age'); if (document.activeElement !== ag) ag.value = String(draft.age);
     syncMessageNudge();
@@ -523,7 +526,8 @@
       bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
       rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
       cm: clampInt(c.cm, 0, 1, 0),          // candle mode (v0.94): 0 candles · 1 number candles
-      cs: clampInt(c.cs, 0, 7, 0),          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
+      cs: clampInt(c.cs, 0, 7, 0),
+      sk: clampInt(c.sk, 0, 2, 0),          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
@@ -585,7 +589,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs, c.sk];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -594,7 +598,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35], sk: p[36] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -709,7 +713,7 @@
   // The flames: drawn last, into the same depth buffer, so the cake still hides them where it
   // should — but nothing is multiplied onto them afterwards.
   function renderFlames() {
-    if (!flames.length) return;
+    if (!flames.length && !sparklers.length) return;
     var ac = renderer.autoClear;
     renderer.autoClear = false;
     camera.layers.set(FLAME_LAYER);
@@ -792,6 +796,10 @@
   if (window.CakeStage) CakeStage.attach(scene);
   var candleLight = new THREE.PointLight(0xffb36b, 0, 8, 2);
   scene.add(candleLight);
+  // The sparklers' light (v0.99). Always in the scene (at zero when there are none), so adding a
+  // sparkler never changes the number of lights — which would recompile every material.
+  var sparkLight = new THREE.PointLight(0xffd9a0, 0, 7, 2);
+  scene.add(sparkLight);
 
   // Nothing on screen is ever rotated: the camera orbits, the cake stays put and upright.
   var cakeGroup = new THREE.Group();
@@ -1117,6 +1125,8 @@
 
     // Candles go on the top tier first, then overflow onto the annulus below.
     surfaces.reverse();
+    sparklers.length = 0;
+    placeSparklers(cfg.sk, surfaces[0]);
     if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
     else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs);
 
@@ -1483,6 +1493,135 @@
     var sd = window.CakeFrosting ? CakeFrosting.seedOf() : 0;
     var n = Math.sin(i * 91.7 + 9 * 311.7 + sd * 74.7) * 43758.5453;
     return Math.floor((n - Math.floor(n)) * CANDLE_STYLES.length);
+  }
+  // ---- Sparklers (v0.99) ----
+  // A wire, far thinner than a candle, the top two-thirds coated in rough pyrotechnic slurry. It
+  // burns at one fixed point near the top and never burns down: a white-hot bead, a short stub of
+  // spent wire above it, and sparks — thin streaks thrown out in every direction, arcing and
+  // falling, nearly half bursting at the end of their flight into small stars of finer streaks.
+  // The sparks run entirely on the GPU: each is a quad whose path is worked out in the vertex
+  // shader from its seed and the time, so nothing is recalculated in JavaScript per frame.
+  // Sparklers aren't candles: blowing out the candles leaves them going.
+  var SPK = { len: 2.5, wire: 0.0075, coat: 0.017, coatFrom: 0.34, burnAt: 0.9, sparks: 300, burst: 8, max: 2 };
+  var sparklers = [];
+  var spkStickGeo = null, spkMats = null, spkSparkGeo = null, spkGlowTex = null;
+  function sparklerParts() {
+    if (spkStickGeo) return;
+    var cl = SPK.len * (SPK.burnAt - SPK.coatFrom);
+    var coat = new THREE.CylinderGeometry(SPK.coat, SPK.coat * 1.05, cl, 12, 48), pos = coat.attributes.position;
+    for (var i = 0; i < pos.count; i++) {                 // lumpy, as a dipped coating is
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), r = Math.sqrt(x * x + z * z); if (r < 1e-6) continue;
+      var a = Math.atan2(z, x), n = Math.sin(a * 5 + y * 90) * 0.5 + Math.sin(a * 11 - y * 170) * 0.3 + Math.sin(y * 410 + a * 3) * 0.2;
+      var k = 1 + 0.13 * n; pos.setXYZ(i, x * k, y, z * k);
+    }
+    coat.computeVertexNormals(); coat.translate(0, SPK.len * SPK.coatFrom + cl / 2, 0);
+    var wire = new THREE.CylinderGeometry(SPK.wire, SPK.wire, SPK.len * SPK.burnAt, 8); wire.translate(0, SPK.len * SPK.burnAt / 2, 0);
+    var spent = new THREE.CylinderGeometry(SPK.wire * 1.3, SPK.wire * 1.3, SPK.len * (1 - SPK.burnAt), 8); spent.translate(0, SPK.len * (SPK.burnAt + 1) / 2, 0);
+    spkStickGeo = { coat: coat, wire: wire, spent: spent };
+    [coat, wire, spent].forEach(function (g) { g.__shared = true; });
+    spkMats = {
+      wire: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.8, roughness: 0.4, envMap: getStudioEnv() }),
+      coat: new THREE.MeshStandardMaterial({ color: 0x4a4744, roughness: 0.95, metalness: 0.05 }),
+      spent: new THREE.MeshStandardMaterial({ color: 0x2a2522, roughness: 0.8 })
+    };
+    Object.keys(spkMats).forEach(function (k) { spkMats[k].__shared = true; });
+    // the sparks: per quad, a seed; per vertex, which corner
+    var N = SPK.sparks, B = SPK.burst, quads = N + N * B, seeds = new Float32Array(quads * 4 * 4), corner = new Float32Array(quads * 4 * 2), idx = [];
+    function h(i, k) { var v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }
+    var q = 0;
+    function quad(a, b, c, d) {
+      for (var v = 0; v < 4; v++) {
+        seeds.set([a, b, c, d], (q * 4 + v) * 4);
+        corner.set([v < 2 ? 0 : 1, v % 2 ? 1 : -1], (q * 4 + v) * 2);
+      }
+      var o = q * 4; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); q++;
+    }
+    for (var i = 0; i < N; i++) quad(i, -1, 0, 0);                                  // a spark
+    for (var j = 0; j < N; j++) for (var k = 0; k < B; k++) quad(j, k, h(j, 7) < 0.45 ? 1 : 0, 0);   // its burst (if it has one)
+    spkSparkGeo = new THREE.BufferGeometry();
+    spkSparkGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(quads * 4 * 3), 3));
+    spkSparkGeo.setAttribute('aSeed', new THREE.Float32BufferAttribute(seeds, 4));
+    spkSparkGeo.setAttribute('aCorner', new THREE.Float32BufferAttribute(corner, 2));
+    spkSparkGeo.setIndex(idx);
+    spkSparkGeo.__shared = true;
+    var c = document.createElement('canvas'); c.width = c.height = 128; var g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(0.12, 'rgba(255,240,200,0.9)'); gr.addColorStop(0.35, 'rgba(255,190,110,0.35)'); gr.addColorStop(1, 'rgba(255,150,60,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    spkGlowTex = new THREE.CanvasTexture(c); spkGlowTex.__shared = true;
+  }
+  var SPARK_VS = [
+    'attribute vec4 aSeed; attribute vec2 aCorner; uniform float uTime; uniform vec3 uOrigin; varying vec3 vCol;',
+    'float h(float i, float k){ return fract(sin(i * 127.1 + k * 311.7) * 43758.5453); }',
+    'vec3 at(vec3 o, vec3 v, float t){ return o + v * t + vec3(0.0, -1.1 * t * t, 0.0); }',
+    'void main(){',
+    '  float i = aSeed.x;',
+    '  float life = 0.35 + 0.55 * h(i, 1.0);',
+    '  float age = mod(uTime + h(i, 2.0) * life, life);',
+    '  float th = h(i, 3.0) * 6.2832, ph = acos(1.0 - 2.0 * h(i, 4.0)), sp = 1.6 + 2.2 * h(i, 5.0);',
+    '  vec3 vel = vec3(sin(ph) * cos(th) * sp, cos(ph) * sp * 0.8 + 0.35, sin(ph) * sin(th) * sp);',
+    '  vec3 head, tail; float w; vec3 col; float fade = 1.0 - age / life;',
+    '  if (aSeed.y < 0.0) {',
+    '    head = at(uOrigin, vel, age); tail = at(uOrigin, vel, max(0.0, age - 0.16 - 0.12 * h(i, 6.0))); w = 0.006;',
+    '    col = mix(vec3(1.0, 0.75, 0.35), vec3(1.0, 0.97, 0.85), fade);',
+    '  } else {',
+    '    float k = aSeed.y, bT = age - life * 0.6;',
+    '    if (aSeed.z < 0.5 || bT < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vCol = vec3(0.0); return; }',
+    '    vec3 bp = at(uOrigin, vel, life * 0.6);',
+    '    float a2 = h(i * 13.0 + k, 8.0) * 6.2832, b2 = acos(1.0 - 2.0 * h(i * 13.0 + k, 9.0)), s2 = 0.6 + 0.5 * h(i * 13.0 + k, 10.0);',
+    '    vec3 v2 = vec3(sin(b2) * cos(a2), cos(b2), sin(b2) * sin(a2)) * s2;',
+    '    head = bp + v2 * bT; tail = bp + v2 * max(0.0, bT - 0.1); w = 0.004;',
+    '    col = vec3(1.0, 0.75, 0.35) * max(0.0, 1.0 - bT / (life * 0.4));',
+    '  }',
+    '  vec4 hv = modelViewMatrix * vec4(head, 1.0), tv = modelViewMatrix * vec4(tail, 1.0);',
+    '  vec2 d = hv.xy - tv.xy; vec2 side = normalize(vec2(-d.y, d.x) + 1e-6) * w;',
+    '  vec4 p = mix(tv, hv, aCorner.x); p.xy += side * aCorner.y;',
+    '  vCol = col * mix(0.15, 1.0, aCorner.x);                  // bright at the head, fading behind',
+    '  gl_Position = projectionMatrix * p;',
+    '}'].join('\n');
+  var SPARK_FS = 'varying vec3 vCol; void main(){ gl_FragColor = vec4(vCol * 1.5, 1.0); }';
+  function makeSparkler() {
+    sparklerParts();
+    var g = new THREE.Group();
+    g.add(new THREE.Mesh(spkStickGeo.wire, spkMats.wire));
+    g.add(new THREE.Mesh(spkStickGeo.coat, spkMats.coat));
+    g.add(new THREE.Mesh(spkStickGeo.spent, spkMats.spent));
+    var burn = new THREE.Vector3(0, SPK.len * SPK.burnAt, 0);
+    var mat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uOrigin: { value: burn.clone() } },
+      vertexShader: SPARK_VS, fragmentShader: SPARK_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    var sp = new THREE.Mesh(spkSparkGeo, mat); sp.frustumCulled = false; sp.layers.set(FLAME_LAYER); sp.userData.noAO = true;
+    g.add(sp);
+    var glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: spkGlowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    glow.scale.set(0.45, 0.45, 1); glow.position.copy(burn); glow.layers.set(FLAME_LAYER); g.add(glow);
+    var glow2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: spkGlowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.3 }));
+    glow2.scale.set(1.4, 1.4, 1); glow2.position.copy(burn); glow2.layers.set(FLAME_LAYER); g.add(glow2);
+    g.__spark = { mat: mat, glow: glow, burn: burn, phase: Math.random() * 10 };
+    return g;
+  }
+  function placeSparklers(n, surface) {
+    n = Math.max(0, Math.min(SPK.max, n | 0));
+    if (!n || !surface) return;
+    var r = surface.rMax, spots = n === 1 ? [[0.05 * r, -0.5 * r]] : [[-0.38 * r, -0.42 * r], [0.38 * r, -0.42 * r]];
+    var scale = Math.max(0.75, Math.min(1, r / 1.95));
+    spots.forEach(function (sp, i) {
+      var g = makeSparkler();
+      g.position.set(sp[0], surface.y - 0.05, sp[1]);    // pushed straight into the cake
+      g.scale.setScalar(scale);
+      g.rotation.set((i ? -1 : 1) * 0.03, 0, (i ? 1 : -1) * 0.05);
+      built.add(g); sparklers.push(g);
+    });
+  }
+  var _sv = new THREE.Vector3();
+  function updateSparklers(t) {
+    if (!sparklers.length) { sparkLight.intensity = 0; return; }
+    var sum = new THREE.Vector3();
+    sparklers.forEach(function (g) {
+      var S = g.__spark; S.mat.uniforms.uTime.value = t + S.phase;
+      var fl = 0.85 + 0.15 * Math.sin(t * 37 + S.phase) * Math.sin(t * 23.3);   // the crackle
+      S.glow.scale.set(0.45 * fl, 0.45 * fl, 1);
+      g.localToWorld(_sv.copy(S.burn)); sum.add(_sv);
+    });
+    sparkLight.position.copy(sum.multiplyScalar(1 / sparklers.length));
+    sparkLight.intensity = (0.9 + 0.4 * Math.max(0, darkness)) * sparklers.length * (0.85 + 0.15 * Math.sin(t * 31));
   }
   function placeCandles(n, surfaces, candleHex, animateFrom, cs) {
     var pts = layout(n, surfaces);
@@ -2313,6 +2452,7 @@
         f.halo.visible = f.sprite.visible;
       }
     }
+    updateSparklers(t);                                  // they keep going when the candles are blown out
     if (flames.length) {
       var lit = litCount();
       var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
@@ -4278,6 +4418,9 @@
       b.addEventListener('click', function () { draft.cs = cs; draft = normalize(draft); syncCandleMode(); build(draft); });
       $('candle-styles').appendChild(b);
     });
+    Array.prototype.forEach.call($('sparklers').children, function (b) {
+      b.addEventListener('click', function () { draft.sk = +b.getAttribute('data-sk'); draft = normalize(draft); syncCandleMode(); build(draft); });
+    });
     $('f-age').addEventListener('input', function (e) {
       var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
       if (v !== e.target.value) e.target.value = v;
@@ -4481,6 +4624,7 @@
   function warmCompile() {
     var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
     tmp.add(makeFlameMesh(0));                            // the flame shader
+    tmp.add(makeSparkler());                              // the sparkler: its stick, sparks and glow
     tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(2, 0x4FC3F7), 1));   // patterned wax
     tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(4, 0), 1));          // metal
     var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
