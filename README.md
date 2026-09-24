@@ -1,19 +1,10 @@
-# Cake — v0.96 (real flames)
+# Cake — v0.97 (flames no longer fade at some angles)
 
-The flat flame pictures and their halos are replaced by **3D flames**: a small teardrop, widest
-a third of the way up and tapering to a fine tip, with its own shader —
-- glowing from the inside: brightest where you look through the most flame, fading to nothing at
-  its edges, so there's no hard outline; reads the same from any angle, including from above;
-- a blue root at the wick, a dimmer cone round the wick, a gold-white heart, orange edges and tip;
-- **flicker** in the vertex shader: it sways more at the tip than the root, and its tip stretches
-  and shrinks on several unrelated rhythms, each flame on its own phase, so it never visibly
-  repeats;
-- a faint larger copy as its halo, and a tiny ember at the wick's tip.
+The flames were being darkened by the ambient occlusion. Occlusion is multiplied onto the finished
+frame, and a flame's pixels sit in front of whatever is behind it — at some angles that's the
+candle's own top and wick, which are occluded, so the flame was multiplied down almost to nothing.
 
-By day an additive flame vanishes into a pale backdrop, so the heart covers what's behind it a
-little (`FLAME.cover`): a gold teardrop by day, a glow at night.
-
-Everything else is unchanged: the old sprites stay as invisible anchors, so blowing out, smoke,
-the lean when the cake spins (the flame now pivots at the wick) and number candles all work as
-before. The flame shader is compiled at load. Tunables in `FLAME`: `glow`, `haloGlow`, `cover`,
-`lean`. Files load with `?v=0.96`.
+Now the flames live on their own render layer and are drawn **after** the occlusion, into the same
+depth buffer: the cake still hides them where it should (behind the cake, the far side of the
+top), but nothing is multiplied onto them. They also no longer take part in the occlusion pass
+at all. No new shaders; files load with `?v=0.97`.

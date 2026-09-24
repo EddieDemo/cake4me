@@ -702,6 +702,17 @@
   // a halo. Now the darkening sits where it belongs: under the holder, fading within millimetres.
   var AO = { on: !/[?&]ao=0/.test(location.search), scale: 1.0, kernelRadius: 0.045, minDistance: 0.0003, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
   var _aoSize = new THREE.Vector2();
+  // The flames: drawn last, into the same depth buffer, so the cake still hides them where it
+  // should — but nothing is multiplied onto them afterwards.
+  function renderFlames() {
+    if (!flames.length) return;
+    var ac = renderer.autoClear;
+    renderer.autoClear = false;
+    camera.layers.set(FLAME_LAYER);
+    renderer.render(scene, camera);
+    camera.layers.set(0);
+    renderer.autoClear = ac;
+  }
   function renderAO() {
     if (!AO.on || !THREE.SSAOPass || !THREE.SimplexNoise) return;
     renderer.getDrawingBufferSize(_aoSize);
@@ -1344,7 +1355,8 @@
     '  float a = edge * (0.35 + 0.65 * smoothstep(0.0, 0.2, vH)) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);',
     '  gl_FragColor = vec4(c * a * uGlow, a * uCover);',
     '}'].join('\n');
-  var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
+  var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };
+  var FLAME_LAYER = 1;   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
   var flameGeo = (function () {
     var p = [];
     for (var i = 0; i <= 24; i++) { var t = i / 24, r = 0.042 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.62)), 0.9) * Math.pow(1 - t, 0.25); p.push(new THREE.Vector2(Math.max(r, 0.0005), t * 0.30)); }
@@ -1368,6 +1380,10 @@
     halo.scale.set(1.9, 1.25, 1.9); halo.position.y = -0.025;
     var ember = new THREE.Mesh(emberGeo, emberMat); ember.position.set(0.006, -0.018, 0); ember.userData.noAO = true;
     core.renderOrder = halo.renderOrder = 2;
+    // v0.97: flames live on layer 1 and are drawn after the ambient occlusion, which otherwise
+    // multiplied onto them — at some angles the surfaces behind a flame were occluded (the
+    // candle's top, the wick) and the flame was darkened almost to nothing.
+    core.layers.set(FLAME_LAYER); halo.layers.set(FLAME_LAYER); ember.layers.set(FLAME_LAYER);
     g.add(halo); g.add(core); g.add(ember);
     g.userData.noAO = true;
     g.__mats = [core.material, halo.material];
@@ -2223,8 +2239,9 @@
       if (skyDirty || skyCalibrations < 3) { CakeStage.calibrate(renderer, scene); skyDirty = false; skyCalibrations++; }
       else CakeStage.finishCalibrate(renderer);        // the readback happens a frame later, when the GPU is done
     }
-    renderer.render(scene, camera);
+    renderer.render(scene, camera);                      // everything but the flames (layer 0)
     renderAO();                                          // real occlusion from the geometry on screen
+    renderFlames();                                      // then the flames, on top, still hidden behind the cake where they should be
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
     else tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
