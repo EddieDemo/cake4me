@@ -1289,23 +1289,104 @@
       grp.updateMatrixWorld(true);
       var fp = new THREE.Vector3(P.top.x, P.top.y + 0.18, 0).applyMatrix4(grp.matrix);
       var flame = new THREE.Sprite(flameMat.clone());
-      flame.material.__shared = false;
+      flame.material.__shared = false; flame.material.visible = false;
       flame.scale.set(fs * 0.7, fs, 1);
       flame.position.copy(fp);
       built.add(flame);
       var halo = null;
-      if (window.CakeLook && CakeLook.LOOK.halo.enabled) {
+      if (false) {                                         // flat halos retired (v0.96)
         halo = new THREE.Sprite(CakeLook.haloMaterial());
         halo.scale.set(fs * CakeLook.LOOK.halo.scale, fs * CakeLook.LOOK.halo.scale, 1);
         halo.position.copy(fp); halo.renderOrder = -1; built.add(halo);
       }
       wicks.push(wick);
+      var fm = makeFlameMesh(i * 2.3 + 0.9); built.add(fm);
       flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: fp.x, z: fp.z,
-                    k: 1, lit: 1, y: fp.y, leanX: 0, leanZ: 0, mat: mat, glowBase: mat.emissiveIntensity });
+                    k: 1, lit: 1, y: fp.y, leanX: 0, leanZ: 0, mat: mat, glowBase: mat.emissiveIntensity, mesh: fm, root: 0.15 });
     });
   }
   var numberSpikeGeo = new THREE.CylinderGeometry(0.03, 0.02, NUM.gap + 0.06, 12);
   numberSpikeGeo.__shared = true;
+  // ---- Flames (v0.96) ----
+  // A flame is a small 3D teardrop with its own shader, not a flat picture: widest a third of the
+  // way up, tapering to a fine tip. It glows from the inside — brightest where you look through
+  // the most flame, fading to nothing at its edges — with a blue root at the wick, a dimmer cone
+  // round the wick, a white-gold heart, and orange edges and tip. The vertex shader sways it
+  // (more at the tip than the root) and stretches its tip on several unrelated rhythms, each
+  // flame on its own phase. A faint larger copy is its halo; a tiny ember marks the wick's tip.
+  // The old sprite stays as an invisible anchor, so blowing out, smoke and the rest are unchanged.
+  var FLAME_VS = [
+    'uniform float uTime; uniform float uPhase; varying float vH; varying vec3 vN; varying vec3 vV;',
+    'void main(){',
+    '  vec3 p = position; float h = clamp(p.y / 0.30, 0.0, 1.0); vH = h;',
+    '  float t = uTime + uPhase;',
+    '  float sway = 0.55 * sin(t * 1.7) + 0.30 * sin(t * 3.9 + 1.3) + 0.15 * sin(t * 7.3 + 2.1);',
+    '  float sway2 = 0.5 * sin(t * 2.3 + 0.7) + 0.35 * sin(t * 5.1 + 2.2);',
+    '  float stretch = 1.0 + 0.10 * sin(t * 9.1) + 0.06 * sin(t * 15.7 + 1.1) + 0.04 * sin(t * 23.3 + 0.4);',
+    '  p.y *= stretch;',
+    '  p.x += 0.018 * sway * h * h; p.z += 0.012 * sway2 * h * h;',
+    '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
+    '  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);',
+    '  gl_Position = projectionMatrix * mv;',
+    '}'].join('\n');
+  var FLAME_FS = [
+    'uniform float uGlow; uniform float uCover; varying float vH; varying vec3 vN; varying vec3 vV;',
+    'void main(){',
+    '  float f = abs(dot(normalize(vN), normalize(vV)));',
+    '  float core = pow(f, 2.2), edge = pow(f, 0.8);',
+    '  vec3 white = vec3(1.0, 0.95, 0.80), yellow = vec3(1.0, 0.76, 0.30), orange = vec3(1.0, 0.45, 0.12), blue = vec3(0.25, 0.35, 1.0);',
+    '  vec3 c = mix(orange, yellow, edge);',
+    '  c = mix(c, white, core * smoothstep(0.1, 0.35, vH) * (1.0 - smoothstep(0.55, 0.95, vH)));',
+    '  float root = 1.0 - smoothstep(0.0, 0.14, vH);',
+    '  c = mix(c, blue, root * 0.8);',
+    '  float cone = (1.0 - smoothstep(0.08, 0.3, vH)) * core;',
+    '  c *= 1.0 - 0.45 * cone;',
+    '  float a = edge * (0.35 + 0.65 * smoothstep(0.0, 0.2, vH)) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);',
+    '  gl_FragColor = vec4(c * a * uGlow, a * uCover);',
+    '}'].join('\n');
+  var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
+  var flameGeo = (function () {
+    var p = [];
+    for (var i = 0; i <= 24; i++) { var t = i / 24, r = 0.042 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.62)), 0.9) * Math.pow(1 - t, 0.25); p.push(new THREE.Vector2(Math.max(r, 0.0005), t * 0.30)); }
+    var g = new THREE.LatheGeometry(p, 20); g.__shared = true; return g;
+  })();
+  var emberGeo = new THREE.SphereGeometry(0.009, 8, 6); emberGeo.__shared = true;
+  var emberMat = new THREE.MeshBasicMaterial({ color: 0xFF7A2A }); emberMat.__shared = true;
+  function flameMaterial(phase, glow, cover) {
+    return new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uPhase: { value: phase }, uGlow: { value: glow }, uCover: { value: cover || 0 } },
+      vertexShader: FLAME_VS, fragmentShader: FLAME_FS,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor   // premultiplied: cover 0 = purely additive
+    });
+  }
+  function makeFlameMesh(phase) {
+    var g = new THREE.Group();
+    var core = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.glow, FLAME.cover));
+    var halo = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.haloGlow));
+    halo.scale.set(1.9, 1.25, 1.9); halo.position.y = -0.025;
+    var ember = new THREE.Mesh(emberGeo, emberMat); ember.position.set(0.006, -0.018, 0); ember.userData.noAO = true;
+    core.renderOrder = halo.renderOrder = 2;
+    g.add(halo); g.add(core); g.add(ember);
+    g.userData.noAO = true;
+    g.__mats = [core.material, halo.material];
+    return g;
+  }
+  var _leanAxis = new THREE.Vector3(), _up3 = new THREE.Vector3(0, 1, 0);
+  function updateFlameMesh(f, t, lx, lz) {
+    var g = f.mesh; if (!g) return;
+    g.visible = f.sprite.visible;
+    if (!g.visible) return;
+    var sz = (f.base / 0.28) * f.k * Math.max(0.05, f.lit);
+    g.scale.setScalar(sz);
+    g.position.set(f.x, f.y - f.root, f.z);
+    // lean with the cake's spin, pivoting at the wick
+    var dx = _right.x * lx + _fwd.x * lz, dz = _right.z * lx + _fwd.z * lz, amt = Math.sqrt(dx * dx + dz * dz);
+    if (amt > 1e-4) { _leanAxis.set(dz, 0, -dx).normalize(); g.quaternion.setFromAxisAngle(_leanAxis, Math.min(0.8, amt * FLAME.lean)); }
+    else g.quaternion.identity();
+    g.__mats[0].uniforms.uTime.value = t; g.__mats[1].uniforms.uTime.value = t;
+  }
   function placeCandles(n, surfaces, candleHex, animateFrom) {
     var pts = layout(n, surfaces);
     if (!pts.length) return;
@@ -1358,23 +1439,24 @@
       built.add(wick);
       wicks.push(wick);
 
-      var flame = new THREE.Sprite(flameMat.clone());   // own material: lean is per-sprite rotation
-      flame.material.__shared = false;
+      var flame = new THREE.Sprite(flameMat.clone());   // an invisible anchor now (v0.96): the flame is a 3D mesh
+      flame.material.__shared = false; flame.material.visible = false;
       flame.scale.set(fs * 0.7, fs, 1);
       flame.position.set(top.x, top.y + 0.16, top.z);    // flames stay upright while the candle leans
       built.add(flame);
       // The halo: same pivot, follows the flame in the update loop. Skipped on every other
       // candle past the budget so 100 candles is still 150 sprites, not 200.
       var halo = null;
-      if (window.CakeLook && CakeLook.LOOK.halo.enabled && (pts.length <= CakeLook.LOOK.halo.maxHalos || i % 2 === 0)) {
+      if (false) {                                         // flat halos retired (v0.96): the 3D flame carries its own
         halo = new THREE.Sprite(CakeLook.haloMaterial());
         halo.scale.set(fs * CakeLook.LOOK.halo.scale, fs * CakeLook.LOOK.halo.scale, 1);
         halo.position.copy(flame.position);
         halo.renderOrder = -1;                           // behind the core
         built.add(halo);
       }
+      var fm = makeFlameMesh(((i * 0.618) % 1) * Math.PI * 2 + i * 1.7); built.add(fm);
       flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: top.x, z: top.z,
-                    k: 1, lit: 1, y: top.y + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i });
+                    k: 1, lit: 1, y: top.y + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i, mesh: fm, root: 0.13 });
     });
     bodies.instanceMatrix.needsUpdate = true;
     if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
@@ -2110,6 +2192,7 @@
       f.sprite.position.z = f.z + (_right.z * lx + _fwd.z * lz) * 0.08;
       f.sprite.position.y = f.y - (1 - f.k) * 0.5 - Math.abs(lz) * 0.06;
       f.sprite.visible = f.k > 0.05 && f.lit > 0.01;
+      updateFlameMesh(f, t, lx, lz);
       if (f.halo) {
         // Halo rides the flame: same position, a touch higher, scaled with it (and with the
         // flame's own flicker, so the glow breathes).
@@ -4279,6 +4362,7 @@
   // =====================================================================
   function warmCompile() {
     var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
+    tmp.add(makeFlameMesh(0));                            // the flame shader
     var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
     if (dg) { tmp.add(new THREE.Mesh(dg.geo, makeWaxMaterial(0x4FC3F7))); tmp.add(new THREE.Mesh(numberSpikeGeo, holderMat)); }
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
