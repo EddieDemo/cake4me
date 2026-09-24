@@ -195,8 +195,9 @@
   function syncCandleMode() {
     var numbers = draft.cm === 1;
     Array.prototype.forEach.call($('candle-mode').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cm') === draft.cm); });
-    $('count-row').hidden = numbers; $('age-row').hidden = !numbers;
-    $('count-hint').hidden = numbers || draft.n < BUILDER_MAX_CANDLES;
+    function show(id, on) { var el = $(id); el.hidden = !on; el.style.display = on ? '' : 'none'; }   // not relying on CSS for this
+    show('count-row', !numbers); show('age-row', numbers);
+    show('count-hint', !numbers && draft.n >= BUILDER_MAX_CANDLES);
     var ag = $('f-age'); if (document.activeElement !== ag) ag.value = String(draft.age);
     syncMessageNudge();
   }
@@ -699,7 +700,7 @@
   // v0.93: full resolution and a much tighter radius. At half resolution, the visible sliver of
   // icing under a holder was only a pixel or two tall — the blur smeared its occlusion outward into
   // a halo. Now the darkening sits where it belongs: under the holder, fading within millimetres.
-  var AO = { on: true, scale: 1.0, kernelRadius: 0.045, minDistance: 0.0001, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
+  var AO = { on: !/[?&]ao=0/.test(location.search), scale: 1.0, kernelRadius: 0.045, minDistance: 0.0003, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
   var _aoSize = new THREE.Vector2();
   function renderAO() {
     if (!AO.on || !THREE.SSAOPass || !THREE.SimplexNoise) return;
@@ -710,6 +711,10 @@
       // half the samples of the default: it's blurred afterwards anyway, and phones will thank us
       var P0 = AO.pass; P0.kernel = []; P0.kernelSize = AO.kernelSize; P0.generateSampleKernel();
       P0.ssaoMaterial.defines.KERNEL_SIZE = AO.kernelSize; P0.ssaoMaterial.uniforms.kernel.value = P0.kernel; P0.ssaoMaterial.needsUpdate = true;
+      // v0.95: 24-bit depth. At 16 bits, depth at our viewing distance was coarser than the
+      // occlusion test itself, so flat and curved surfaces occluded themselves in bands — the
+      // stripes in the background and the moiré on the cake as the camera moved.
+      if (P0.normalRenderTarget.depthTexture) P0.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
       AO.w = w; AO.h = h;
     } else if (w !== AO.w || h !== AO.h) { AO.pass.setSize(w, h); AO.w = w; AO.h = h; }
     var P = AO.pass, U = P.ssaoMaterial.uniforms;
@@ -720,6 +725,9 @@
     P.kernelRadius = AO.kernelRadius; P.minDistance = AO.minDistance; P.maxDistance = AO.maxDistance;
     // depth and normals, without the things that shouldn't occlude
     P.overrideVisibility();
+    // Only the cake (and its candles) take part: the backdrop and floor are far away, where the
+    // test is least reliable, and there's nothing on them to occlude.
+    scene.children.forEach(function (c) { if (c !== cakeGroup && !c.isLight && !c.isCamera) c.visible = false; });
     scene.traverse(function (o) {
       if (o.isSprite || o.isPoints || o.isLine || (o.material && !Array.isArray(o.material) && o.material.transparent) || (o.userData && o.userData.noAO)) o.visible = false;
     });
@@ -4063,8 +4071,11 @@
     });
 
     // Candles | Numbers, and the age. Each side keeps its own settings when you switch.
-    Array.prototype.forEach.call($('candle-mode').children, function (b) {
-      b.addEventListener('click', function () { draft.cm = +b.getAttribute('data-cm'); draft = normalize(draft); syncCandleMode(); build(draft); });
+    $('candle-mode').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-cm]') : null;
+      if (!b) return;
+      e.stopPropagation();
+      draft.cm = +b.getAttribute('data-cm'); draft = normalize(draft); syncCandleMode(); build(draft);
     });
     $('f-age').addEventListener('input', function (e) {
       var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
@@ -4074,7 +4085,7 @@
     });
     els.n.addEventListener('input', function () {
       draft.n = clampInt(els.n.value, 0, BUILDER_MAX_CANDLES, 0);
-      $('count-hint').hidden = draft.n < BUILDER_MAX_CANDLES;   // at the cap: point to number candles
+      var hint = $('count-hint'), atCap = draft.n >= BUILDER_MAX_CANDLES; hint.hidden = !atCap; hint.style.display = atCap ? '' : 'none';   // at the cap: point to number candles
       els.nOut.textContent = draft.n;
       updateCta();
       scheduleBuild();

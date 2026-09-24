@@ -1,24 +1,21 @@
-# Cake — v0.94 (number candles)
+# Cake — v0.95 (fixes)
 
-**Number candles.** In the Candles tray, a switch: **Candles | Numbers**. Numbers swaps the count
-slider for an **Age** field (the phone's number keyboard); type 60 and a 6 and a 0 appear, in the
-order typed; 7 gives a single 7. Each side keeps its own settings when you switch.
-- Each digit is **Fredoka's** own outline (digits only, `digits.js`, ~10KB; SIL Open Font
-  License), extruded ~1.2cm with a soft rounded bevel, in the same **wax** as the candles, with a
-  gentler glow (thick wax). Wick at the digit's highest point; **one spike** under the middle of
-  its foot, a few millimetres of it showing. Placed by hand from the seed: a slight lean and turn.
-- One flame per digit; blowing out works exactly as before, and each digit's glow goes out with it.
-- Smaller on a smaller top tier. Built once per digit and cached.
-- Schema `cm` (0 candles · 1 numbers) and `age` (1–99) appended.
+**The Numbers button.** Every script and the stylesheet now load with `?v=0.95`, so a phone can't
+mix a new page with a cached old stylesheet or script — the likeliest reason the button did
+nothing and the Age row showed in Candles mode. The switch is also sturdier: one delegated
+handler, and the rows are shown and hidden by the script directly rather than relying on CSS.
+Verified with real taps: Numbers switches, the Age row appears, the count row goes.
+Bump the `?v=` number in index.html with each release from now on.
 
-**Normal candles now max out at 6** in the builder (links still carry up to 100). At the cap, a
-hint: "Bigger birthday? Try number candles."
+**Banding in the background, moiré on the cake.** Both came from the ambient occlusion's depth:
+at 16 bits it was coarser, at our viewing distance, than the occlusion test itself, so surfaces
+occluded themselves in stripes that crawled as the camera moved. Now:
+- 24-bit depth for the occlusion pass,
+- a slightly larger minimum distance, so a surface can't occlude itself,
+- only the cake and its candles take part (the backdrop and floor are far away and have nothing
+  on them to occlude).
+And for the finer textures: anisotropic filtering on every procedural map, so they stay sharp at
+grazing angles instead of shimmering, and the rack wires are slightly wider so they don't alias
+into a cross-hatch.
 
-**Message nudge.** With numbers set, the message box's placeholder suggests "Happy 60th!" — a
-suggestion only, never its text.
-
-**Generator.** 30% of random cakes get number candles, with a random age (a third children's,
-the rest 13–90).
-
-Verified: numbers 60 and 7 render; shader count unchanged when switching to numbers (both new
-variants are compiled up front); link round trip; count capped at 6. No errors.
+To compare on the phone without the console: add `?ao=0` to the address to turn the occlusion off.

@@ -150,7 +150,7 @@
       d[i] = (nx / l * 0.5 + 0.5) * 255; d[i + 1] = (ny / l * 0.5 + 0.5) * 255; d[i + 2] = (1 / l * 0.5 + 0.5) * 255; d[i + 3] = 255;
     }
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true;
+    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;                                            // LINEAR encoding: data, not colour
   }
   function toRough(h, W, H, base, span) {
@@ -158,7 +158,7 @@
     var g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
     for (var i = 0; i < W * H; i++) { var r = Math.max(0.05, Math.min(1, base - span * (h[i] - 0.5) * 2)) * 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = r; d[i * 4 + 3] = 255; }   // ridges shinier
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true;
+    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;
   }
   // Side textures span the full circumference (≈ 4 mock tiles), tops the full diameter.
@@ -602,11 +602,11 @@
     var g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
     for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var v = fn(x, y), i = (y * W + x) * 4; d[i] = Math.min(255, v[0] * 255); d[i + 1] = Math.min(255, v[1] * 255); d[i + 2] = Math.min(255, v[2] * 255); d[i + 3] = 255; }
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true;
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;
   }
   // Rack patterns across the top (texture space = the tier's diameter). 0 plain · 1 wires · 2 bars.
-  var RACKS = [null, { sp: 0.045, w: 0.0065 }, { sp: 0.105, w: 0.013 }];
+  var RACKS = [null, { sp: 0.045, w: 0.0085 }, { sp: 0.105, w: 0.015 }];   // v0.95: slightly wider, so fine wires don't alias
   function rackAt(kind, u, v) {
     var R = RACKS[kind]; if (!R) return 0;
     var a = 0.35, p = u * Math.cos(a) + v * Math.sin(a);
@@ -782,7 +782,7 @@
     var g = rough.getContext('2d'), img = g.createImageData(RW, RH), d = img.data;
     for (var y = 0; y < RH; y++) for (var x = 0; x < RW; x++) { var q = rf(x / RW, y / RH) * 255, i = (y * RW + x) * 4; d[i] = d[i + 1] = d[i + 2] = q; d[i + 3] = 255; }
     g.putImageData(img, 0, 0);
-    var rt = new THREE.CanvasTexture(rough); rt.wrapS = rt.wrapT = THREE.RepeatWrapping; rt.__shared = true;
+    var rt = new THREE.CanvasTexture(rough); rt.wrapS = rt.wrapT = THREE.RepeatWrapping; rt.__shared = true; rt.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     ribCloth[kind] = { n: toNormal(h, RW, RH, nk), r: rt };
     return ribCloth[kind];
   }
