@@ -1,23 +1,24 @@
-# Cake — v0.99 (sparklers)
+# Cake — v1.00 (hundreds and thousands)
 
-**Sparklers**, up to two, alongside regular candles or number candles. In the Candles tray: a
-**Sparklers** row — None · One · Two — shown in both modes.
+A **Sprinkles** chip (in the cake group, after Icing): **Amount** (none → fully covered),
+**Colours** (Rainbow · Pastel · Gold) and **🎲 Roll** for a new arrangement with the same settings.
+It's a topping, not an icing: it goes over whatever finish each tier has.
 
-- **The stick:** a bare wire, far thinner than a candle, the top two-thirds in a rough, lumpy grey
-  coating; pushed straight into the cake (no holder).
-- **The burning point** stays fixed near the top — it never burns down: a white-hot bead with a soft
-  glow, and a short stub of spent wire above it.
-- **The sparks** run entirely on the GPU: ~300 streaks per sparkler, thrown out in every direction,
-  arcing and falling, and nearly half bursting at the end of their flight into small stars of eight
-  finer streaks. Each is a quad whose path the vertex shader works out from its seed and the time,
-  so nothing is recalculated in JavaScript per frame. Drawn after the ambient occlusion, like the
-  flames.
-- **Light:** a warm, crackling light on the cake, stronger at night. It's one light that's always in
-  the scene (at zero when there are no sparklers), so adding a sparkler never recompiles materials.
-- **They keep going** when the candles are blown out.
-- One sparkler stands behind the candles, just off-centre; two stand either side, behind.
-- Schema `sk` (0–2). Generator: one sparkler on ~20% of random cakes, two on ~5%.
+- **On the real surface.** Balls are placed on random triangles of each tier's actual meshes, by
+  area, so the top, the rounded edge and the sides are covered evenly — no bare band at the
+  shoulder. Never on ribbons, never on the part of a lower tier hidden under the tier above,
+  never inside the cake (no internal layers).
+- **Part of the icing.** Each ball is pushed in by its own amount (half buried … barely touching),
+  is its own size, and its own shade of its colour.
+- **Sphere impostors.** One point per ball, painted by the shader as a lit sphere with the depth a
+  real ball would have — so sunk balls look sunk. Fully covered is ~90,000 balls: as geometry that
+  would be millions of triangles; as points it's cheap. The balls take the scene's key, fill,
+  ambient, candle and sparkler light.
+- **The writing stays clear.** With a message, the balls leave the area of the writing bare.
+- **Slices keep theirs.** Every ball belongs to one tier and one angle; a cut slice carries exactly
+  the ones that were on it.
+- **Amount** is exponential (700 → 90,000 per standard tier area), so the low end is a light
+  scatter and the top end hides the icing entirely.
 
-Verified: one sparkler by day; two with number candles at night; still sparkling after blowing out
-the candles. No errors. Toggling sparklers on in the builder compiles one small shader the first
-time. Files load with `?v=0.99`.
+Schema `sa` (0–10), `spal` (0–2), `sr` (roll). Generator: a quarter of random cakes, amount 3–10,
+Rainbow most often. The sprinkle shader is compiled at load. Files load with `?v=1.00`.

@@ -81,6 +81,7 @@
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     numberChance: 0.3,                      // how often a random cake gets number candles
     sparklers: [0.2, 0.05],                 // chance of one sparkler, of two
+    sprinkleChance: 0.25,                   // how often a random cake gets hundreds and thousands
     candleStyles: [0, 0, 0, 1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7],   // classic most, then twisted, striped, gold, all-mixed…
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
@@ -114,6 +115,9 @@
     d.cm = Math.random() < B.numberChance ? 1 : 0;
     d.cs = B.candleStyles[randInt(0, B.candleStyles.length - 1)];
     var sr = Math.random(); d.sk = sr < B.sparklers[1] ? 2 : sr < B.sparklers[0] + B.sparklers[1] ? 1 : 0;
+    d.sa = Math.random() < B.sprinkleChance ? randInt(3, 10) : 0;
+    d.spal = [0, 0, 0, 1, 2][randInt(0, 4)];
+    d.sr = randInt(0, 999);
     d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
@@ -196,7 +200,12 @@
     return window.CakeFrosting ? CakeFrosting.ribbonMaterial(hex, cfg.rm)
                                : new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, side: THREE.DoubleSide });
   }
+  function syncSprinkles() {
+    var a = $('f-sa'); if (a) a.value = draft.sa;
+    Array.prototype.forEach.call($('spr-pal').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-spal') === draft.spal); });
+  }
   function syncCandleMode() {
+    syncSprinkles();
     var numbers = draft.cm === 1;
     Array.prototype.forEach.call($('candle-mode').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cm') === draft.cm); });
     function show(id, on) { var el = $(id); el.hidden = !on; el.style.display = on ? '' : 'none'; }   // not relying on CSS for this
@@ -527,7 +536,10 @@
       rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
       cm: clampInt(c.cm, 0, 1, 0),          // candle mode (v0.94): 0 candles · 1 number candles
       cs: clampInt(c.cs, 0, 7, 0),
-      sk: clampInt(c.sk, 0, 2, 0),          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
+      sk: clampInt(c.sk, 0, 2, 0),
+      sa: clampInt(c.sa, 0, 10, 0),         // hundreds and thousands (v1.00): 0 none … 10 fully covered
+      spal: clampInt(c.spal, 0, 2, 0),      // their colours: 0 rainbow · 1 pastel · 2 gold
+      sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
@@ -589,7 +601,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs, c.sk];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs, c.sk, c.sa, c.spal, c.sr];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -598,7 +610,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35], sk: p[36] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35], sk: p[36], sa: p[37], spal: p[38], sr: p[39] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -1108,7 +1120,7 @@
         var rbR = ribbonRadius(TM, rr, bodyH, pOpts, rbY, rw);
         var rbGeo = CakeShapes.ribbon(rbR, rbY, rw, CYL_SEG, 0, Math.PI * 2, hand);
         if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(rbGeo, rr, 1e3, SPONGE_WOBBLE);   // follows the baked wall's wobble, still bridging the fillings
-        var ribbon = new THREE.Mesh(rbGeo, makeRibbonMaterial(cfg, rt));
+        var ribbon = new THREE.Mesh(rbGeo, makeRibbonMaterial(cfg, rt)); ribbon.userData.noSprinkle = true;
         ribbon.position.y = y;
         tg.add(ribbon);
       }
@@ -1127,6 +1139,7 @@
     surfaces.reverse();
     sparklers.length = 0;
     placeSparklers(cfg.sk, surfaces[0]);
+    placeSprinkles(cfg, tiers);
     if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
     else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs);
 
@@ -1623,6 +1636,155 @@
     sparkLight.position.copy(sum.multiplyScalar(1 / sparklers.length));
     sparkLight.intensity = (0.9 + 0.4 * Math.max(0, darkness)) * sparklers.length * (0.85 + 0.15 * Math.sin(t * 31));
   }
+  // ---- Hundreds and thousands (v1.00) ----
+  // A topping, not an icing: it goes over whatever finish each tier has. Balls are placed on the
+  // cake's REAL surface — random triangles of the tier's actual meshes, by area — so they cover
+  // the top, the rounded edge and the sides evenly. Each is pushed in by its own amount, from half
+  // buried to barely touching, is its own size and colour, and belongs to one tier and one angle,
+  // so a cut slice keeps exactly the ones that were on it.
+  // They're drawn as SPHERE IMPOSTORS: one point each, which the shader paints as a lit ball and
+  // gives the depth a real ball would have (so sunk balls look sunk). A fully covered cake is
+  // ~90,000 balls — as real geometry that's millions of triangles; as points it's cheap.
+  var SPR = { min: 700, max: 90000, refArea: 41, palettes: [
+    [0xFF4F8B, 0xFFD23F, 0x3FA7FF, 0x4CD07D, 0xFF8A3D, 0x9B6BFF, 0xFFFFFF],   // rainbow
+    [0xF7B6CC, 0xFBE7A1, 0xB5DAF7, 0xBFE8C9, 0xD9C6F5, 0xFFFFFF],             // pastel
+    [0xD8B25A, 0xE6C77A, 0xC9A04A, 0xF1DDA0]                                  // gold
+  ] };
+  var sprinkleSets = {};
+  var lastMessageSpan = null;                                 // by tier (keyed by its base height), for the slices
+  var sprinkleMat = null, sprinkleLights = null;
+  function prng(seed) { var a = seed | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  var SPR_VS = [
+    'attribute float aRadius; attribute vec3 aColor; uniform float uScale;',
+    'varying vec3 vCol; varying vec3 vCentre; varying float vR;',
+    'void main(){',
+    '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  vCentre = mv.xyz; vR = aRadius; vCol = aColor;',
+    '  gl_Position = projectionMatrix * mv;',
+    '  gl_PointSize = max(1.0, uScale * aRadius / -mv.z);',
+    '}'].join('\n');
+  var SPR_FS = [
+    'uniform mat4 projectionMatrix;                         // three sets it; the fragment shader must declare it',
+    'uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uUp; uniform vec3 uFillDir; uniform vec3 uFillCol;',
+    'uniform vec3 uP1Pos; uniform vec3 uP1Col; uniform float uP1Cut; uniform vec3 uP2Pos; uniform vec3 uP2Col; uniform float uP2Cut;',
+    'varying vec3 vCol; varying vec3 vCentre; varying float vR;',
+    'vec3 point(vec3 lp, vec3 lc, float cut, vec3 p, vec3 n){ vec3 d = lp - p; float dist = length(d);',
+    '  float f = cut > 0.0 ? pow(clamp(1.0 - dist / cut, 0.0, 1.0), 2.0) : 0.0; return lc * f * max(dot(n, d / max(dist, 1e-4)), 0.0); }',
+    'void main(){',
+    '  vec2 c = gl_PointCoord * 2.0 - 1.0; c.y = -c.y; float r2 = dot(c, c); if (r2 > 1.0) discard;',
+    '  vec3 n = vec3(c, sqrt(1.0 - r2));',
+    '  vec3 p = vCentre + n * vR;',
+    '  vec4 clip = projectionMatrix * vec4(p, 1.0);',
+    '  gl_FragDepthEXT = (clip.z / clip.w) * 0.5 + 0.5;      // the depth a real ball would have',
+    '  vec3 amb = mix(uGround, uSky, dot(n, uUp) * 0.5 + 0.5);',
+    '  vec3 light = amb + uKeyCol * max(dot(n, uKeyDir), 0.0) + uFillCol * max(dot(n, uFillDir), 0.0) + point(uP1Pos, uP1Col, uP1Cut, p, n) + point(uP2Pos, uP2Col, uP2Cut, p, n);',
+    '  vec3 col = vCol * light;',
+    '  vec3 h = normalize(uKeyDir + vec3(0.0, 0.0, 1.0));',
+    '  col += uKeyCol * pow(max(dot(n, h), 0.0), 32.0) * 0.18;  // a soft sugary sheen',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '  #include <tonemapping_fragment>',
+    '  #include <encodings_fragment>',
+    '}'].join('\n');
+  function getSprinkleMaterial() {
+    if (sprinkleMat) return sprinkleMat;
+    sprinkleMat = new THREE.ShaderMaterial({
+      uniforms: { uScale: { value: 1000 }, uKeyDir: { value: new THREE.Vector3(0, 1, 0) }, uKeyCol: { value: new THREE.Color(1, 1, 1) },
+        uSky: { value: new THREE.Color() }, uGround: { value: new THREE.Color() }, uUp: { value: new THREE.Vector3(0, 1, 0) }, uFillDir: { value: new THREE.Vector3(0, 0, 1) }, uFillCol: { value: new THREE.Color(0, 0, 0) },
+        uP1Pos: { value: new THREE.Vector3() }, uP1Col: { value: new THREE.Color(0, 0, 0) }, uP1Cut: { value: 0 },
+        uP2Pos: { value: new THREE.Vector3() }, uP2Col: { value: new THREE.Color(0, 0, 0) }, uP2Cut: { value: 0 } },
+      vertexShader: SPR_VS, fragmentShader: SPR_FS, extensions: { fragDepth: true }
+    });
+    sprinkleMat.__shared = true;
+    return sprinkleMat;
+  }
+  var _sv3 = new THREE.Vector3(), _sBuf = new THREE.Vector2();
+  function updateSprinkleLights() {                     // mirror the scene's lights in the balls' own shader, each frame
+    if (!sprinkleMat) return;
+    var U = sprinkleMat.uniforms, V = camera.matrixWorldInverse;
+    renderer.getDrawingBufferSize(_sBuf);
+    U.uScale.value = _sBuf.y * camera.projectionMatrix.elements[5];
+    _sv3.copy(key.position).sub(key.target.position).normalize().transformDirection(V); U.uKeyDir.value.copy(_sv3);
+    U.uKeyCol.value.copy(key.color).multiplyScalar(key.intensity);
+    U.uUp.value.set(0, 1, 0).transformDirection(V);
+    _sv3.copy(fill.position).sub(fill.target.position).normalize().transformDirection(V); U.uFillDir.value.copy(_sv3); U.uFillCol.value.copy(fill.color).multiplyScalar(fill.visible ? fill.intensity : 0);
+    if (ambientLight.isHemisphereLight) { U.uSky.value.copy(ambientLight.color).multiplyScalar(ambientLight.intensity); U.uGround.value.copy(ambientLight.groundColor).multiplyScalar(ambientLight.intensity); }
+    else { U.uSky.value.copy(ambientLight.color).multiplyScalar(ambientLight.intensity); U.uGround.value.copy(U.uSky.value); }
+    U.uP1Pos.value.copy(candleLight.position).applyMatrix4(V); U.uP1Col.value.copy(candleLight.color).multiplyScalar(candleLight.intensity); U.uP1Cut.value = candleLight.distance;
+    U.uP2Pos.value.copy(sparkLight.position).applyMatrix4(V); U.uP2Col.value.copy(sparkLight.color).multiplyScalar(sparkLight.intensity); U.uP2Cut.value = sparkLight.distance;
+  }
+  function tierKey(tier) { return (tier.y0 || 0).toFixed(3); }
+  function placeSprinkles(cfg, tiers) {
+    sprinkleSets = {};
+    var amt = cfg.sa | 0; if (!amt) return;
+    var perRef = SPR.min * Math.pow(SPR.max / SPR.min, (amt - 1) / 9);
+    var pal = SPR.palettes[clampInt(cfg.spal, 0, SPR.palettes.length - 1, 0)].map(function (h) { return new THREE.Color(h).convertSRGBToLinear(); });
+    var rnd = prng((cfg.sr | 0) * 7919 + (cfg.sd | 0) * 31 + 13);
+    var span = lastMessageSpan, canon = tierTops(cfg);   // the canonical tier objects (with their base heights), as the slices see them
+    tiers.forEach(function (tier, i) {
+      var ct = canon[i] || tier;
+      var tg = tierGroups[i]; if (!tg) return;
+      tg.updateMatrixWorld(true);
+      var inv = new THREE.Matrix4().copy(tg.matrixWorld).invert();
+      var upper = tiers[i + 1], upperR = upper ? (upper.r || 0) + 0.02 : -1;
+      // Gather this tier's outer surface as triangles (tier-group coordinates).
+      var tris = [], topY = -1e9, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), m4 = new THREE.Matrix4();
+      tg.traverse(function (o) {
+        if (!o.isMesh || o.isInstancedMesh || (o.userData && o.userData.noSprinkle) || !o.geometry || !o.geometry.attributes.position) return;
+        if (o.material && !Array.isArray(o.material) && o.material.transparent) return;
+        m4.multiplyMatrices(inv, o.matrixWorld);
+        var pos = o.geometry.attributes.position, idx = o.geometry.index ? o.geometry.index.array : null, n = idx ? idx.length / 3 : pos.count / 3;
+        for (var t = 0; t < n; t++) {
+          a.fromBufferAttribute(pos, idx ? idx[t * 3] : t * 3).applyMatrix4(m4);
+          b.fromBufferAttribute(pos, idx ? idx[t * 3 + 1] : t * 3 + 1).applyMatrix4(m4);
+          c.fromBufferAttribute(pos, idx ? idx[t * 3 + 2] : t * 3 + 2).applyMatrix4(m4);
+          var nrm = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)), area = nrm.length() * 0.5;
+          if (area < 1e-9) continue;
+          nrm.normalize();
+          var cx = (a.x + b.x + c.x) / 3, cz = (a.z + b.z + c.z) / 3;
+          if (nrm.x * cx + nrm.z * cz < 0 && Math.abs(nrm.y) < 0.9) nrm.negate();     // outward
+          if (nrm.y < -0.3) continue;                                                   // undersides
+          if (nrm.y > 0.9) topY = Math.max(topY, (a.y + b.y + c.y) / 3);
+          tris.push([a.clone(), b.clone(), c.clone(), nrm, area]);
+        }
+      });
+      tris = tris.filter(function (T) { return !(T[3].y > 0.9 && (T[0].y + T[1].y + T[2].y) / 3 < topY - 0.03); });   // no internal layers
+      if (!tris.length) return;
+      var cdf = [], A = 0; tris.forEach(function (T) { A += T[4]; cdf.push(A); });
+      var count = Math.round(perRef * A / SPR.refArea);
+      var P = [], Rr = [], Cc = [], Ang = [];
+      var msg = (tier === tiers[0] && cfg.m && span) ? span : null, bodyH = messageMesh && messageMesh.__bodyH ? messageMesh.__bodyH : 1;
+      for (var k = 0; k < count; k++) {
+        var x = rnd() * A, lo = 0, hi = cdf.length - 1; while (lo < hi) { var mid = (lo + hi) >> 1; if (cdf[mid] < x) lo = mid + 1; else hi = mid; }
+        var T = tris[lo], u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
+        var px = T[0].x + (T[1].x - T[0].x) * u + (T[2].x - T[0].x) * v, py = T[0].y + (T[1].y - T[0].y) * u + (T[2].y - T[0].y) * v, pz = T[0].z + (T[1].z - T[0].z) * u + (T[2].z - T[0].z) * v;
+        var nn = T[3], rr = Math.sqrt(px * px + pz * pz), ang = Math.atan2(px, pz); if (ang < 0) ang += Math.PI * 2;
+        if (nn.y > 0.9 && rr < upperR) continue;                                        // under the tier above
+        if (msg && Math.abs(nn.y) < 0.6) {                                               // keep the writing clear
+          var dAng = Math.abs(ang - Math.PI), yRel = (py - (ct.y0 || 0)) / bodyH;
+          if (dAng < msg.w * Math.PI + 0.12 && Math.abs(yRel - 0.5) < msg.h / 2 + 0.06) continue;
+        }
+        var s2 = 0.014 + 0.011 * Math.pow(rnd(), 1.3), e = 0.15 + 0.45 * rnd(), off = s2 * (1 - 2 * e);
+        P.push(px + nn.x * off, py + nn.y * off, pz + nn.z * off); Rr.push(s2);
+        var col = pal[Math.floor(rnd() * pal.length)], j = 0.9 + 0.1 * rnd(); Cc.push(col.r * j, col.g * j, col.b * j);
+        Ang.push(ang);
+      }
+      var set = { pos: new Float32Array(P), rad: new Float32Array(Rr), col: new Float32Array(Cc), ang: new Float32Array(Ang) };
+      sprinkleSets[tierKey(ct)] = set;
+      tg.add(sprinklePoints(set, 0, Math.PI * 2 + 1));
+    });
+  }
+  function sprinklePoints(set, from, to) {                // the balls between two angles, as one Points object
+    var keep = [];
+    for (var i = 0; i < set.rad.length; i++) { var a = set.ang[i]; if (a >= from && a < to) keep.push(i); }
+    var P = new Float32Array(keep.length * 3), R = new Float32Array(keep.length), C = new Float32Array(keep.length * 3);
+    keep.forEach(function (k, j) { P[j * 3] = set.pos[k * 3]; P[j * 3 + 1] = set.pos[k * 3 + 1]; P[j * 3 + 2] = set.pos[k * 3 + 2]; R[j] = set.rad[k]; C[j * 3] = set.col[k * 3]; C[j * 3 + 1] = set.col[k * 3 + 1]; C[j * 3 + 2] = set.col[k * 3 + 2]; });
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('aRadius', new THREE.BufferAttribute(R, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(C, 3));
+    g.computeBoundingSphere(); if (g.boundingSphere) g.boundingSphere.radius += 0.05;
+    var pts = new THREE.Points(g, getSprinkleMaterial());
+    pts.userData.noAO = true; pts.userData.noSprinkle = true;
+    return pts;
+  }
   function placeCandles(n, surfaces, candleHex, animateFrom, cs) {
     var pts = layout(n, surfaces);
     if (!pts.length) return;
@@ -1840,6 +2002,8 @@
     g.textBaseline = 'alphabetic';          // position by the baseline, not the em box
     var lineH = fit.lineH;
     var blockH = fit.ink.asc + fit.ink.desc + (fit.lines.length - 1) * lineH;
+    var widest = 0; fit.lines.forEach(function (ln) { widest = Math.max(widest, g.measureText(ln).width); });
+    lastMessageSpan = { w: widest / W, h: blockH / H };  // so the sprinkles can leave the writing clear
     var startY = (H - blockH) / 2 + fit.ink.asc;   // centre the INK block, then step by baselines
 
     fit.lines.forEach(function (ln, i) {
@@ -2453,6 +2617,7 @@
       }
     }
     updateSparklers(t);                                  // they keep going when the candles are blown out
+    updateSprinkleLights();
     if (flames.length) {
       var lit = litCount();
       var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
@@ -3409,6 +3574,12 @@
   // bottom tier is carried by a cloned texture whose offset/repeat select this wedge's arc.
   // Materials are per tier (tierMaterials): pass `TM` for the tier, or nothing to make them here.
   function makeWedge(tier, i, cfg, TM, msgMap) {
+    var g0 = makeWedgeBody(tier, i, cfg, TM, msgMap);
+    var set = sprinkleSets[tierKey(tier)];
+    if (set) { var n0 = WEDGES_PER_TIER, th0 = i * Math.PI * 2 / n0; g0.add(sprinklePoints(set, th0, th0 + Math.PI * 2 / n0)); }
+    return g0;
+  }
+  function makeWedgeBody(tier, i, cfg, TM, msgMap) {
     TM = TM || tierMaterials(cfg, tier);
     var frostingMat = TM.side, capMat = TM.cap, scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
     var N = WEDGES_PER_TIER, theta0 = i * Math.PI * 2 / N, len = Math.PI * 2 / N;
@@ -3432,7 +3603,7 @@
       var wRw = ribbonWidth(rtw.w), wHand = ribbonHandFor(cfg, tier, TM, wRw, rtw), wRbY = ribbonY(TM, tier, wRw, rtw.p);
       var wbGeo = CakeShapes.ribbon(ribbonRadius(TM, rr, bodyH, pOpts, wRbY, wRw), wRbY, wRw, wseg, theta0, len, wHand);
       if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(wbGeo, rr, 1e3, SPONGE_WOBBLE);
-      var band = new THREE.Mesh(wbGeo, makeRibbonMaterial(cfg, rtw));
+      var band = new THREE.Mesh(wbGeo, makeRibbonMaterial(cfg, rtw)); band.userData.noSprinkle = true;
       band.position.y = tier.y0; g.add(band);
     }
     if (!TM.fdOn) {
@@ -4083,7 +4254,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'candles', 'ribbon', 'backdrop', 'light'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'sprinkles', 'candles', 'ribbon', 'backdrop', 'light'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -4421,6 +4592,11 @@
     Array.prototype.forEach.call($('sparklers').children, function (b) {
       b.addEventListener('click', function () { draft.sk = +b.getAttribute('data-sk'); draft = normalize(draft); syncCandleMode(); build(draft); });
     });
+    $('f-sa').addEventListener('input', function (e) { draft.sa = +e.target.value; draft = normalize(draft); syncSprinkles(); scheduleBuild(); });
+    Array.prototype.forEach.call($('spr-pal').children, function (b) {
+      b.addEventListener('click', function () { draft.spal = +b.getAttribute('data-spal'); if (!draft.sa) draft.sa = 5; draft = normalize(draft); syncSprinkles(); build(draft); });
+    });
+    $('spr-roll').addEventListener('click', function () { draft.sr = (draft.sr + 1 + Math.floor(Math.random() * 997)) % 1000; if (!draft.sa) draft.sa = 5; draft = normalize(draft); syncSprinkles(); build(draft); });
     $('f-age').addEventListener('input', function (e) {
       var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
       if (v !== e.target.value) e.target.value = v;
@@ -4625,6 +4801,7 @@
     var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
     tmp.add(makeFlameMesh(0));                            // the flame shader
     tmp.add(makeSparkler());                              // the sparkler: its stick, sparks and glow
+    tmp.add(sprinklePoints({ pos: new Float32Array(3), rad: new Float32Array([0.02]), col: new Float32Array(3), ang: new Float32Array([0]) }, 0, 7));   // the sprinkle shader
     tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(2, 0x4FC3F7), 1));   // patterned wax
     tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(4, 0), 1));          // metal
     var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
@@ -4786,6 +4963,8 @@
     relight: updateRoomLights,
     get tierGroups() { return tierGroups; },
     ao: AO,
+    __sprinkleKeys: function () { return Object.keys(sprinkleSets).map(function (k) { return k + ':' + sprinkleSets[k].rad.length; }); },
+    __tierY0: function () { return tierTops(config).map(function (t) { return tierKey(t); }); },
     __tierAt: function (x, y) { return tierAt(x, y); }, __tm: function (i) { var t=tierTops(config)[i]; var TM=tierMaterials(config, t); return { frosting: TM.frosting.toString(16), hasBase: !!TM.base, style: TM.style, fdOn: TM.fdOn, msgTier: messageMesh && messageMesh.__tier ? messageMesh.__tier.idx : null }; }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
     renderer: renderer,               // for cake.renderer.info.programs — count should not grow after load
     relook: function () {
