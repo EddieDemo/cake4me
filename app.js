@@ -1379,7 +1379,7 @@
     '  c = mix(c, blue, root * 0.8);',
     '  float cone = (1.0 - smoothstep(0.08, 0.3, vH)) * core;',
     '  c *= 1.0 - 0.45 * cone;',
-    '  float a = edge * (0.35 + 0.65 * smoothstep(0.0, 0.2, vH)) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);',
+    '  float a = edge * smoothstep(0.0, 0.24, vH) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);   // fades to nothing at the base: no hard edge where the candle hides it',
     '  gl_FragColor = vec4(c * a * uGlow, a * uCover);',
     '}'].join('\n');
   var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };
@@ -1404,7 +1404,7 @@
     var g = new THREE.Group();
     var core = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.glow, FLAME.cover));
     var halo = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.haloGlow));
-    halo.scale.set(1.9, 1.25, 1.9); halo.position.y = -0.025;
+    halo.scale.set(1.9, 1.25, 1.9); halo.position.y = 0.0;   // never below the flame's base
     var ember = new THREE.Mesh(emberGeo, emberMat); ember.position.set(0.006, -0.018, 0); ember.userData.noAO = true;
     core.renderOrder = halo.renderOrder = 2;
     // v0.97: flames live on layer 1 and are drawn after the ambient occlusion, which otherwise

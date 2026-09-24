@@ -1,8 +1,11 @@
-# Cake — v1.02
+# Cake — v1.03 (the glow's hard edge)
 
-No visual changes from v1.01. The top-left tag reads **v1.02**.
-
-- `cake.elev = 24` (console) now really tilts the camera, via the same tilt the drag sets, so the
-  angle in a screenshot can be reproduced exactly when testing.
-- A change to the flame shader was tried for the reported "cut" and **reverted**: checked with the
-  app's real blending, it made the flame worse from above, not better.
+Zoomed into the v1.02 screenshots, each flame's glow ends in a straight line at the top of its
+candle: the flame and its halo reached down to — and the halo slightly below — the candle's rim
+with a visible amount of glow, and where the candle hid it, that became a hard horizontal edge.
+It's clearest looking down, when more of the halo sits behind the rim, and nearly invisible
+side-on. Now:
+- the flame and its halo fade to nothing at their base, so the candle can hide that part without
+  leaving an edge;
+- the halo no longer dips below the flame.
+Side-on the flame looks the same. The top-left tag reads **v1.03**.
