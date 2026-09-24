@@ -1,0 +1,112 @@
+{
+  "note": "Cakes that exercise every feature. Each is applied on top of `base`, because cake.set() merges into the current cake (a random one at load) \u2014 without the base, the previous cake's number candles or sprinkles would leak into the next.",
+  "camera": {
+    "azimuth": 0.3,
+    "elev": 24,
+    "zoom": 1.0
+  },
+  "cakes": {
+    "naked-vanilla": {
+      "t": 1,
+      "n": 3,
+      "cc": 0,
+      "cs": 0,
+      "fdt": "0",
+      "sp": 0,
+      "rk": 1,
+      "bg": 1,
+      "sd": 12,
+      "rbt": "000"
+    },
+    "fondant-rings": {
+      "t": 1,
+      "n": 5,
+      "cc": 3,
+      "cs": 1,
+      "fdt": "1",
+      "fct": "0",
+      "ff": 8,
+      "bg": 1,
+      "sd": 12,
+      "rbt": "134",
+      "rba": "6"
+    },
+    "two-tier-message": {
+      "t": 2,
+      "n": 4,
+      "cc": 1,
+      "cs": 7,
+      "fdt": "11",
+      "fct": "05",
+      "ff": 4,
+      "bg": 6,
+      "sd": 21,
+      "rbt": "134000",
+      "m": "Happy birthday",
+      "sa": 5,
+      "spal": 0,
+      "sr": 7
+    },
+    "numbers-sparklers": {
+      "t": 1,
+      "cm": 1,
+      "age": 60,
+      "cc": 3,
+      "sk": 2,
+      "fdt": "1",
+      "fct": "1",
+      "ff": 10,
+      "bg": 9,
+      "sd": 5
+    },
+    "covered-gold": {
+      "t": 1,
+      "n": 6,
+      "cc": 5,
+      "cs": 4,
+      "fdt": "1",
+      "fct": "2",
+      "ff": 0,
+      "bg": 1,
+      "sd": 3,
+      "sa": 10,
+      "spal": 2,
+      "sr": 1
+    },
+    "night-lowsun": {
+      "t": 1,
+      "n": 3,
+      "cc": 0,
+      "cs": 2,
+      "fdt": "1",
+      "fct": "6",
+      "ff": 2,
+      "bg": 6,
+      "sd": 8,
+      "rbt": "104",
+      "rm": 1
+    }
+  },
+  "base": {
+    "t": 1,
+    "n": 1,
+    "cm": 0,
+    "age": 30,
+    "sk": 0,
+    "sa": 0,
+    "spal": 0,
+    "sr": 0,
+    "cs": 0,
+    "cc": 0,
+    "rbt": "000",
+    "rba": "444",
+    "rm": 0,
+    "m": "",
+    "fdt": "0",
+    "ff": 0,
+    "sp": 0,
+    "rk": 0,
+    "bg": 1,
+    "sd": 1
+  }
+}

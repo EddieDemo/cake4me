@@ -1,16 +1,18 @@
-# Cake — v1.04 (the flame no longer borrows its look from the backdrop)
+# Cake — v1.05 (refactor step 1: the safety net and the switches)
 
-**Found it, and reproduced it.** The flame was translucent everywhere — it added its light to
-whatever was behind it. Side-on, what's behind it is the backdrop's wall: darker, so the flame
-read rich and gold. As the camera rises, the horizon of the backdrop climbs the screen and the
-flame ends up in front of the bright floor: the floor shows through, the flame goes pale and grey
-and flat, and the horizon line itself is visible across it. The "horizontal line that moves as the
-camera tilts" IS the backdrop's horizon, seen through the flame.
+No visual changes. The tag reads **v1.05**.
 
-Fix: the flame's **heart is opaque** (it hides what's behind it, and brings its own light), while
-its edges and its halo stay translucent and additive. Against the wall it looks as it did; against
-the floor it now looks the same instead of washing out. The tag reads **v1.04**.
+**Debug switches** (`debug.js`), in the address bar, combinable; the tag lists the active ones:
+`?ao=0 ?flames=0 ?halo=0 ?backdrop=0 ?shadows=0 ?sprinkles=0 ?sparklers=0 ?candles=0`
+`?cover=0.9` (flame heart opacity) `?glow=1.2` (flame brightness).
 
-Ruled out along the way: the occlusion pass (v0.97 moved the flames after it), the flame's
-surface shading (tried and reverted in v1.02), and the halo's hard edge at the candle's rim
-(v1.03 — real, but a different, smaller thing).
+**tools/** — `render.py` (golden cakes → PNGs), `compare.py` (pixel-diff two versions),
+`golden_check.py` (every saved link still decodes to the same cake), `golden/` (six saved links
+and their decoded configs). The refactor's rule: structural moves show ~0% change and pass the
+link check.
+
+**ARCHITECTURE.md** — inventory, target layout, and the order of work.
+
+One thing the harness surfaced immediately: `cake.set()` merges into the current cake, so the
+golden set needed a base config or the previous cake's number candles and sprinkles leaked into
+the next. That's the kind of hidden state the store in step 2 removes.

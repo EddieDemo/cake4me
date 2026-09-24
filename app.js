@@ -720,12 +720,13 @@
   // v0.93: full resolution and a much tighter radius. At half resolution, the visible sliver of
   // icing under a holder was only a pixel or two tall — the blur smeared its occlusion outward into
   // a halo. Now the darkening sits where it belongs: under the holder, fading within millimetres.
-  var AO = { on: !/[?&]ao=0/.test(location.search), scale: 1.0, kernelRadius: 0.045, minDistance: 0.0003, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
+  var AO = { on: !window.CakeDebug || CakeDebug.on('ao'), scale: 1.0, kernelRadius: 0.045, minDistance: 0.0003, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
   var _aoSize = new THREE.Vector2();
   // The flames: drawn last, into the same depth buffer, so the cake still hides them where it
   // should — but nothing is multiplied onto them afterwards.
   function renderFlames() {
     if (!flames.length && !sparklers.length) return;
+    if (window.CakeDebug && !CakeDebug.on('flames')) return;
     var ac = renderer.autoClear;
     renderer.autoClear = false;
     camera.layers.set(FLAME_LAYER);
@@ -805,7 +806,8 @@
   // The look (shadows, optional environment and tone mapping) lives in look.js.
   if (window.CakeLook) CakeLook.apply(renderer, scene, key);
   // The stage (lit floor, fog, sky) lives in stage.js.
-  if (window.CakeStage) CakeStage.attach(scene);
+  if (window.CakeStage && (!window.CakeDebug || CakeDebug.on('backdrop'))) CakeStage.attach(scene);
+  if (window.CakeDebug && !CakeDebug.on('shadows') && window.CakeLook) CakeLook.LOOK.shadows = false;
   var candleLight = new THREE.PointLight(0xffb36b, 0, 8, 2);
   scene.add(candleLight);
   // The sparklers' light (v0.99). Always in the scene (at zero when there are none), so adding a
@@ -1138,9 +1140,10 @@
     // Candles go on the top tier first, then overflow onto the annulus below.
     surfaces.reverse();
     sparklers.length = 0;
-    placeSparklers(cfg.sk, surfaces[0]);
-    placeSprinkles(cfg, tiers);
-    if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
+    if (!window.CakeDebug || CakeDebug.on('sparklers')) placeSparklers(cfg.sk, surfaces[0]);
+    if (!window.CakeDebug || CakeDebug.on('sprinkles')) placeSprinkles(cfg, tiers);
+    if (window.CakeDebug && !CakeDebug.on('candles')) { /* switched off for bisecting */ }
+    else if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
     else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs);
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
@@ -1387,7 +1390,7 @@
     '  float alpha = a * max(uCover, uOpaque * core);',
     '  gl_FragColor = vec4(c * uGlow * (a + (alpha - a * uCover)), alpha);',
     '}'].join('\n');
-  var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };
+  var FLAME = { glow: window.CakeDebug ? CakeDebug.num('glow', 0.95) : 0.95, haloGlow: 0.1, cover: window.CakeDebug ? CakeDebug.num('cover', 0.55) : 0.55, lean: 0.6 };
   var FLAME_LAYER = 1;   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
   var flameGeo = (function () {
     var p = [];
@@ -1412,6 +1415,7 @@
     halo.scale.set(1.9, 1.25, 1.9); halo.position.y = 0.0;   // never below the flame's base
     var ember = new THREE.Mesh(emberGeo, emberMat); ember.position.set(0.006, -0.018, 0); ember.userData.noAO = true;
     core.renderOrder = halo.renderOrder = 2;
+    if (window.CakeDebug && !CakeDebug.on('halo')) halo.visible = false;
     // v0.97: flames live on layer 1 and are drawn after the ambient occlusion, which otherwise
     // multiplied onto them — at some angles the surfaces behind a flame were occluded (the
     // candle's top, the wick) and the flame was darkened almost to nothing.
