@@ -1354,7 +1354,7 @@
   // flame on its own phase. A faint larger copy is its halo; a tiny ember marks the wick's tip.
   // The old sprite stays as an invisible anchor, so blowing out, smoke and the rest are unchanged.
   var FLAME_VS = [
-    'uniform float uTime; uniform float uPhase; varying float vH; varying vec3 vN; varying vec3 vV;',
+    'uniform float uTime; uniform float uPhase; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
     'void main(){',
     '  vec3 p = position; float h = clamp(p.y / 0.30, 0.0, 1.0); vH = h;',
     '  float t = uTime + uPhase;',
@@ -1364,11 +1364,11 @@
     '  p.y *= stretch;',
     '  p.x += 0.018 * sway * h * h; p.z += 0.012 * sway2 * h * h;',
     '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
-    '  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);',
+    '  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vAxis = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));',
     '  gl_Position = projectionMatrix * mv;',
     '}'].join('\n');
   var FLAME_FS = [
-    'uniform float uGlow; uniform float uCover; varying float vH; varying vec3 vN; varying vec3 vV;',
+    'uniform float uGlow; uniform float uCover; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
     'void main(){',
     '  float f = abs(dot(normalize(vN), normalize(vV)));',
     '  float core = pow(f, 2.2), edge = pow(f, 0.8);',
@@ -4958,6 +4958,7 @@
     encode: encodeConfig, decode: decodeConfig,
     palettes: PALETTES, group: cakeGroup, camera: camera, SPIN: SPIN, TILT: TILT, TWIST: TWIST, ZOOM: ZOOM,
     set azimuth(v) { camAzimuth = v; }, get azimuth() { return camAzimuth; },
+    set elev(v) { tiltX = (v - CAM_ELEV_BASE) * Math.PI / 180; }, get elev() { return camElev; },
     set zoom(v) { camZoom = Math.max(ZOOM.min, Math.min(ZOOM.max, v)); },
     look: window.CakeLook ? CakeLook.LOOK : null,
     relight: updateRoomLights,

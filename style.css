@@ -684,3 +684,6 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .pills::-webkit-scrollbar { display: none; }
 .pill { flex: none; font: inherit; font-size: 0.85rem; padding: 0.4rem 0.75rem; border-radius: 999px; border: 1.5px solid rgba(59,42,42,0.14); background: #fff; color: #3b2a2a; }
 .pill.on { border-color: #3b2a2a; }
+
+/* v1.01 — which build is running, so screenshots can be matched to a version */
+#build-tag { position: fixed; left: 8px; top: calc(env(safe-area-inset-top, 0px) + 6px); font-size: 10px; letter-spacing: .04em; color: rgba(59,42,42,.35); pointer-events: none; z-index: 50; }
