@@ -1368,7 +1368,7 @@
     '  gl_Position = projectionMatrix * mv;',
     '}'].join('\n');
   var FLAME_FS = [
-    'uniform float uGlow; uniform float uCover; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
+    'uniform float uGlow; uniform float uCover; uniform float uOpaque; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
     'void main(){',
     '  float f = abs(dot(normalize(vN), normalize(vV)));',
     '  float core = pow(f, 2.2), edge = pow(f, 0.8);',
@@ -1380,7 +1380,12 @@
     '  float cone = (1.0 - smoothstep(0.08, 0.3, vH)) * core;',
     '  c *= 1.0 - 0.45 * cone;',
     '  float a = edge * smoothstep(0.0, 0.24, vH) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);   // fades to nothing at the base: no hard edge where the candle hides it',
-    '  gl_FragColor = vec4(c * a * uGlow, a * uCover);',
+    // The flame's HEART hides what's behind it (its own light brought with it); only the edges
+    // and the halo stay translucent. Otherwise the flame took its colour from the backdrop —
+    // rich against the wall, pale and grey against the bright floor, with the horizon line
+    // showing through it.
+    '  float alpha = a * max(uCover, uOpaque * core);',
+    '  gl_FragColor = vec4(c * uGlow * (a + (alpha - a * uCover)), alpha);',
     '}'].join('\n');
   var FLAME = { glow: 0.95, haloGlow: 0.1, cover: 0.55, lean: 0.6 };
   var FLAME_LAYER = 1;   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
@@ -1391,9 +1396,9 @@
   })();
   var emberGeo = new THREE.SphereGeometry(0.009, 8, 6); emberGeo.__shared = true;
   var emberMat = new THREE.MeshBasicMaterial({ color: 0xFF7A2A }); emberMat.__shared = true;
-  function flameMaterial(phase, glow, cover) {
+  function flameMaterial(phase, glow, cover, opaque) {
     return new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uPhase: { value: phase }, uGlow: { value: glow }, uCover: { value: cover || 0 } },
+      uniforms: { uTime: { value: 0 }, uPhase: { value: phase }, uGlow: { value: glow }, uCover: { value: cover || 0 }, uOpaque: { value: opaque || 0 } },
       vertexShader: FLAME_VS, fragmentShader: FLAME_FS,
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
@@ -1402,7 +1407,7 @@
   }
   function makeFlameMesh(phase) {
     var g = new THREE.Group();
-    var core = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.glow, FLAME.cover));
+    var core = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.glow, FLAME.cover, 1));   // the halo stays purely additive
     var halo = new THREE.Mesh(flameGeo, flameMaterial(phase, FLAME.haloGlow));
     halo.scale.set(1.9, 1.25, 1.9); halo.position.y = 0.0;   // never below the flame's base
     var ember = new THREE.Mesh(emberGeo, emberMat); ember.position.set(0.006, -0.018, 0); ember.userData.noAO = true;
