@@ -672,3 +672,9 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 .seg.small.icons { flex: none; margin-left: 0.4rem; }
 .seg.small.icons button { width: 2rem; flex: none; padding: 6px 0; }
 #fond-finish-row.dim { opacity: .35; pointer-events: none; }
+
+/* v0.94 — number candles */
+#f-age { width: 5.5rem; font: inherit; font-size: 1.05rem; padding: 0.45rem 0.7rem; border-radius: 0.7rem; border: 1.5px solid rgba(59,42,42,0.15); background: #fff; color: #3b2a2a; }
+#count-hint { font-size: 0.8rem; color: rgba(59,42,42,0.6); padding: 0 0.2rem 0.2rem; }
+/* rows that set display:flex would otherwise ignore [hidden] */
+.rowline[hidden], .hint[hidden] { display: none !important; }

@@ -10,7 +10,7 @@
 
   var SCHEMA_VERSION = 1;
   var MAX_CANDLES = 100;          // what a LINK may carry (old gifts keep their count)
-  var BUILDER_MAX_CANDLES = 20;   // what the builder offers
+  var BUILDER_MAX_CANDLES = 6;    // what the builder offers (v0.94: bigger birthdays get number candles)
   // ---- MVP feature flags (Phase 1, 21 Sept 2026) ----
   // These hide parts of the detailed builder. They change what a SENDER can choose, never what
   // a recipient can see: links carrying an occasion, buttercream or a third tier still decode
@@ -79,6 +79,7 @@
     finishes: [0, 0, 8, 8, 9, 9, 4, 4, 7, 7, 10, 10, 11, 2, 6],   // icing finish: the tooled ones most often, then the rest
     sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
+    numberChance: 0.3,                      // how often a random cake gets number candles
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
     // The key light (every slider on the dev panel's Key tab). Light size is baked into the
@@ -107,6 +108,9 @@
     applyLightPreset(B.lights[randInt(0, B.lights.length - 1)], true);
     if (onLoad && window.CakeLook) CakeLook.LOOK.pcss.lightSize = +randRange(B.key.lightSize[0], B.key.lightSize[1]).toFixed(2);
     d.rm = Math.random() < 0.7 ? 0 : 1;                  // satin mostly, grosgrain now and then
+    // Number candles now and then, spelling a random age: children's birthdays and grown-up ones.
+    d.cm = Math.random() < B.numberChance ? 1 : 0;
+    d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
@@ -187,6 +191,20 @@
     var hex = PALETTES.ribbon[clampIndex(rt.c, PALETTES.ribbon)].hex;
     return window.CakeFrosting ? CakeFrosting.ribbonMaterial(hex, cfg.rm)
                                : new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, side: THREE.DoubleSide });
+  }
+  function syncCandleMode() {
+    var numbers = draft.cm === 1;
+    Array.prototype.forEach.call($('candle-mode').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cm') === draft.cm); });
+    $('count-row').hidden = numbers; $('age-row').hidden = !numbers;
+    $('count-hint').hidden = numbers || draft.n < BUILDER_MAX_CANDLES;
+    var ag = $('f-age'); if (document.activeElement !== ag) ag.value = String(draft.age);
+    syncMessageNudge();
+  }
+  // A gentle suggestion only: the message box's placeholder offers "Happy 60th!" — never its text.
+  function ordinal(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+  function syncMessageNudge() {
+    var m = els && els.m; if (!m) return;
+    m.placeholder = draft.cm === 1 ? 'Happy ' + ordinal(draft.age) + '!' : 'Happy birthday!';
   }
   function serializeRibbons(rt) {
     return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
@@ -500,6 +518,8 @@
       sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
       bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
       rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
+      cm: clampInt(c.cm, 0, 1, 0),          // candle mode (v0.94): 0 candles · 1 number candles
+      age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
           : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
@@ -560,7 +580,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -569,7 +589,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -676,7 +696,10 @@
   // kernelRadius: how far round a point it looks (world units). maxDistance: how far BEHIND a point
   // something may be and still count — small, or thin things like candles cast dark halos on
   // whatever is far behind them. strength: how much of it to apply.
-  var AO = { on: true, scale: 0.5, kernelRadius: 0.12, minDistance: 0.0002, maxDistance: 0.004, kernelSize: 16, strength: 0.6, pass: null, w: 0, h: 0, mix: null };
+  // v0.93: full resolution and a much tighter radius. At half resolution, the visible sliver of
+  // icing under a holder was only a pixel or two tall — the blur smeared its occlusion outward into
+  // a halo. Now the darkening sits where it belongs: under the holder, fading within millimetres.
+  var AO = { on: true, scale: 1.0, kernelRadius: 0.045, minDistance: 0.0001, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
   var _aoSize = new THREE.Vector2();
   function renderAO() {
     if (!AO.on || !THREE.SSAOPass || !THREE.SimplexNoise) return;
@@ -1071,7 +1094,8 @@
 
     // Candles go on the top tier first, then overflow onto the annulus below.
     surfaces.reverse();
-    placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom);
+    if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
+    else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom);
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
     // began mutating its config in place, came back to life when v0.60 made the tier switch
@@ -1185,6 +1209,95 @@
     return out;
   }
 
+  // ---- Number candles (v0.94) ----
+  // Each digit is Fredoka's own outline, extruded ~1.2cm thick with a soft rounded bevel, in the
+  // same wax as the candles. The wick sits at the digit's highest point; one spike under the
+  // middle of its foot holds it a few millimetres off the icing. Built once per digit and height.
+  var NUM = { height: 1.3, depth: 0.24, bevel: 0.045, gap: 0.05, spacing: 0.08, glow: 0.55 };
+  var digitCache = {};
+  function digitGeometry(ch, H) {
+    var key = ch + '@' + H.toFixed(3);
+    if (digitCache[key]) return digitCache[key];
+    var G = window.CakeDigits && CakeDigits.glyphs[ch];
+    if (!G) return null;
+    var sp = new THREE.ShapePath();
+    G.c.forEach(function (c) {
+      if (c[0] === 'M') sp.moveTo(c[1], c[2]);
+      else if (c[0] === 'L') sp.lineTo(c[1], c[2]);
+      else if (c[0] === 'Q') sp.quadraticCurveTo(c[1], c[2], c[3], c[4]);
+      else if (c[0] === 'C') sp.bezierCurveTo(c[1], c[2], c[3], c[4], c[5], c[6]);
+    });
+    // Holes (the 0, 4, 6, 8, 9): take whichever winding gives the counters as holes.
+    var a = sp.toShapes(false), b = sp.toShapes(true);
+    function holes(list) { return list.reduce(function (n, x) { return n + x.holes.length; }, 0); }
+    var shapes = holes(a) >= holes(b) ? a : b;
+    var s = H / (G.b[3] - G.b[1]), bev = NUM.bevel;
+    var geo = new THREE.ExtrudeGeometry(shapes, { depth: (NUM.depth - 2 * bev) / s, curveSegments: 12, bevelEnabled: true,
+      bevelThickness: bev / s, bevelSize: bev / s * 0.9, bevelSegments: 5 });
+    geo.scale(s, s, s);
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox;
+    geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+    geo.computeBoundingBox(); bb = geo.boundingBox;
+    var pos = geo.attributes.position, uv = geo.attributes.uv, top = { x: 0, y: -1e9 }, lows = [];
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i);
+      uv.setXY(i, 0.5, (y - bb.min.y) / (bb.max.y - bb.min.y));   // v runs up the digit, for the glow
+      if (y > top.y) top = { x: x, y: y };
+      if (y < bb.min.y + 0.03) lows.push(x);
+    }
+    uv.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.setAttribute('aLit', new THREE.Float32BufferAttribute(new Float32Array(pos.count).fill(1), 1));   // the wax shader's per-candle glow switch; per digit it's driven by the material instead
+    geo.__shared = true;
+    return (digitCache[key] = { geo: geo, width: bb.max.x - bb.min.x, top: top,
+      foot: lows.length ? lows.reduce(function (p, q) { return p + q; }, 0) / lows.length : 0 });
+  }
+  function placeNumberCandles(age, surface, candleHex) {
+    if (!surface || !window.CakeDigits) return;
+    var chars = age.replace(/[^0-9]/g, '').slice(0, 2).split('');
+    if (!chars.length) return;
+    var H = NUM.height * Math.max(0.7, Math.min(1, surface.rMax / 1.95));   // smaller on a smaller top tier
+    var parts = chars.map(function (ch) { return digitGeometry(ch, H); }).filter(Boolean);
+    var total = parts.reduce(function (w, p) { return w + p.width; }, 0) + NUM.spacing * (parts.length - 1);
+    var x = -total / 2, fs = 0.28;
+    parts.forEach(function (P, i) {
+      var sd = window.CakeFrosting ? CakeFrosting.seedOf() : 0;
+      function h(k) { var n = Math.sin((i + 3) * 127.1 + k * 311.7 + sd * 74.7) * 43758.5453; return n - Math.floor(n); }
+      var cx = x + P.width / 2; x += P.width + NUM.spacing;
+      var grp = new THREE.Group();
+      grp.position.set(cx, surface.y + NUM.gap, (h(1) - 0.5) * 0.08);
+      grp.rotation.set((h(2) - 0.5) * 0.06, (h(3) - 0.5) * 0.12, (h(4) - 0.5) * 0.05);   // placed by hand
+      var mat = makeWaxMaterial(candleHex);
+      mat.emissiveIntensity = 1.1 * NUM.glow;            // thick wax: a gentler glow than the thin candles'
+      grp.add(new THREE.Mesh(P.geo, mat));
+      var spike = new THREE.Mesh(numberSpikeGeo, holderMat);
+      spike.position.set(P.foot, -(NUM.gap + 0.06) / 2 + 0.01, 0);
+      grp.add(spike);
+      var wick = new THREE.Mesh(wickGeo, wickMat);
+      wick.position.set(P.top.x, P.top.y + 0.02, 0);
+      grp.add(wick);
+      built.add(grp);
+      grp.updateMatrixWorld(true);
+      var fp = new THREE.Vector3(P.top.x, P.top.y + 0.18, 0).applyMatrix4(grp.matrix);
+      var flame = new THREE.Sprite(flameMat.clone());
+      flame.material.__shared = false;
+      flame.scale.set(fs * 0.7, fs, 1);
+      flame.position.copy(fp);
+      built.add(flame);
+      var halo = null;
+      if (window.CakeLook && CakeLook.LOOK.halo.enabled) {
+        halo = new THREE.Sprite(CakeLook.haloMaterial());
+        halo.scale.set(fs * CakeLook.LOOK.halo.scale, fs * CakeLook.LOOK.halo.scale, 1);
+        halo.position.copy(fp); halo.renderOrder = -1; built.add(halo);
+      }
+      wicks.push(wick);
+      flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: fp.x, z: fp.z,
+                    k: 1, lit: 1, y: fp.y, leanX: 0, leanZ: 0, mat: mat, glowBase: mat.emissiveIntensity });
+    });
+  }
+  var numberSpikeGeo = new THREE.CylinderGeometry(0.03, 0.02, NUM.gap + 0.06, 12);
+  numberSpikeGeo.__shared = true;
   function placeCandles(n, surfaces, candleHex, animateFrom) {
     var pts = layout(n, surfaces);
     if (!pts.length) return;
@@ -1976,7 +2089,7 @@
       if (f.glow) {                                      // the candle's inner glow goes with its flame
         var gv = Math.max(0, Math.min(1, f.lit * f.k));
         if (Math.abs(f.glow.array[f.gi] - gv) > 0.01) { f.glow.array[f.gi] = gv; f.glow.needsUpdate = true; }
-      }
+      } else if (f.mat) f.mat.emissiveIntensity = f.glowBase * Math.max(0, Math.min(1, f.lit * f.k));   // a number candle
       var lx = f.leanX * leanNow, lz = f.leanZ * leanNow;
       camera.matrixWorld.extractBasis(_right, _upv, _fwd);
       var s = f.base * f.k * f.lit * (1 + 0.10 * Math.sin(t * 3.1 + f.phase) + 0.04 * Math.sin(t * 21 + f.phase * 3));
@@ -3607,6 +3720,7 @@
     els.mCount.textContent = draft.m.length + ' / ' + MAX_MSG;
     els.n.value = draft.n;
     els.nOut.textContent = draft.n;
+    syncCandleMode();
     syncTiers(draft.t);
     // frosting swatches: see syncFrostTiers (per tier)
     Array.prototype.forEach.call($('sw-sp').children, function (b, i) { b.setAttribute('aria-pressed', i === draft.sp ? 'true' : 'false'); });
@@ -3948,8 +4062,19 @@
       msgTimer = setTimeout(function () { updateMessage(draft.m); }, 120);
     });
 
+    // Candles | Numbers, and the age. Each side keeps its own settings when you switch.
+    Array.prototype.forEach.call($('candle-mode').children, function (b) {
+      b.addEventListener('click', function () { draft.cm = +b.getAttribute('data-cm'); draft = normalize(draft); syncCandleMode(); build(draft); });
+    });
+    $('f-age').addEventListener('input', function (e) {
+      var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+      if (v !== e.target.value) e.target.value = v;
+      if (!v || +v < 1) return;                           // mid-typing: keep the last good age on the cake
+      draft.age = +v; draft = normalize(draft); syncMessageNudge(); scheduleBuild();
+    });
     els.n.addEventListener('input', function () {
       draft.n = clampInt(els.n.value, 0, BUILDER_MAX_CANDLES, 0);
+      $('count-hint').hidden = draft.n < BUILDER_MAX_CANDLES;   // at the cap: point to number candles
       els.nOut.textContent = draft.n;
       updateCta();
       scheduleBuild();
@@ -4143,6 +4268,8 @@
   // =====================================================================
   function warmCompile() {
     var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
+    var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
+    if (dg) { tmp.add(new THREE.Mesh(dg.geo, makeWaxMaterial(0x4FC3F7))); tmp.add(new THREE.Mesh(numberSpikeGeo, holderMat)); }
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
     var frosting = PALETTES.frosting[0].hex, filling = PALETTES.filling[7].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });

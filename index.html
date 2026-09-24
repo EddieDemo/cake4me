@@ -135,7 +135,13 @@
         </div>
 
         <div class="tray" id="tray-candles" hidden>
-          <div class="rowline"><span class="rowlab">Candles</span><input id="f-n" type="range" min="0" max="20" value="1"><output id="n-out" for="f-n">30</output></div>
+          <div class="seg small" id="candle-mode">
+            <button type="button" data-cm="0" class="on">Candles</button>
+            <button type="button" data-cm="1">Numbers</button>
+          </div>
+          <div class="rowline" id="count-row"><span class="rowlab">Candles</span><input id="f-n" type="range" min="0" max="6" value="1"><output id="n-out" for="f-n">1</output></div>
+          <div class="rowline" id="age-row" hidden><span class="rowlab">Age</span><input id="f-age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="e.g. 30" autocomplete="off"></div>
+          <div class="hint" id="count-hint" hidden>Bigger birthday? Try number candles.</div>
           <div class="rowline"><span class="rowlab">Colour</span><div class="swatches" id="sw-cc" data-c="cc"></div></div>
         </div>
 
@@ -286,6 +292,7 @@
   <script src="stage.js"></script>
   <script src="look.js"></script>
   <script src="shapes.js"></script>
+  <script src="digits.js"></script>
   <script src="frosting.js"></script>
   <script src="dev.js"></script>
   <script src="app.js"></script>
