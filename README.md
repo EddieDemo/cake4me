@@ -1,10 +1,22 @@
-# Cake — v0.97 (flames no longer fade at some angles)
+# Cake — v0.98 (candle styles)
 
-The flames were being darkened by the ambient occlusion. Occlusion is multiplied onto the finished
-frame, and a flame's pixels sit in front of whatever is behind it — at some angles that's the
-candle's own top and wick, which are occluded, so the flame was multiplied down almost to nothing.
+Seven candle styles, plus **All**, which gives each candle its own style (from the cake's seed, so
+the recipient sees the same mix):
+**Classic · Twisted · Striped · Ombré · Gold · Silver · Tapered · All**
 
-Now the flames live on their own render layer and are drawn **after** the occlusion, into the same
-depth buffer: the cake still hides them where it should (behind the cake, the far side of the
-top), but nothing is multiplied onto them. They also no longer take part in the occlusion pass
-at all. No new shaders; files load with `?v=0.97`.
+- **Twisted** — three ridges spiralling up the candle (a new shape).
+- **Striped / Ombré** — the wax with a pattern in the candle's colour on white (candy stripes; a
+  fade to pale at the top).
+- **Gold / Silver** — metallic, reflecting a soft generated studio environment (without it, metal
+  reads flat brown or grey).
+- **Tapered** — slimmer toward the top and ~22% taller.
+All share the holders, the hand-placed variation (push depth, lean, burn height), the per-candle
+glow for the waxy ones, and the new flames. One instanced mesh per style in use, so a mix costs a
+few draw calls, not one per candle.
+
+**Builder:** a **Style** row of pills in the Candles tray (Candles mode; number candles stay
+classic wax for now). **Generator:** picks a style for every random cake — Classic most often,
+then Twisted, Striped, Gold and All-mixed, the rest now and then.
+
+Schema `cs` (0–6, 7 = All) appended; older links are Classic. The patterned wax and metal shaders
+are compiled at load. No errors; files load with `?v=0.98`.

@@ -678,3 +678,9 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 #count-hint { font-size: 0.8rem; color: rgba(59,42,42,0.6); padding: 0 0.2rem 0.2rem; }
 /* rows that set display:flex would otherwise ignore [hidden] */
 .rowline[hidden], .hint[hidden] { display: none !important; }
+
+/* v0.98 — candle style pills */
+.pills { display: flex; gap: 0.35rem; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; padding: 0.15rem 0; }
+.pills::-webkit-scrollbar { display: none; }
+.pill { flex: none; font: inherit; font-size: 0.85rem; padding: 0.4rem 0.75rem; border-radius: 999px; border: 1.5px solid rgba(59,42,42,0.14); background: #fff; color: #3b2a2a; }
+.pill.on { border-color: #3b2a2a; }

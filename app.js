@@ -80,6 +80,7 @@
     sponges: [0, 0, 0, 1, 2, 4, 4, 3, 5, 6, 7, 8],   // the vanilla bakes most often, chocolate next, the rest now and then
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     numberChance: 0.3,                      // how often a random cake gets number candles
+    candleStyles: [0, 0, 0, 1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7],   // classic most, then twisted, striped, gold, all-mixed…
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
     // The key light (every slider on the dev panel's Key tab). Light size is baked into the
@@ -110,6 +111,7 @@
     d.rm = Math.random() < 0.7 ? 0 : 1;                  // satin mostly, grosgrain now and then
     // Number candles now and then, spelling a random age: children's birthdays and grown-up ones.
     d.cm = Math.random() < B.numberChance ? 1 : 0;
+    d.cs = B.candleStyles[randInt(0, B.candleStyles.length - 1)];
     d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
@@ -196,7 +198,8 @@
     var numbers = draft.cm === 1;
     Array.prototype.forEach.call($('candle-mode').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cm') === draft.cm); });
     function show(id, on) { var el = $(id); el.hidden = !on; el.style.display = on ? '' : 'none'; }   // not relying on CSS for this
-    show('count-row', !numbers); show('age-row', numbers);
+    show('count-row', !numbers); show('age-row', numbers); show('style-row', !numbers);
+    Array.prototype.forEach.call($('candle-styles').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cs') === draft.cs); });
     show('count-hint', !numbers && draft.n >= BUILDER_MAX_CANDLES);
     var ag = $('f-age'); if (document.activeElement !== ag) ag.value = String(draft.age);
     syncMessageNudge();
@@ -520,6 +523,7 @@
       bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
       rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
       cm: clampInt(c.cm, 0, 1, 0),          // candle mode (v0.94): 0 candles · 1 number candles
+      cs: clampInt(c.cs, 0, 7, 0),          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
@@ -581,7 +585,7 @@
   function encodeConfig(c) {
     c = normalize(c);
     var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age];
+                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs];
     return b64url(parts.join('|'));
   }
   function decodeConfig(code) {
@@ -590,7 +594,7 @@
       if ((p[0] | 0) < 1) return null;
       var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
       return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34] });
+                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35] });
     } catch (e) { return null; }
   }
   function readHash() {
@@ -1114,7 +1118,7 @@
     // Candles go on the top tier first, then overflow onto the annulus below.
     surfaces.reverse();
     if (cfg.cm === 1) placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
-    else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom);
+    else placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs);
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
     // began mutating its config in place, came back to life when v0.60 made the tier switch
@@ -1403,7 +1407,84 @@
     else g.quaternion.identity();
     g.__mats[0].uniforms.uTime.value = t; g.__mats[1].uniforms.uTime.value = t;
   }
-  function placeCandles(n, surfaces, candleHex, animateFrom) {
+  // ---- Candle styles (v0.98) ----
+  // 0 Classic · 1 Twisted · 2 Striped · 3 Ombré · 4 Gold · 5 Silver · 6 Tapered · 7 All (each candle
+  // picks one, from the cake's seed). All share the holders, the hand-placed variation, the flames;
+  // the waxy ones share the wax shader (with the glow), the metallic ones reflect a soft studio.
+  var CANDLE_STYLES = ['Classic', 'Twisted', 'Striped', 'Ombré', 'Gold', 'Silver', 'Tapered'];
+  var STYLE_ALL = 7;
+  var twistGeo = (function () {                        // three ridges spiralling up, fading at the ends
+    var g = new THREE.CylinderGeometry(1, 1, 1, 48, 64, false), pos = g.attributes.position, uv = g.attributes.uv;
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), r = Math.sqrt(x * x + z * z);
+      uv.setY(i, y + 0.5);
+      if (r < 1e-5) continue;
+      var th = Math.atan2(z, x), yy = y + 0.5, fade = Math.max(0, Math.min(1, yy / 0.04, (1 - yy) / 0.05));
+      var k = 0.97 * (1 + 0.2 * Math.cos(3 * th + yy * 17) * fade);
+      pos.setXYZ(i, x * k, y, z * k);
+    }
+    uv.needsUpdate = true; g.computeVertexNormals(); return g;
+  })();
+  var taperGeo = (function () {                        // slimmer toward the top
+    var p = [new THREE.Vector2(0, -0.5), new THREE.Vector2(1.05, -0.5)];
+    for (var i = 0; i <= 20; i++) { var t = i / 20; p.push(new THREE.Vector2(1.05 - 0.4 * t, -0.5 + t * 0.994)); }
+    p.push(new THREE.Vector2(0.5, 0.5), new THREE.Vector2(0, 0.49));
+    var g = new THREE.LatheGeometry(p, 24), pos = g.attributes.position, uv = g.attributes.uv;
+    for (var j = 0; j < pos.count; j++) uv.setY(j, pos.getY(j) + 0.5);
+    uv.needsUpdate = true; return g;
+  })();
+  twistGeo.__shared = taperGeo.__shared = true;
+  var STYLE_GEO = [candleGeo, twistGeo, candleGeo, candleGeo, candleGeo, candleGeo, taperGeo];
+  var STYLE_HEIGHT = [1, 1, 1, 1, 1, 1, 1.22];          // tapered candles stand taller
+  var patternCache = {};
+  function candlePattern(hex, kind) {                   // stripes or an ombré, in the candle's colour, on white wax
+    var key = kind + hex;
+    if (patternCache[key]) return patternCache[key];
+    var W = 128, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var g = c.getContext('2d'), col = '#' + ('000000' + hex.toString(16)).slice(-6);
+    if (kind === 'stripe') {
+      g.fillStyle = '#FFFDF8'; g.fillRect(0, 0, W, H); g.fillStyle = col;
+      for (var k = -8; k < 16; k++) { var y0 = k * 32; g.beginPath(); g.moveTo(0, y0); g.lineTo(W, y0 - 64); g.lineTo(W, y0 - 51); g.lineTo(0, y0 + 13); g.closePath(); g.fill(); }
+    } else {
+      var gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#FFFBF4'); gr.addColorStop(0.55, col); gr.addColorStop(1, col);
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    }
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.__shared = true;
+    return (patternCache[key] = t);
+  }
+  var studioEnv = null;                                  // a soft studio for metal to reflect
+  function getStudioEnv() {
+    if (studioEnv) return studioEnv;
+    var c = document.createElement('canvas'); c.width = 512; c.height = 256; var g = c.getContext('2d');
+    var gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, '#fff6e8'); gr.addColorStop(0.45, '#f3dcc0'); gr.addColorStop(0.5, '#ffffff'); gr.addColorStop(0.56, '#b89a7c'); gr.addColorStop(1, '#5a4637');
+    g.fillStyle = gr; g.fillRect(0, 0, 512, 256);
+    g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(60, 40, 90, 70); g.fillRect(330, 30, 120, 60);
+    var t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding;
+    var pm = new THREE.PMREMGenerator(renderer);
+    studioEnv = pm.fromEquirectangular(t).texture; studioEnv.__shared = true;
+    t.dispose(); pm.dispose();
+    return studioEnv;
+  }
+  function styleMaterial(style, candleHex) {
+    if (style === 4 || style === 5) {
+      return new THREE.MeshStandardMaterial({ color: style === 4 ? 0xD8B25A : 0xD9DCE0, metalness: 0.9, roughness: 0.28,
+                                              envMap: getStudioEnv(), envMapIntensity: 1.1 });
+    }
+    if (style === 2 || style === 3) {
+      var m = makeWaxMaterial(0xffffff);
+      m.map = candlePattern(candleHex, style === 2 ? 'stripe' : 'ombre');
+      return m;
+    }
+    return makeWaxMaterial(candleHex);
+  }
+  function candleStyleOf(cs, i) {
+    if (cs !== STYLE_ALL) return cs;
+    var sd = window.CakeFrosting ? CakeFrosting.seedOf() : 0;
+    var n = Math.sin(i * 91.7 + 9 * 311.7 + sd * 74.7) * 43758.5453;
+    return Math.floor((n - Math.floor(n)) * CANDLE_STYLES.length);
+  }
+  function placeCandles(n, surfaces, candleHex, animateFrom, cs) {
     var pts = layout(n, surfaces);
     if (!pts.length) return;
     if (animateFrom === undefined) animateFrom = Infinity;
@@ -1416,12 +1497,19 @@
     // Each candle stands in its holder: lifted by the spike showing, and the cup's floor.
     var lift = HOLDER.gap + radius * HOLDER.cupH * HOLDER.floor * 0.5;
 
-    var bodyMat = makeWaxMaterial(candleHex);
-    var bGeo = candleGeo.clone();                        // its own copy: it carries this set's per-candle glow
-    var litAttr = new THREE.InstancedBufferAttribute(new Float32Array(pts.length).fill(1), 1);
-    bGeo.setAttribute('aLit', litAttr);
-    var bodies = new THREE.InstancedMesh(bGeo, bodyMat, pts.length);
-    bodies.__litAttr = litAttr;
+    // One instanced mesh per style in use; each candle knows its set and its slot in it.
+    cs = cs | 0;
+    var styleOf = pts.map(function (p, i) { return candleStyleOf(cs, i); });
+    var sets = {};
+    styleOf.forEach(function (st) { sets[st] = sets[st] || { count: 0 }; sets[st].count++; });
+    Object.keys(sets).forEach(function (k) {
+      var st = +k, S = sets[k];
+      var g = STYLE_GEO[st].clone();                     // its own copy: it carries this set's per-candle glow
+      S.lit = new THREE.InstancedBufferAttribute(new Float32Array(S.count).fill(1), 1);
+      g.setAttribute('aLit', S.lit);
+      S.mesh = new THREE.InstancedMesh(g, styleMaterial(st, candleHex), S.count);
+      S.next = 0;
+    });
     var holders = new THREE.InstancedMesh(holderGeo(radius), holderMat, pts.length);
     var m = new THREE.Matrix4();
     var col = new THREE.Color();
@@ -1432,9 +1520,13 @@
     var params = [];
     pts.forEach(function (p, i) {
       var C = candleHand(i, height);
+      var st = styleOf[i], S = sets[st];
+      C.h *= STYLE_HEIGHT[st]; C.set = S; C.j = S.next++;
       params.push(C);
       composeCandle(m, p, C, radius, lift, 1);
-      bodies.setMatrixAt(i, m);
+      S.mesh.setMatrixAt(C.j, m);
+      var bodies = S.mesh, litAttr = S.lit;
+      var plainColour = st === 2 || st === 3 || st === 4 || st === 5;   // patterned and metal: the colour lives in the material
       composeHolder(m, p, C, i);
       holders.setMatrixAt(i, m);
       if (bodies.setColorAt) {
@@ -1442,10 +1534,11 @@
         // lightness — seeded, so the recipient sees the same box of candles. Pale yellows drift
         // towards green quickly, so their hue is kept on a tighter leash.
         var yellow = hsl.h > 0.1 && hsl.h < 0.2;
-        col.setHSL((hsl.h + (C.c1 - 0.5) * 0.035 * (yellow ? 0.35 : 1) + 1) % 1,
+        if (plainColour) col.setHSL(0, 0, Math.max(0, Math.min(1, 0.97 + (C.c3 - 0.5) * 0.05)));
+        else col.setHSL((hsl.h + (C.c1 - 0.5) * 0.035 * (yellow ? 0.35 : 1) + 1) % 1,
                    Math.max(0, Math.min(1, hsl.s + (C.c2 - 0.5) * 0.14)),
                    Math.max(0, Math.min(1, hsl.l + (C.c3 - 0.5) * 0.07)));
-        bodies.setColorAt(i, col);
+        bodies.setColorAt(C.j, col);
       }
 
       var wick = new THREE.Mesh(wickGeo, wickMat);
@@ -1472,11 +1565,14 @@
       }
       var fm = makeFlameMesh(((i * 0.618) % 1) * Math.PI * 2 + i * 1.7); built.add(fm);
       flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: top.x, z: top.z,
-                    k: 1, lit: 1, y: top.y + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: i, mesh: fm, root: 0.13 });
+                    k: 1, lit: 1, y: top.y + 0.16, leanX: 0, leanZ: 0, glow: litAttr, gi: C.j, mesh: fm, root: 0.13 });
     });
-    bodies.instanceMatrix.needsUpdate = true;
-    if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
-    built.add(bodies);
+    Object.keys(sets).forEach(function (k) {
+      var M = sets[k].mesh;
+      M.instanceMatrix.needsUpdate = true;
+      if (M.instanceColor) M.instanceColor.needsUpdate = true;
+      built.add(M);
+    });
     holders.instanceMatrix.needsUpdate = true;
     built.add(holders);
 
@@ -1484,7 +1580,7 @@
     if (animateFrom < pts.length) {
       var count = pts.length - animateFrom;
       var stagger = Math.min(12, 1200 / Math.max(1, count));
-      spawn = { bodies: bodies, pts: pts, radius: radius, height: height, lift: lift, params: params, from: animateFrom,
+      spawn = { bodies: null, pts: pts, radius: radius, height: height, lift: lift, params: params, from: animateFrom,
                 stagger: stagger, start: performance.now(), done: false };
       // Hide new ones immediately
       for (var i = animateFrom; i < pts.length; i++) {
@@ -1497,7 +1593,7 @@
   function setCandleScale(sp, i, k) {
     var p = sp.pts[i], C = sp.params[i], m = _m4;
     composeCandle(m, p, C, sp.radius, sp.lift || 0, Math.max(0.001, k));
-    sp.bodies.setMatrixAt(i, m);
+    C.set.mesh.setMatrixAt(C.j, m); C.set.mesh.instanceMatrix.needsUpdate = true;
     var f = flames[i];
     if (f) { f.k = k; f.sprite.visible = k > 0.05; }
     var w = wicks[i];
@@ -1540,8 +1636,7 @@
       if (t < 1) allDone = false;
       setCandleScale(sp, i, EASE.pop(Math.min(1, t)));
     }
-    sp.bodies.instanceMatrix.needsUpdate = true;
-    if (allDone) sp.done = true;
+    if (allDone) sp.done = true;                         // (each style's mesh is flagged in setCandleScale)
   }
 
   function makeFlameTexture() {
@@ -4177,6 +4272,12 @@
       e.stopPropagation();
       draft.cm = +b.getAttribute('data-cm'); draft = normalize(draft); syncCandleMode(); build(draft);
     });
+    CANDLE_STYLES.concat(['All']).forEach(function (name, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'pill'; b.textContent = name;
+      var cs = name === 'All' ? STYLE_ALL : i; b.setAttribute('data-cs', cs);
+      b.addEventListener('click', function () { draft.cs = cs; draft = normalize(draft); syncCandleMode(); build(draft); });
+      $('candle-styles').appendChild(b);
+    });
     $('f-age').addEventListener('input', function (e) {
       var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
       if (v !== e.target.value) e.target.value = v;
@@ -4380,6 +4481,8 @@
   function warmCompile() {
     var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
     tmp.add(makeFlameMesh(0));                            // the flame shader
+    tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(2, 0x4FC3F7), 1));   // patterned wax
+    tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(4, 0), 1));          // metal
     var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
     if (dg) { tmp.add(new THREE.Mesh(dg.geo, makeWaxMaterial(0x4FC3F7))); tmp.add(new THREE.Mesh(numberSpikeGeo, holderMat)); }
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
