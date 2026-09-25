@@ -23,7 +23,7 @@ with sync_playwright() as p:
         cfg = dict(G.get('base', {}), **cfg)
         # start from the full default cake, not the random one the page loaded with — otherwise
         # whatever the golden config doesn't mention (shape, filling, colours) is random
-        page.evaluate("cake.set(cake.decode(cake.encode({}))); cake.light(0)")   # the light preset isn't in the link (yet) — pin it
+        page.evaluate("cake.set(cake.decode(cake.encode({})))")   # the light preset is in the link now (v1.14)
         page.evaluate("cake.set(%s); cake.rotate=false; cake.azimuth=%s; cake.elev=%s; cake.zoom=%s; cake.PIXEL.minSamples=1e9" % (json.dumps(cfg), CAM['azimuth'], CAM['elev'], CAM['zoom']))
         page.wait_for_timeout(2500)
         page.evaluate("cake.settle()"); page.wait_for_timeout(600)
