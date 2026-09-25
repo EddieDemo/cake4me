@@ -1,0 +1,4 @@
+Emoji artwork: Noto Emoji, by Google — https://github.com/googlefonts/noto-emoji
+The emoji images are licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). They have been modified: each is traced to an
+outline, joined into one shape with a cream rim, flattened onto cream and resized for Cake4.me.

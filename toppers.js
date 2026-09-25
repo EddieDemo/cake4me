@@ -46,10 +46,31 @@
       });
       return { keys: keys, unknown: unknown };
     }
+    // One sprite sheet holds every emoji's face (emoji/sheet.jpg): one download for the whole set,
+    // and one file to upload. Each topper uses its own cell by offsetting the shared texture —
+    // so a cake with three emojis still costs one image.
+    var sheetTex = null;
+    function sheet() {
+      if (sheetTex) return sheetTex;
+      sheetTex = new THREE.TextureLoader().load('emoji/sheet.jpg?v=' + (window.CAKE_VERSION || ''), function (t) {
+        (t.__pending || []).forEach(function (c) { c.image = t.image; c.needsUpdate = true; });   // the clones made while it loaded
+        t.__pending = null;
+      });
+      sheetTex.encoding = THREE.sRGBEncoding; sheetTex.anisotropy = 8;
+      sheetTex.generateMipmaps = false; sheetTex.minFilter = THREE.LinearFilter;   // no mipmaps: they'd bleed between cells
+      sheetTex.wrapS = sheetTex.wrapT = THREE.ClampToEdgeWrapping;
+      return CakeResources.keep(sheetTex);
+    }
     function texture(key) {
       if (texCache[key]) return texCache[key];
-      var t = new THREE.TextureLoader().load('emoji/' + key + '.jpg');
-      t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+      var S = window.CakeEmojiSheet, o = window.CakeEmojiOutlines && window.CakeEmojiOutlines[key];
+      if (!S || !o) return sheet();
+      var base = sheet(), t = base.clone();          // its own offset; the image itself is shared
+      if (base.image) t.needsUpdate = true;          // the sheet may still be loading: mark it when it arrives
+      else base.__pending = (base.__pending || []).concat(t);
+      var inset = 0.5 / S.cell;                     // half a pixel in, so no neighbouring cell shows at the edge
+      t.repeat.set(1 / S.cols - 2 * inset, 1 / S.rows - 2 * inset);
+      t.offset.set((o.i % S.cols) / S.cols + inset, 1 - Math.floor(o.i / S.cols + 1) / S.rows + inset);
       return (texCache[key] = CakeResources.keep(t));
     }
     // An emoji as a candle: its outline extruded to the number candles' depth and bevel, the face

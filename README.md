@@ -1,16 +1,16 @@
-# Cake — v1.23 (toppers are decorations, not candles)
+# Cake — v1.25 (one sprite sheet instead of 187 files)
 
-The tag reads **v1.23**.
+The tag reads **v1.25**. No visual changes.
 
-- **Toppers — numbers and emojis — are no longer candles.** They're cast in the same wax, on the
-  same pick, but have no wick and no flame, and so no glow from within (that glow is the flame's
-  light). Blowing out is only for candles.
-- **Toppers and candles together, toppers in the middle.** Toppers take the centre of the top
-  tier; up to 8 candles stand in an arc behind them, and larger counts (from links) keep to the
-  outer rings round them.
-- **A cake with only toppers** (no candles) now goes straight to the reveal after the usual beat —
-  before, the viewer waited forever for a breath with nothing to blow out.
+**The emoji folder is now four files** (was 190): `sheet.jpg` (every emoji's face, 14×14 cells of
+192px, ~1MB), `outlines.js` (the outlines and each emoji's cell), `index.js` (the list of keys)
+and `NOTICE.txt`. One drag to upload, whatever the set grows to.
 
-Checks: the Toppers tray by taps; a recipient with toppers and no candles (reveals); a recipient
-with toppers and 20 candles (candles round the outside, all blown out, reveals); load and
-feature switching (36 programs); six golden links.
+It's also better for the app: one image for the whole set instead of one request per emoji, so a
+cake with three emoji toppers downloads one file. Each topper uses its own cell by offsetting the
+shared texture. Two details that matter: mipmaps are off and the cells are sampled half a pixel
+in, so no neighbouring emoji can bleed into another's edge; and toppers created while the sheet is
+still loading are updated when it arrives.
+
+Checks: typed combinations (🐐👍🏽🎂, 🥳🫶🍆, 💀😂🤡), a rendered 🐐👑🎂 (each cell on the right
+topper), a recipient link, six golden links: clean.
