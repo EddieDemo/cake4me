@@ -110,7 +110,9 @@
       sk: clampInt(c.sk, 0, 2, 0),
       sa: clampInt(c.sa, 0, 10, 0),         // hundreds and thousands (v1.00): 0 none … 10 fully covered
       spal: clampInt(c.spal, 0, 2, 0),      // their colours: 0 rainbow · 1 pastel · 2 gold
-      sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
+      sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement
+      lp: clampInt(c.lp, 0, 4, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead — travels with the cake now
+      lj: clampInt(c.lj, 0, 99, 0),         // the generator's small nudge to that preset, as a seed (0 = none), so the recipient sees the same light          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
       sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
@@ -185,7 +187,7 @@
     } catch (e) { return null; }
   }
   // ---- v2: named fields ----
-  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr'];
+  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj'];
   var V2_DEFAULT = null;
   function v2Default() { if (!V2_DEFAULT) V2_DEFAULT = normalize({}); return V2_DEFAULT; }
   function encodeV2(c) {
@@ -209,7 +211,23 @@
       return decodeConfig(code);                                     // v1, positional
     } catch (e) { return null; }
   }
+  // Merging a partial change into a config: an explicit whole-cake string beats the live
+  // per-tier array it would otherwise be reconstructed from (v1.16, from app.js's set()).
+  function merge(base, partial) {
+    var next = {};
+    for (var k in base) next[k] = base[k];
+    for (var j in partial) next[j] = partial[j];
+    if ('rbt' in partial || 'rbp' in partial || 'rba' in partial) delete next.rt;
+    if ('tp' in partial) delete next.sh;
+    if ('fct' in partial) delete next.fcs;
+    if ('frt' in partial) delete next.frs;
+    if ('frst' in partial || 'fr' in partial) delete next.frsty;
+    if ('fdt' in partial || 'fd' in partial) delete next.fds;
+    if ('fc' in partial && !('fct' in partial)) { delete next.fcs; delete next.frs; }
+    return next;
+  }
   window.CakeSchema = {
+    merge: merge,
     SCHEMA_VERSION: SCHEMA_VERSION, MAX_MSG: MAX_MSG, MAX_NAME: MAX_NAME, MAX_CANDLES: MAX_CANDLES, DEFAULTS: DEFAULTS,
     normalize: normalize, encode: encodeV2, encodeV1: encodeConfig, decode: decodeAny,
     clampInt: clampInt, clampIndex: clampIndex, cleanText: cleanText,

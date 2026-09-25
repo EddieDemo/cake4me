@@ -47,7 +47,20 @@ Definitions become data: finishes, candle styles, palettes, lighting presets, ge
 2. **Schema + state** — ✅ schema.js + palettes.js, named v2 links (v1.06). The store (UI binding) folds into step 7.
 3. **Scene + pipeline** — ✅ scene.js + pipeline.js, frozen clock, deterministic harness (v1.07) — renderer/camera/lights/stage/post as modules; passes declared once.
 4. **Materials** — ✅ registry (v1.08) · resources, shaders as files, patch helper (v1.09)
-5. **Cake** (next) — tiers, finishes as data-driven modules, sponge, ribbon, sprinkles, message.
-6. **Decor** — candles/styles/numbers/holders/flames/sparklers.
-7. **Interaction, then UI** — trays as components on the store.
+5. **Cake** — ✅ sprinkles, message (v1.10) · tiers, ribbon, sponge (v1.11) · body (v1.12). Finishes stay as frosting.js's table (already data + two functions each).
+6. **Decor** — ✅ candles.js (parts, styles, hand, digits) · flames.js · sparklers.js (v1.13)
+7. **Interaction, then UI** — ✅ light in the link (v1.14) · confetti (v1.15) · store (v1.16) · viewer state + cut (v1.17) · animate, smoke, mic (v1.18) · spin state, spin, blowout (v1.19) · placement + breath test (v1.20) · build() split into phases with buildTier(), 49 forwarding wrappers removed (v1.21).
+
+## Where it ended up (v1.21)
+app.js ~2,970 lines (from 5,000): the composition root — it creates the modules, wires their
+dependencies, holds the few pieces of shared state (config via the store, V for the viewer, S for
+the spin, blow, D for the decor), runs the frame, and owns the viewer's and builder's UI.
+32 modules alongside it, each with a header saying what it does and what it needs.
+
+What's deliberately left for later, not done:
+- The trays' HTML-wiring (~1,000 lines of builder UI) is still in app.js. It now goes through the
+  store, so it can be split per tray (ui/trays/*.js) whenever a tray is next touched.
+- Native ES modules: every file is still a classic script exposing one `window.Cake*` object.
+  Moving to `import`/`export` is mechanical now that each file has one clear export.
+- Nine small wrappers remain because the function is passed as a value (`tween`, `wave`, …).
 Each step: extract, run render+compare (expect ~0%), run golden_check, ship with the tag.
