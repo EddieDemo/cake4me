@@ -1,31 +1,26 @@
-# Cake — v1.28 (the message on the front; candles, toppers and sprinkles that know where things are)
+# Cake — v1.29 (toppers sized to the cake, with a Size slider)
 
-The tag reads **v1.28**.
+The tag reads **v1.29**.
 
-**The message is on the front.** It used to sit on the back, to be found by spinning. Now the
-writing, the toppers and the first candles all face the same way, the builder opens on that front,
-and the recipient's view starts round the BACK of the closed box: opening it swings the cake round
-to face them (the same way as its idle turn, about 2.4 seconds, easing in and out), holds for two
-seconds so the writing can be read, then the idle turn resumes. A touch stops the turn. With
-reduced motion the view simply starts at the front. The blowing-out hint now reads "Make a wish —
-then spin it fast to blow them out".
+**Toppers are sized to the top tier.** A topper's height is now a set share of the top tier's
+width (about 27%), at every width, so widening the cake always grows them and narrowing always
+shrinks them. On the Classic shape with fondant they're exactly the size they were before. Until
+now they only responded across a narrow band of widths: full size at notch 7 and wider (never
+bigger), 70% at notch 4 and narrower.
 
-**Candles in front of the toppers.** With toppers on the cake, candles fill the outer ring front
-first, symmetrically (an odd count puts one dead centre, the rest go in pairs), and only go behind
-the toppers when there are lots of them. Without toppers, candles keep their familiar arrangement.
+**A Size slider** in the Toppers tray scales the whole row from 60% to 140% (100% to start). It
+travels in the link (a new field, `tz`; a cake without it gets 100%), and Shuffle always uses 100%.
+It's dimmed until there's a topper to size.
 
-**No clipping.** The topper row and the sparklers reserve their real footprints and no candle
-stands inside one. Spacing tightens until they fit; the rest go to the tier below; if even that
-runs out, the Candles tray says how many fit. The topper row also shrinks to fit a narrow top tier.
+**Two limits.** The row must still fit across the top: if the chosen size would overhang, it stops
+at the largest size that fits and the tray says "As big as fits on this top tier" — the slider keeps
+your choice, so widening the cake afterwards lets the toppers grow into it. And toppers aren't made
+shorter than about a candle (0.75), unless that's the only way they fit. Bigger toppers leave less
+room for candles; v1.28's layout moves candles to the next free spots.
 
-**Sprinkles only on icing.** Never on bare sponge or fillings, never under a ribbon. With no tier
-iced, the Sprinkles tray dims and says why, and Shuffle only adds sprinkles to iced cakes.
+Checked in the harness: Classic with fondant 1.30 (unchanged), Classic naked 1.24, notch 5 0.98,
+notch 10 1.52; 60% 0.78; "30❤" at 140% on Classic fits at 1.60 (about 123%) with the note showing;
+the note clears when the toppers are removed; the size survives a link round-trip, and a link
+without it reads 100%; the six saved links decode unchanged.
 
-Checked in the harness: 5 candles stand in front of "30❤" in a symmetric arc, 1.49 units clear of
-the toppers and sparklers; a narrow top fits 6 candles (4 in front, 2 behind), all clear; a plain
-ring steps round two sparklers; of 8,116 sprinkles none sit under the ribbon, and a naked cake gets
-none; the recipient's view turns from the back (3.34) to the front (0.2) and holds; the six saved
-links decode unchanged.
-
-Changed files: `app.js`, `placement.js`, `sprinkles.js`, `message.js`, `index.html`, `style.css`,
-`README.md`, `docs/cake-feel-spec.md`.
+Changed files: `placement.js`, `app.js`, `schema.js`, `index.html`, `style.css`, `README.md`.

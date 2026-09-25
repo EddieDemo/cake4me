@@ -142,7 +142,14 @@
     // where the builder opens and the recipient's view lands. Returns the row's FOOTPRINT (v1.28)
     // so the candles keep clear of it.
     var ROW_D = 0.23;                                   // half the row's depth: the wax, its hand-placed jitter and lean
+    // v1.29: a topper's height is a set share of the top tier's width — full size (NUM.height) on the
+    // Classic top with fondant (4.84 wide), as before, and in proportion on any other — times the
+    // builder's Size slider (T.size, 0.6–1.4). Never shorter than about a candle; and the row must
+    // still fit across the top, which wins over both (lastTop.capped says it did).
+    var REF_W = 4.84, MIN_H = 0.75;
+    var lastTop = { H: 0, capped: false };
     function placeToppers(T, surface, candleHex) {
+      lastTop = { H: 0, capped: false };
       if (!surface) return null;
       var chars = String(T.digits || '').replace(/[^0-9]/g, '').slice(0, 2).split('');
       function partsAt(H) {
@@ -152,13 +159,15 @@
         return out.slice(0, 3);
       }
       function widthOf(ps) { return ps.reduce(function (w, q) { return w + q.P.width; }, 0) + K.NUM.spacing * (ps.length - 1); }
-      var H = K.NUM.height * Math.max(0.7, Math.min(1, surface.rMax / 1.95));   // smaller on a smaller top tier
+      var tierW = 2 * (surface.rMax + 0.25);             // the top tier's own width (its top surface keeps 0.25 from the edge)
+      var H = Math.max(MIN_H, K.NUM.height * (tierW / REF_W) * (T.size || 1));
       var parts = partsAt(H);
       if (!parts.length) return null;
       // v1.28: the row must fit across the top with a little rim to spare — shrink it, all together, if not.
-      var gaps = K.NUM.spacing * (parts.length - 1), total = widthOf(parts);
+      var gaps = K.NUM.spacing * (parts.length - 1), total = widthOf(parts), capped = false;
       var room = 2 * Math.sqrt(Math.max(0, surface.rMax * surface.rMax - ROW_D * ROW_D)) * 0.96;
-      if (total > room && total > gaps) { H *= Math.max(0.3, (room - gaps) / (total - gaps)); parts = partsAt(H); total = widthOf(parts); }
+      if (total > room && total > gaps) { H *= Math.max(0.3, (room - gaps) / (total - gaps)); parts = partsAt(H); total = widthOf(parts); capped = true; }
+      lastTop = { H: +H.toFixed(3), capped: capped };
       var x = -total / 2;
       parts.forEach(function (q, i) {
         var P = q.P;
@@ -306,7 +315,8 @@
       if (allDone) sp.done = true;                         // (each style's mesh is flagged in setCandleScale)
     }
     return { layout: layout, placeCandles: placeCandles, placeNumberCandles: placeNumberCandles, placeToppers: placeToppers, setCandleScale: setCandleScale, updateSpawn: updateSpawn,
-             last: function () { return lastInfo; }, PAD: PAD };
+             noToppers: function () { lastTop = { H: 0, capped: false }; },   // a build without toppers (v1.29)
+             last: function () { return { wanted: lastInfo.wanted, placed: lastInfo.placed, topperH: lastTop.H, topperCapped: lastTop.capped }; }, PAD: PAD };
   }
   window.CakePlacement = { create: create };
 })();

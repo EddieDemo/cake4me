@@ -695,3 +695,7 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 
 /* v1.28 — sprinkles need icing: the tray dims when no tier has any */
 #tray-sprinkles .rowline.dim { opacity: .35; pointer-events: none; }
+
+/* v1.29 — the toppers' Size slider waits for a topper */
+#tz-row.dim { opacity: .35; pointer-events: none; }
+#tz-row input[type=range] { flex: 1; }

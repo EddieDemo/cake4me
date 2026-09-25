@@ -137,6 +137,7 @@
     var ek = Object.keys(window.CakeEmoji || {}), ne = Math.random() < B.emojiChance ? randInt(1, 3 - d.tn.length) : 0, picks = [];
     for (var q = 0; q < ne && ek.length; q++) picks.push(ek[randInt(0, ek.length - 1)]);
     d.te = picks.join('.');
+    d.tz = 4;                                            // Shuffle always uses the standard topper size (v1.29)
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
@@ -190,6 +191,11 @@
     if (document.activeElement !== te) te.value = (draft.te ? draft.te.split('.') : []).map(emojiOf).join('');
     var used = String(draft.tn || '').length + (draft.te ? draft.te.split('.').length : 0);
     $('toppers-hint').textContent = topperNote || (used + ' of 3 toppers — each digit and each emoji is one. ' + TOPPERS.count() + ' emojis to choose from: type them with your emoji keyboard.');
+    // v1.29: the Size slider — the whole row, 60% … 140%; dimmed until there's a topper to size.
+    var tz = $('f-tz'), step = draft.tz == null ? 4 : draft.tz;
+    if (tz && document.activeElement !== tz) tz.value = step;
+    var out = $('tz-out'); if (out) out.textContent = Math.round(60 + 10 * step) + '%';
+    var row = $('tz-row'); if (row) row.classList.toggle('dim', !used);
   }
   // When the emoji outlines arrive after a build that needed them: the builder rebuilds through the
   // store; the viewer rebuilds its config (the link preloads them, so this is rare there).
@@ -499,8 +505,12 @@
   var lastBlocks = [];       // v1.28: the footprints the candles kept clear of (for the harness)
   // v1.28: when candles don't all fit (a narrow top, three toppers), the Candles tray says so.
   function showFitHint() {
+    var info = PLACE.last();
+    // v1.29: when the toppers' row had to stop short of the chosen size to fit across the top.
+    var tz = document.getElementById('tz-note');
+    if (tz) { var cap = !!info.topperCapped; tz.hidden = !cap; tz.style.display = cap ? '' : 'none'; }
     var el = document.getElementById('fit-hint'); if (!el) return;
-    var info = PLACE.last(), short = info.wanted - info.placed;
+    var short = info.wanted - info.placed;
     el.textContent = short > 0 ? 'Only ' + info.placed + ' of ' + info.wanted + ' candles fit on this cake — try a wider top tier, or fewer toppers.' : '';
     el.hidden = short <= 0; el.style.display = short > 0 ? '' : 'none';
   }
@@ -663,7 +673,9 @@
       if (emojis.length && !TOPPERS.ready()) { TOPPERS.ensure(rebuildForToppers); emojis = []; }   // outlines arrive → build again
       // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
       var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
-      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis }, surfaces[0], candleHex); if (row) blocks.push(row); }
+      var tzStep = cfg.tz == null ? 4 : cfg.tz;           // v1.29: the Size slider, 60% … 140%
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep }, surfaces[0], candleHex); if (row) blocks.push(row); }
+      else PLACE.noToppers();
       lastBlocks = blocks;
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
     }
@@ -2647,6 +2659,9 @@
       if (v !== e.target.value) e.target.value = v;
       draft.tn = v; draft = STORE.set(draft, { silent: true }); syncToppers(); syncMessageNudge(); scheduleBuild();
     });
+    $('f-tz').addEventListener('input', function (e) {   // v1.29: topper size
+      draft.tz = clampInt(e.target.value, 0, 8, 4); draft = STORE.set(draft, { silent: true }); syncToppers(); scheduleBuild();
+    });
     $('f-te').addEventListener('focus', function () { TOPPERS.ensure(); });
     $('f-te').addEventListener('input', function (e) {
       var r = TOPPERS.parse(e.target.value), room = Math.max(0, 3 - String(draft.tn || '').length);
@@ -3010,7 +3025,7 @@
     light: function (i) { applyLightPreset(i | 0, 0); updateRoomLights(); syncFrosting(); },
     settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
-    __layout: function () { return PLACE.last(); }, __blocks: function () { return lastBlocks; },
+    __layout: function () { return PLACE.last(); },   // incl. topperH, topperCapped (v1.29) __blocks: function () { return lastBlocks; },
     __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return CakeSprinkles.tierKey(t); }); },
     __tierAt: function (x, y) { return tierAt(x, y); }, __tm: function (i) { var t=tierTops(config)[i]; var TM=BODY.tierMaterials(config, t); return { frosting: TM.frosting.toString(16), hasBase: !!TM.base, style: TM.style, fdOn: TM.fdOn, msgTier: messageMesh && messageMesh.__tier ? messageMesh.__tier.idx : null }; }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
