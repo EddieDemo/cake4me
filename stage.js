@@ -17,7 +17,7 @@
    light off and the whole scene goes black — the test that the model is
    honest.
 
-   Owns: the floor mesh, the fog, the CSS sky variables.
+   Owns: the floor mesh, the fog, the sky (the canvas's clear colour) and the CSS sky variables.
    Knows nothing about cakes, candles or palettes — it takes a paint colour
    and measures the rest.
 
@@ -27,7 +27,22 @@
    drifted as soon as the key went low or a colour picker came into play;
    a measurement can't. It runs on relight, not per frame.
 
+   The sky is DRAWN, not seen through (v1.27). Until v1.26 the canvas was transparent and the
+   CSS backdrop showed through it wherever the floor wasn't — above the far-plane edge of the
+   floor, which sits just below eye level and moves as the camera tilts. Colour matched on
+   both sides of that edge, but coverage didn't: opaque floor below, an empty canvas above.
+   Anything that adds light without recording coverage (the flame's halo, the heart's glow
+   past its alpha, the sparklers' glow) left pixels that are colour on an "empty" canvas —
+   undefined in WebGL. Chrome added them over the page anyway; iPhone Safari threw them away.
+   So on the phone the halo vanished above that edge, and a horizontal line swept through
+   every flame as the camera tilted. Now the canvas is cleared to the measured sky colour at
+   full opacity, in screen space like the fog, so the floor fades into a sky that is part of
+   the same picture, every pixel is opaque, and every browser draws the same thing.
+   The CSS backdrop stays in step as the page's background before the first frame.
+   ?sky=0 puts the old transparent canvas back, for comparison.
+
    API (window.CakeStage):
+     useRenderer(renderer)                paint the sky as the canvas's clear colour (call once)
      attach(scene)                        create the floor and fog once
      setColour(floorHex)                  the sender's choice of backdrop
      calibrate(renderer, scene)           measure the far floor and set the sky + fog to it
@@ -45,7 +60,9 @@
     fogFarPast: 48        // …and is total this far beyond it: a long, gentle fade, not a band
   };
 
-  var scene = null, floor = null, fog = null;
+  var scene = null, floor = null, fog = null, renderer = null;
+  var skyOn = !window.CakeDebug || CakeDebug.on('sky');   // ?sky=0: the old transparent canvas
+  var screenSky = new THREE.Color();                      // the sky in SCREEN (sRGB) values: what the fog and the clear write
   var floorCol = new THREE.Color(0xffe7ce), lit = 1;
   var measured = null;                  // THREE.Color, linear: the far floor as actually rendered
   var probeRT = null, probeCam = null, probeBuf = new Uint8Array(4 * 4);
@@ -79,14 +96,18 @@
     return _c;
   }
   function refresh() {
-    if (!floor) return;
-    floor.material.color.copy(floorCol);
+    if (floor) floor.material.color.copy(floorCol);
     var horizon = measured || litFloor();
     // r128 applies fog AFTER output encoding (fog_fragment follows encodings_fragment), so the
     // fog colour must be given in SCREEN (sRGB) space, not linear — or the far floor renders
     // darker and more saturated than the sky and the plane's edge shows as a line.
-    fog.color.copy(horizon).convertLinearToSRGB();
-    // The backdrop IS the lit floor, top to bottom.
+    screenSky.copy(horizon).convertLinearToSRGB();
+    if (fog) fog.color.copy(screenSky);
+    // The clear colour isn't output-encoded either, so it takes the same screen values: a fully
+    // fogged floor pixel and a sky pixel are then the same bytes, and the floor's edge vanishes.
+    // (setClearColor with a Color copies it; a hex would go through color.js and be decoded.)
+    if (renderer && skyOn) renderer.setClearColor(screenSky, 1);
+    // The page behind the canvas matches, for the moment before the first frame.
     var root = document.documentElement.style;
     root.setProperty('--sky-top', '#' + horizon.getHexString());
     root.setProperty('--sky-bottom', '#' + horizon.getHexString());
@@ -141,6 +162,8 @@
     fog.far = cameraDistance + S.fogFarPast;
   }
 
-  window.CakeStage = { attach: attach, setColour: setColour, setBrightness: setBrightness, calibrate: calibrate, finishCalibrate: finishCalibrate, update: update, S: S,
+  function useRenderer(r) { renderer = r; refresh(); }
+
+  window.CakeStage = { useRenderer: useRenderer, attach: attach, setColour: setColour, setBrightness: setBrightness, calibrate: calibrate, finishCalibrate: finishCalibrate, update: update, S: S, get skyOn() { return skyOn; },
                        get floor() { return floor; } };
 })();

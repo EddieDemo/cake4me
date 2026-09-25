@@ -6,7 +6,11 @@
 - `golden_check.py <app>` — decodes every saved link in tools/golden/ and checks the config
   matches what it decoded to when saved. Any change here means old cakes would change.
 - Debug switches (debug.js): `?ao=0 ?flames=0 ?halo=0 ?backdrop=0 ?shadows=0 ?sprinkles=0
-  ?sparklers=0 ?candles=0 ?cover=0.9 ?glow=1.2`, combinable; the version tag lists active ones.
+  ?sparklers=0 ?candles=0 ?cover=0.9 ?glow=1.2 ?sky=0`, combinable; the version tag lists active ones.
+  `?sky=0` (v1.27) restores the transparent canvas the flame line came from.
+- The harness is Chromium, which composites "colour on an empty pixel" differently from iPhone
+  Safari. Since v1.27 the canvas is opaque, so the two should agree; if a phone-only look ever
+  appears again, suspect blending onto transparency first.
 These run where there's a terminal (Claude's side). The phone gets the switches.
 
 Journey tests (v1.20), each `python3 tools/<name>.py <app-folder>`:

@@ -9,7 +9,7 @@
     var PLATE = { r: 1.3, h: 0.08, colour: 0xfafafa };
     function slicesLeft() { return deps.V.cut ? deps.V.cut.wedges.filter(function (w) { return w.visible && !w.userData.lifted; }).length : 0; }
     function topRemainingTier() {
-      // You deps.V.cut the top tier first; a bottom wedge with a tier on top of it makes no sense.
+      // You cut the top tier first; a bottom wedge with a tier on top of it makes no sense.
       var best = -1;
       deps.V.cut.wedges.forEach(function (w) { if (w.visible && !w.userData.lifted) best = Math.max(best, w.userData.tier); });
       return best;

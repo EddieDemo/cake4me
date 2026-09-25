@@ -1669,12 +1669,12 @@
   function saveCutState(code, st) { try { localStorage.setItem('cake.cut.' + code, JSON.stringify(st)); } catch (e) {} }
 
 
-  // One wedge: body + cap + two V.cut faces showing the filling. The message band on the
+  // One wedge: body + cap + two cut faces showing the filling. The message band on the
   // bottom tier is carried by a cloned texture whose offset/repeat select this wedge's arc.
   // Materials are per tier (tierMaterials): pass `TM` for the tier, or nothing to make them here.
   function makeWedge(tier, i, cfg, TM, msgMap) {
     var g0 = BODY.makeWedgeBody(tier, i, cfg, TM, msgMap);
-    var sp = SPRINKLES.forSlice(tier, i, WEDGES_PER_TIER);   // the balls that were on this V.slice
+    var sp = SPRINKLES.forSlice(tier, i, WEDGES_PER_TIER);   // the balls that were on this slice
     if (sp) g0.add(sp);
     return g0;
   }
@@ -1711,7 +1711,7 @@
     updateCutUI();
   }
 
-  // Seams show only on the tier you can V.cut right now, so the affordance itself says
+  // Seams show only on the tier you can cut right now, so the affordance itself says
   // where to tap. Redrawn whenever the cuttable tier changes.
   // Tap on a tier that still has one above it: acknowledge it with a wobble on the tier
   // in the way, so the tap isn't ignored and the reason is visible.
@@ -1747,8 +1747,8 @@
     return null;
   }
 
-  // ---- One plate and one way of plating a V.slice (v0.73) ----
-  // The sender's lifted wedge and the recipient's V.slice page used to build their own plates
+  // ---- One plate and one way of plating a slice (v0.73) ----
+  // The sender's lifted wedge and the recipient's slice page used to build their own plates
   // (the recipient's was smaller, with a ribbon-coloured rim) and the recipient's wedge was
   // made from a stub of the tier (no sponge size, no index) so its layers came out empty.
   // Both now use these, with the full tier from tierTops, so they cannot drift apart.
@@ -1762,7 +1762,7 @@
   function liftWedge(w) {
     if (!V.cut || V.cut.lifted) return;
     V.cut.lifted = w; w.userData.lifted = true;
-    // Toward the viewer, whatever the camera's doing: the V.slice always comes to you.
+    // Toward the viewer, whatever the camera's doing: the slice always comes to you.
     var dir = new THREE.Vector3(camera.position.x, 0, camera.position.z).normalize();
     var tier = tierTops(config)[w.userData.tier];
     var out = tier.r + 1.9;
@@ -1793,11 +1793,11 @@
     var lead = $('cut-lead'), card = $('slicecard'), left = $('slices-left'), back = $('slice-back'), nameEl = $('slice-name');
     var n = CUT.slicesLeft();
     if (V.cut.lifted) {
-      lead.textContent = 'Send this V.slice to someone';
+      lead.textContent = 'Send this slice to someone';
       card.hidden = false;
       var canBack = !!config.from && !V.cut.sentBack;
       back.hidden = !canBack;
-      back.textContent = 'Send a V.slice back to ' + config.from;
+      back.textContent = 'Send a slice back to ' + config.from;
       nameEl.value = '';
       left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
     } else if (n === 0) {
@@ -1809,8 +1809,8 @@
       // Multi-tier: say where to start, and say when the next tier comes into play.
       var top = CUT.topRemainingTier(), multi = V.cut.tiers > 1;
       var tierDone = multi && top < V.cut.tiers - 1;
-      lead.textContent = !multi ? 'Tap a V.slice to V.cut it'
-                       : (tierDone ? 'Now the next tier — tap a slice' : 'Start at the top — tap a V.slice to V.cut it');
+      lead.textContent = !multi ? 'Tap a slice to cut it'
+                       : (tierDone ? 'Now the next tier — tap a slice' : 'Start at the top — tap a slice to cut it');
       card.hidden = true;
       left.textContent = n + ' slice' + (n === 1 ? '' : 's') + ' left';
     }
@@ -1878,7 +1878,7 @@
     var ti = Math.min(tiers.length - 1, Math.floor(sl.index / WEDGES_PER_TIER));
     var tier = tiers[ti], wi = sl.index % WEDGES_PER_TIER;
     var w = makeWedge(tier, wi, cfg, null, ti === 0 ? currentMessageMap() : null);
-    // Face the V.cut toward the camera: turn the wedge so its centroid points away (−z), then
+    // Face the cut toward the camera: turn the wedge so its centroid points away (−z), then
     // drop it so the centroid sits over the plate's centre.
     var holder = new THREE.Group();
     holder.add(w);
@@ -1889,7 +1889,7 @@
     if (window.CakeLook) CakeLook.adopt(w);
     V.group.add(holder);
     V.group.add(CUT.makePlate());
-    // No candle on a V.slice: the candles went when the cake was V.cut, and a V.slice that
+    // No candle on a slice: the candles went when the cake was cut, and a slice that
     // sprouted a new one would contradict that. It's a piece of the cake you were sent.
     flames.length = 0; wicks.length = 0;
     var topY = PLATE.h + tier.h;
@@ -2548,7 +2548,7 @@
 
     makeSwatches(els.swFc, PALETTES.frosting, 'fc');      // fondant colours
     makeSwatches(els.swFrc, PALETTES.frosting, 'frc');    // buttercream colours
-    // Sponges: split swatches — the crust as a ring round the crumb, a V.slice seen end-on.
+    // Sponges: split swatches — the crust as a ring round the crumb, a slice seen end-on.
     SPONGES.forEach(function (S, i) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'swatch split'; b.title = S.name; b.setAttribute('aria-label', S.name);
       b.style.setProperty('--crumb', '#' + ('000000' + S.crumb.toString(16)).slice(-6));
@@ -2787,13 +2787,13 @@
     }
     $('slice-back').addEventListener('click', function () {
       var url = sendLiftedSlice('', true); if (!url) return;
-      var title = 'A V.slice of the cake you sent ' + (config.to || 'me') + ' 🍰';
+      var title = 'A slice of the cake you sent ' + (config.to || 'me') + ' 🍰';
       if (!shareUrl(url, title)) copyUrl(url, function () { $('slice-hint').textContent = 'Link copied — send it to ' + config.from; });
     });
     $('slice-share').addEventListener('click', function () {
       var name = cleanText($('slice-name').value, MAX_NAME);
       var url = sendLiftedSlice(name, false); if (!url) return;
-      var title = (config.to || 'Someone') + ' sent you a V.slice of cake 🍰';
+      var title = (config.to || 'Someone') + ' sent you a slice of cake 🍰';
       if (!shareUrl(url, title)) copyUrl(url, function () { $('slice-hint').textContent = 'Link copied'; });
     });
     $('slice-copy').addEventListener('click', function () {
@@ -2945,7 +2945,7 @@
     document.fonts.load('60px "Pacifico"').then(boot, boot);
     setTimeout(boot, 1500);
     // Redraw the message texture with the real typeface once it lands. Never a full build:
-    // on a phone the font arrives after a V.slice or V.cut page has set itself up, and a full
+    // on a phone the font arrives after a slice or cut page has set itself up, and a full
     // rebuild put the whole cake back — candles and all — on top of the V.slice.
     document.fonts.ready.then(function () { if (config && V.mode !== 'slice' && !V.cut) updateMessage(config.m); });
   } else {

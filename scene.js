@@ -9,7 +9,7 @@
     var pixelRatio = Math.min(deviceDPR, PIXEL.ceil);
     renderer.setPixelRatio(pixelRatio);
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.setClearColor(0x000000, 0);
+    renderer.setClearColor(0x000000, 0);                 // transparent until the stage paints the sky (below)
 
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
@@ -34,7 +34,10 @@
     fill.position.set(5, 3, -2);
     scene.add(fill);
     if (window.CakeLook) CakeLook.apply(renderer, scene, key);                 // shadows, environment, tone mapping
-    if (window.CakeStage && (!window.CakeDebug || CakeDebug.on('backdrop'))) CakeStage.attach(scene);   // floor, fog, sky
+    // The sky is the canvas's clear colour, painted opaque by the stage (v1.27) — even with
+    // ?backdrop=0, so no pixel is ever drawn onto an empty canvas (see stage.js).
+    if (window.CakeStage) CakeStage.useRenderer(renderer);
+    if (window.CakeStage && (!window.CakeDebug || CakeDebug.on('backdrop'))) CakeStage.attach(scene);   // floor and fog
     if (window.CakeDebug && !CakeDebug.on('shadows') && window.CakeLook) CakeLook.LOOK.shadows = false;
     var candle = new THREE.PointLight(0xffb36b, 0, 8, 2);   // the candles' shared light
     scene.add(candle);
