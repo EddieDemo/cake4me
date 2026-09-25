@@ -2508,6 +2508,10 @@
     var shuf = $('chiprow').querySelector('.chip[data-action="shuffle"]');
     if (shuf) shuf.addEventListener('click', function () {
       draft = STORE.set(applyRandomLook(draft, false), { silent: true });
+      // v1.30: the new cake arrives facing you — its toppers and writing to the front — with your
+      // tilt, zoom and any spin you've given it kept. The whole cake changes at this instant (and
+      // the light usually does too), so the view's turn round to the front doesn't show.
+      camAzimuth = FRONT_AZ;
       updateRoomLights();                                 // key light re-randomised (no shader change)
       syncForm(); updateColourNote(); updateCta();
       STORE.commit({ showMessage: true });
@@ -3025,6 +3029,7 @@
     light: function (i) { applyLightPreset(i | 0, 0); updateRoomLights(); syncFrosting(); },
     settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
+    __toppers: function () { return TOPPERS; },
     __layout: function () { return PLACE.last(); },   // incl. topperH, topperCapped (v1.29) __blocks: function () { return lastBlocks; },
     __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return CakeSprinkles.tierKey(t); }); },

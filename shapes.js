@@ -367,7 +367,51 @@
     }
     return geo;
   }
-  window.CakeShapes = { RIB: RIB, ribbon: ribbon,
+  // v1.30: smooth shading for extruded shapes (the number and emoji toppers). three's ExtrudeGeometry
+  // gives every face its own corners, so its normals are flat and each panel of a wall or a rounded
+  // edge shades as a separate facet. This averages the normals of the faces meeting at each point,
+  // weighted by their size, but only across faces within `crease` degrees of each other, so real
+  // corners (a 7's top, a heart's tip) stay crisp.
+  function smoothNormals(geo, crease) {
+    var pos = geo.attributes.position, n = pos.count;
+    if (geo.index) { geo.computeVertexNormals(); return geo; }
+    var lim = Math.cos((crease || 50) * Math.PI / 180);
+    var fn = new Float32Array(n * 3), un = new Float32Array(n * 3);
+    var a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    for (var f = 0; f + 2 < n; f += 3) {
+      a.fromBufferAttribute(pos, f); b.fromBufferAttribute(pos, f + 1); c.fromBufferAttribute(pos, f + 2);
+      c.sub(b); b.sub(a); b.cross(c);                       // twice the face's area, along its normal
+      var L = b.length();
+      for (var k = 0; k < 3; k++) {
+        var o = (f + k) * 3;
+        fn[o] = b.x; fn[o + 1] = b.y; fn[o + 2] = b.z;
+        if (L > 0) { un[o] = b.x / L; un[o + 1] = b.y / L; un[o + 2] = b.z / L; }
+      }
+    }
+    var groups = {}, q = 1e4;
+    for (var i = 0; i < n; i++) {
+      var key = Math.round(pos.getX(i) * q) + '_' + Math.round(pos.getY(i) * q) + '_' + Math.round(pos.getZ(i) * q);
+      (groups[key] || (groups[key] = [])).push(i);
+    }
+    var out = new Float32Array(n * 3);
+    Object.keys(groups).forEach(function (key) {
+      var g = groups[key];
+      for (var x = 0; x < g.length; x++) {
+        var i = g[x] * 3, sx = 0, sy = 0, sz = 0;
+        for (var y = 0; y < g.length; y++) {
+          var j = g[y] * 3;
+          if (un[i] * un[j] + un[i + 1] * un[j + 1] + un[i + 2] * un[j + 2] >= lim) { sx += fn[j]; sy += fn[j + 1]; sz += fn[j + 2]; }
+        }
+        var L = Math.hypot(sx, sy, sz);
+        if (L > 1e-12) { out[i] = sx / L; out[i + 1] = sy / L; out[i + 2] = sz / L; }
+        else if (un[i] || un[i + 1] || un[i + 2]) { out[i] = un[i]; out[i + 1] = un[i + 1]; out[i + 2] = un[i + 2]; }
+        else out[i + 2] = 1;                                   // a zero-area sliver: any sane normal
+      }
+    });
+    geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+    return geo;
+  }
+  window.CakeShapes = { RIB: RIB, ribbon: ribbon, smoothNormals: smoothNormals,
                         P: P, bodyProfile: bodyProfile, capProfile: capProfile, body: body, cap: cap, shell: shell, cutFace: cutFace, radiusAt: radiusAt, bandGeometry: bandGeometry,
                         disc: disc, discTop: discTop, discFace: discFace, merge: merge, faceAt: faceAt, bakeAO: bakeAO };
 })();

@@ -234,7 +234,7 @@
         if (y < bb.min.y + 0.03) lows.push(x);
       }
       uv.needsUpdate = true;
-      geo.computeVertexNormals();
+      CakeShapes.smoothNormals(geo, 50);                   // v1.30: one smooth surface, not flat facets
       geo.setAttribute('aLit', new THREE.Float32BufferAttribute(new Float32Array(pos.count).fill(1), 1));   // the wax shader's per-candle glow switch; per digit it's driven by the material instead
       CakeResources.keep(geo);
       return (digitCache[key] = { geo: geo, width: bb.max.x - bb.min.x, top: top,
