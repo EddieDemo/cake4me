@@ -31,7 +31,10 @@
       return new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 }, uPhase: { value: phase }, uGlow: { value: glow }, uCover: { value: cover || 0 }, uOpaque: { value: opaque || 0 } },
         vertexShader: FLAME_VS, fragmentShader: FLAME_FS,
-        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        // v1.26: the NEAR side only. Drawing both sides meant the far wall of the teardrop showed
+        // through the near one, and where its silhouette fell inside the flame it drew a hard
+        // contour — the flame read as an outlined shape rather than one body of light.
+        transparent: true, depthWrite: false, side: THREE.FrontSide,
         blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
         blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor   // premultiplied: cover 0 = purely additive
       });
