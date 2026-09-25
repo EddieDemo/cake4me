@@ -1,18 +1,16 @@
-# Cake — v1.21 (refactor complete)
+# Cake — v1.23 (toppers are decorations, not candles)
 
-No visual changes. The tag reads **v1.21**.
+The tag reads **v1.23**.
 
-- **build() is the orchestrator.** Its hundred-line per-tier loop is now `buildTier(B, tier, i)`
-  with an explicit build context `B`, so build() reads as its phases: prepare → each tier →
-  sparklers, sprinkles, candles → shadow, confetti landings, framing, light, background.
-- **49 forwarding wrappers removed.** Every `function x(…) { return MODULE.x(…); }` left by the
-  earlier steps is gone; call sites call the module directly. Nine remain where the function is
-  passed as a value.
-- `cake.debug()` now reports the blow state; the breath test waits for the candles to be fully
-  lit and breathes until they're out (the software renderer runs few frames a second).
+- **Toppers — numbers and emojis — are no longer candles.** They're cast in the same wax, on the
+  same pick, but have no wick and no flame, and so no glow from within (that glow is the flame's
+  light). Blowing out is only for candles.
+- **Toppers and candles together, toppers in the middle.** Toppers take the centre of the top
+  tier; up to 8 candles stand in an arc behind them, and larger counts (from links) keep to the
+  outer rings round them.
+- **A cake with only toppers** (no candles) now goes straight to the reveal after the usual beat —
+  before, the viewer waited forever for a breath with nothing to blow out.
 
-Checks: load and feature switching (35 programs); the builder by taps; a recipient's journey;
-blowing out by breath (5 → 0); cut and lift; six golden links; pixel comparison against v1.12:
-0.00–0.05% on every cake.
-
-See ARCHITECTURE.md for where everything lives and what's deliberately left for later.
+Checks: the Toppers tray by taps; a recipient with toppers and no candles (reveals); a recipient
+with toppers and 20 candles (candles round the outside, all blown out, reveals); load and
+feature switching (36 programs); six golden links.

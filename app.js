@@ -93,7 +93,8 @@
     lights: [0, 0, 0, 1, 1, 2, 3, 4],       // lighting preset, daylight most often
     numberChance: 0.3,                      // how often a random cake gets number candles
     sparklers: [0.2, 0.05],                 // chance of one sparkler, of two
-    sprinkleChance: 0.25,                   // how often a random cake gets hundreds and thousands
+    sprinkleChance: 0.25,
+    emojiChance: 0.2,                       // how often a random cake gets emoji toppers                   // how often a random cake gets hundreds and thousands
     candleStyles: [0, 0, 0, 1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7],   // classic most, then twisted, striped, gold, all-mixed…
     racks: [0, 0, 1, 1, 2],                 // plain or wire marks most often, bars now and then
     spongeVanillaChance: 0.35,              // otherwise any other sponge, equally
@@ -131,6 +132,11 @@
     d.spal = [0, 0, 0, 1, 2][randInt(0, 4)];
     d.sr = randInt(0, 999);
     d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
+    // v1.22: the number is a topper now; sometimes an emoji or two beside it (or on their own)
+    d.tn = d.cm === 1 ? String(d.age) : ''; d.cm = 0;
+    var ek = Object.keys(window.CakeEmoji || {}), ne = Math.random() < B.emojiChance ? randInt(1, 3 - d.tn.length) : 0, picks = [];
+    for (var q = 0; q < ne && ek.length; q++) picks.push(ek[randInt(0, ek.length - 1)]);
+    d.te = picks.join('.');
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
@@ -161,21 +167,34 @@
   }
   function syncCandleMode() {
     syncSprinkles();
-    var numbers = draft.cm === 1;
-    Array.prototype.forEach.call($('candle-mode').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cm') === draft.cm); });
+    var numbers = false;                                 // v1.22: number candles are toppers now (the Toppers tray)
     function show(id, on) { var el = $(id); el.hidden = !on; el.style.display = on ? '' : 'none'; }   // not relying on CSS for this
-    show('count-row', !numbers); show('age-row', numbers); show('style-row', !numbers);
+    show('count-row', true); show('style-row', true);
     Array.prototype.forEach.call($('candle-styles').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-cs') === draft.cs); });
     Array.prototype.forEach.call($('sparklers').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-sk') === draft.sk); });
     show('count-hint', !numbers && draft.n >= BUILDER_MAX_CANDLES);
-    var ag = $('f-age'); if (document.activeElement !== ag) ag.value = String(draft.age);
+    syncToppers();
     syncMessageNudge();
   }
   // A gentle suggestion only: the message box's placeholder offers "Happy 60th!" — never its text.
   function ordinal(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+  var topperNote = '';
+  function emojiOf(key) { return key.split('-').map(function (h) { return String.fromCodePoint(parseInt(h, 16)); }).join(''); }
+  function syncToppers() {
+    var tn = $('f-tn'), te = $('f-te'); if (!tn || !te) return;
+    if (document.activeElement !== tn) tn.value = draft.tn || '';
+    if (document.activeElement !== te) te.value = (draft.te ? draft.te.split('.') : []).map(emojiOf).join('');
+    var used = String(draft.tn || '').length + (draft.te ? draft.te.split('.').length : 0);
+    $('toppers-hint').textContent = topperNote || (used + ' of 3 toppers — each digit and each emoji is one. ' + TOPPERS.count() + ' emojis to choose from: type them with your emoji keyboard.');
+  }
+  // When the emoji outlines arrive after a build that needed them: the builder rebuilds through the
+  // store; the viewer rebuilds its config (the link preloads them, so this is rare there).
+  function rebuildForToppers() {
+    if (draft && !document.body.classList.contains('mode-viewer')) STORE.commit(); else if (config) build(config);
+  }
   function syncMessageNudge() {
     var m = els && els.m; if (!m) return;
-    m.placeholder = draft.cm === 1 ? 'Happy ' + ordinal(draft.age) + '!' : 'Happy birthday!';
+    m.placeholder = draft.tn ? 'Happy ' + ordinal(+draft.tn) + '!' : 'Happy birthday!';
   }
   // The SPONGE is the object: the shape sliders size it, the fillings sit inside it, the grooves
   // are in it. Frosting is a layer ON the sponge. Smooth frosting is a shell of real thickness
@@ -625,8 +644,13 @@
     if (!window.CakeDebug || CakeDebug.on('sparklers')) SPARKLERS.place(cfg.sk, surfaces[0]);
     if (!window.CakeDebug || CakeDebug.on('sprinkles')) placeSprinkles(cfg, tiers);
     if (window.CakeDebug && !CakeDebug.on('candles')) { /* switched off for bisecting */ }
-    else if (cfg.cm === 1) PLACE.placeNumberCandles(String(cfg.age), surfaces[0], candleHex);
-    else PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs);
+    else {
+      var hasToppers = !!(cfg.tn || cfg.te);             // v1.22: toppers on the top tier, candles behind them
+      var emojis = cfg.te ? cfg.te.split('.') : [];
+      if (emojis.length && !TOPPERS.ready()) { TOPPERS.ensure(rebuildForToppers); emojis = []; }   // outlines arrive → build again
+      if (hasToppers) PLACE.placeToppers({ digits: cfg.tn, emojis: emojis }, surfaces[0], candleHex);
+      PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers });
+    }
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
     // began mutating its config in place, came back to life when v0.60 made the tier switch
@@ -679,7 +703,8 @@
   //  Candles
   // =====================================================================
   // ---- v1.20: placing candles and number candles on a cake (and their pop-in) lives in placement.js ----
-  var PLACE = CakePlacement.create({ candles: CANDLES, flames: flames, wicks: wicks, D: D, EASE: EASE,
+  var TOPPERS = CakeToppers.create({ makeWaxMaterial: function (h) { return CANDLES.makeWaxMaterial(h); }, NUM: CANDLES.NUM });
+  var PLACE = CakePlacement.create({ toppers: TOPPERS, candles: CANDLES, flames: flames, wicks: wicks, D: D, EASE: EASE,
     built: function () { return built; }, flameMat: flameMat, flameMesh: function (ph) { return FLAMES.makeFlameMesh(ph); } });
 
 
@@ -700,6 +725,11 @@
     });
     g.add(new THREE.InstancedMesh(CANDLES.holderGeo(0.065), holderMat, 1));             // holders
     return g;
+  });
+  CakeMaterials.warm('emoji-toppers', function () {        // wax + printed face on a plain mesh: its own program
+    var m = CANDLES.makeWaxMaterial(0xffffff);
+    m.map = new THREE.DataTexture(new Uint8Array([251, 244, 230, 255]), 1, 1); m.map.needsUpdate = true;
+    return { object: new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), m), dispose: function () { m.map.dispose(); } };
   });
   CakeMaterials.warm('number-candles', function () {
     var dg = CANDLES.digitGeometry('1', 1); if (!dg) return null;
@@ -1528,6 +1558,12 @@
   // ---- Reveal ----
   // The message isn't revealed here: it's always on the back of the cake, found by
   // spinning. Blowing the candles out just earns the confetti and the next step.
+  // The blowing-out stage. A cake with no candles (only toppers, v1.23) has nothing to blow out:
+  // it goes straight to the reveal after the same beat, rather than waiting for a breath forever.
+  function startBlowing() {
+    if (!flames.length) { blow.revealed = true; blow.enabled = false; setTimeout(reveal, 500); return; }
+    setViewerState('blow'); blow.enabled = true;
+  }
   function reveal() {
     var pal = [PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex,
                PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166, 0xFF6F91];
@@ -1602,7 +1638,7 @@
       var order = centreOutOrder();
       lightRipple(order, Math.min(20, 1200 / Math.max(1, order.length)), true);
       // 5. header, then the blow state
-      setTimeout(function () { setViewerState('blow'); blow.enabled = true; }, 500);
+      setTimeout(startBlowing, 500);
     }, 1200);
   }
   function relight() {
@@ -1611,7 +1647,7 @@
     for (var i = 0; i < flames.length; i++) { flames[i].__out = false; }
     lightRipple(centreOutOrder().reverse(), Math.min(20, 1200 / Math.max(1, flames.length)), true);
     document.getElementById('vs-revealed').classList.remove('on');
-    setTimeout(function () { setViewerState('blow'); blow.enabled = true; }, 600);
+    setTimeout(startBlowing, 600);
   }
 
   // =====================================================================
@@ -2234,7 +2270,7 @@
   var openTray = null;
   function setTray(name) {
     openTray = (openTray === name) ? null : name;      // tapping the open chip closes it
-    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'sprinkles', 'candles', 'ribbon', 'backdrop', 'light'].forEach(function (k) {
+    ['occasion', 'message', 'tiers', 'shape', 'sponge', 'frosting', 'fondant', 'sprinkles', 'candles', 'toppers', 'ribbon', 'backdrop', 'light'].forEach(function (k) {
       var el = $('tray-' + k);
       if (el) el.hidden = (k !== openTray);
     });
@@ -2557,12 +2593,6 @@
     });
 
     // Candles | Numbers, and the age. Each side keeps its own settings when you switch.
-    $('candle-mode').addEventListener('click', function (e) {
-      var b = e.target.closest ? e.target.closest('button[data-cm]') : null;
-      if (!b) return;
-      e.stopPropagation();
-      draft.cm = +b.getAttribute('data-cm'); draft = STORE.set(draft, { silent: true }); syncCandleMode(); STORE.commit();
-    });
     CANDLE_STYLES.concat(['All']).forEach(function (name, i) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'pill'; b.textContent = name;
       var cs = name === 'All' ? STYLE_ALL : i; b.setAttribute('data-cs', cs);
@@ -2577,11 +2607,18 @@
       b.addEventListener('click', function () { draft.spal = +b.getAttribute('data-spal'); if (!draft.sa) draft.sa = 5; draft = STORE.set(draft, { silent: true }); syncSprinkles(); STORE.commit(); });
     });
     $('spr-roll').addEventListener('click', function () { draft.sr = (draft.sr + 1 + Math.floor(Math.random() * 997)) % 1000; if (!draft.sa) draft.sa = 5; draft = STORE.set(draft, { silent: true }); syncSprinkles(); STORE.commit(); });
-    $('f-age').addEventListener('input', function (e) {
+    // ---- v1.22: toppers — a number, and up to three emojis typed with the phone's own emoji keyboard ----
+    $('f-tn').addEventListener('input', function (e) {
       var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
       if (v !== e.target.value) e.target.value = v;
-      if (!v || +v < 1) return;                           // mid-typing: keep the last good age on the cake
-      draft.age = +v; draft = STORE.set(draft, { silent: true }); syncMessageNudge(); scheduleBuild();
+      draft.tn = v; draft = STORE.set(draft, { silent: true }); syncToppers(); syncMessageNudge(); scheduleBuild();
+    });
+    $('f-te').addEventListener('focus', function () { TOPPERS.ensure(); });
+    $('f-te').addEventListener('input', function (e) {
+      var r = TOPPERS.parse(e.target.value), room = Math.max(0, 3 - String(draft.tn || '').length);
+      draft.te = r.keys.slice(0, room).join('.'); draft = STORE.set(draft, { silent: true });
+      topperNote = r.unknown.length ? 'Not available yet: ' + r.unknown.join(' ') : (r.keys.length > room ? 'Only ' + room + ' more fit — 3 toppers per cake.' : '');
+      syncToppers(); scheduleBuild();
     });
     els.n.addEventListener('input', function () {
       draft.n = clampInt(els.n.value, 0, BUILDER_MAX_CANDLES, 0);

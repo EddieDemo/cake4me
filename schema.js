@@ -69,6 +69,9 @@
     return i < 0 || i >= arr.length ? 0 : i;
   }
   function normalize(c) {
+    if (c && +c.cm === 1 && (c.tn == null || c.tn === '')) {   // a v0.94–v1.21 cake with number candles → a number topper, no ordinary candles
+      var cc = {}; for (var k0 in c) cc[k0] = c[k0]; cc.tn = String(cc.age == null ? 30 : cc.age); cc.cm = 0; cc.n = 0; c = cc;
+    }
     var out = {
       v: SCHEMA_VERSION,
       to: cleanText(c.to, MAX_NAME),
@@ -111,6 +114,9 @@
       sa: clampInt(c.sa, 0, 10, 0),         // hundreds and thousands (v1.00): 0 none … 10 fully covered
       spal: clampInt(c.spal, 0, 2, 0),      // their colours: 0 rainbow · 1 pastel · 2 gold
       sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement
+      // Toppers (v1.22): on the top tier only, 3 at most — each digit of the number, and each emoji, is one.
+      tn: String(c.tn == null ? '' : c.tn).replace(/[^0-9]/g, '').slice(0, 2),
+      te: (function (t) { return String(t == null ? '' : t).split('.').filter(function (k) { return /^[0-9a-f]+(-[0-9a-f]+)*$/.test(k); }); })(c.te),
       lp: clampInt(c.lp, 0, 4, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead — travels with the cake now
       lj: clampInt(c.lj, 0, 99, 0),         // the generator's small nudge to that preset, as a seed (0 = none), so the recipient sees the same light          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
@@ -169,6 +175,8 @@
     // Legacy summary kept in step with the per-tier truth (the bow, older readers).
     var firstOn = out.rt.filter(function (t) { return t.on; })[0];
     out.rb = firstOn ? 1 : 0; if (firstOn) out.rc = firstOn.c;
+    out.te = out.te.slice(0, Math.max(0, 3 - out.tn.length)).join('.');   // 3 toppers at most, the number's digits first
+    if (!out.te) out.te = '';
     return out;
   }
   function encodeConfig(c) {
@@ -187,7 +195,7 @@
     } catch (e) { return null; }
   }
   // ---- v2: named fields ----
-  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj'];
+  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj', 'tn', 'te'];
   var V2_DEFAULT = null;
   function v2Default() { if (!V2_DEFAULT) V2_DEFAULT = normalize({}); return V2_DEFAULT; }
   function encodeV2(c) {

@@ -22,9 +22,17 @@
       if (!rings.length && surface.rMin === 0) rings.push({ r: 0, cap: 1 });
       return rings;
     }
-    function layout(n, surfaces) {
+    function layout(n, surfaces, opts) {
       if (n === 0) return [];
       var top = surfaces[0];
+      if (opts && opts.toppers && n <= 8) {           // toppers have the middle; up to 8 candles stand in an arc behind them
+        var rr2 = top.rMax * 0.72, out = [];
+        for (var q = 0; q < n; q++) {
+          var a = Math.PI * (n === 1 ? 1 : 0.55 + 0.9 * q / (n - 1));   // an arc across the back: θ = π is straight behind
+          out.push({ x: Math.sin(a) * rr2, z: Math.cos(a) * rr2, y: top.y });
+        }
+        return out;
+      }
       if (n === 1) return [{ x: 0, z: 0, y: top.y }];
       if (n <= 8) {
         // Small counts: one neat ring, growing with the count.
@@ -35,15 +43,16 @@
       var s = 0.46, plan = null;
       while (s >= 0.2) {
         var total = 0, per = [];
-        surfaces.forEach(function (sf) {
+        surfaces.forEach(function (sf, si) {
           var rings = ringsFor(sf, s);
+          if (opts && opts.toppers && si === 0) rings = rings.filter(function (rg) { return rg.r >= sf.rMax * 0.6; });   // v1.23: more candles keep to the outer rings round the toppers
           per.push(rings);
           rings.forEach(function (rg) { total += rg.cap; });
         });
         if (total >= n) { plan = per; break; }
         s -= 0.02;
       }
-      if (!plan) { s = 0.2; plan = surfaces.map(function (sf) { return ringsFor(sf, s); }); }
+      if (!plan) { s = 0.2; plan = surfaces.map(function (sf, si) { var rg = ringsFor(sf, s); return (opts && opts.toppers && si === 0) ? rg.filter(function (x) { return x.r >= sf.rMax * 0.6; }) : rg; }); }
 
       // Fill rings outer→inner on the top surface, then the next surface.
       var pts = [], left = n;
@@ -65,12 +74,22 @@
       }
       return out;
     }
-    function placeNumberCandles(age, surface, candleHex) {
-      if (!surface || !window.CakeDigits) return;
-      var chars = age.replace(/[^0-9]/g, '').slice(0, 2).split('');
-      if (!chars.length) return;
+    function placeNumberCandles(age, surface, candleHex) {   // (kept for older callers) the number alone, as toppers
+      placeToppers({ digits: String(age), emojis: [] }, surface, candleHex);
+    }
+    // v1.22: toppers — a row on the top tier: the number's digits first, then the emojis, each a
+    // candle. Digits wear the candle colour; emojis their own printed face on cream wax.
+    function placeToppers(T, surface, candleHex) {
+      if (!surface) return;
+      var chars = String(T.digits || '').replace(/[^0-9]/g, '').slice(0, 2).split('');
       var H = K.NUM.height * Math.max(0.7, Math.min(1, surface.rMax / 1.95));   // smaller on a smaller top tier
-      var parts = chars.map(function (ch) { return K.digitGeometry(ch, H); }).filter(Boolean);
+      var parts = [];
+      if (window.CakeDigits) chars.forEach(function (ch) { var P = K.digitGeometry(ch, H); if (P) parts.push({ P: P, material: function () { return K.makeWaxMaterial(candleHex); } }); });
+      (T.emojis || []).forEach(function (key) { var P = deps.toppers && deps.toppers.part(key, H * 0.92); if (P) parts.push({ P: P, material: P.material }); });
+      parts = parts.slice(0, 3);
+      if (!parts.length) return;
+      var widths = parts.map(function (q) { return q.P.width; });
+      parts = parts.map(function (q) { var P = q.P; P.__material = q.material; return P; });
       var total = parts.reduce(function (w, p) { return w + p.width; }, 0) + K.NUM.spacing * (parts.length - 1);
       var x = -total / 2, fs = 0.28;
       parts.forEach(function (P, i) {
@@ -80,37 +99,19 @@
         var grp = new THREE.Group();
         grp.position.set(cx, surface.y + K.NUM.gap, (h(1) - 0.5) * 0.08);
         grp.rotation.set((h(2) - 0.5) * 0.06, (h(3) - 0.5) * 0.12, (h(4) - 0.5) * 0.05);   // placed by hand
-        var mat = K.makeWaxMaterial(candleHex);
-        mat.emissiveIntensity = 1.1 * K.NUM.glow;            // thick wax: a gentler glow than the thin candles'
+        // v1.23: toppers are decorations in candle wax, not candles — no wick, no flame, and so no
+        // glow from within (that glow is the flame's light); blowing out is only for candles.
+        var mat = P.__material();
+        mat.emissiveIntensity = 0;
         grp.add(new THREE.Mesh(P.geo, mat));
         var spike = new THREE.Mesh(K.numberSpikeGeo, K.holderMat);
         spike.position.set(P.foot, -(K.NUM.gap + 0.06) / 2 + 0.01, 0);
         grp.add(spike);
-        var wick = new THREE.Mesh(K.wickGeo, K.wickMat);
-        wick.position.set(P.top.x, P.top.y + 0.02, 0);
-        grp.add(wick);
         deps.built().add(grp);
-        grp.updateMatrixWorld(true);
-        var fp = new THREE.Vector3(P.top.x, P.top.y + 0.18, 0).applyMatrix4(grp.matrix);
-        var flame = new THREE.Sprite(deps.flameMat.clone());
-        CakeResources.own(flame.material); flame.material.visible = false;
-        flame.scale.set(fs * 0.7, fs, 1);
-        flame.position.copy(fp);
-        deps.built().add(flame);
-        var halo = null;
-        if (false) {                                         // flat halos retired (v0.96)
-          halo = new THREE.Sprite(CakeLook.haloMaterial());
-          halo.scale.set(fs * CakeLook.LOOK.halo.scale, fs * CakeLook.LOOK.halo.scale, 1);
-          halo.position.copy(fp); halo.renderOrder = -1; deps.built().add(halo);
-        }
-        deps.wicks.push(wick);
-        var fm = deps.flameMesh(i * 2.3 + 0.9); deps.built().add(fm);
-        deps.flames.push({ sprite: flame, halo: halo, base: fs, phase: ((i * 0.618) % 1) * Math.PI * 2, x: fp.x, z: fp.z,
-                      k: 1, lit: 1, y: fp.y, leanX: 0, leanZ: 0, mat: mat, glowBase: mat.emissiveIntensity, mesh: fm, root: 0.15 });
       });
     }
-    function placeCandles(n, surfaces, candleHex, animateFrom, cs) {
-      var pts = layout(n, surfaces);
+    function placeCandles(n, surfaces, candleHex, animateFrom, cs, opts) {
+      var pts = layout(n, surfaces, opts);
       if (!pts.length) return;
       if (animateFrom === undefined) animateFrom = Infinity;
 
@@ -233,7 +234,7 @@
       }
       if (allDone) sp.done = true;                         // (each style's mesh is flagged in setCandleScale)
     }
-    return { layout: layout, placeCandles: placeCandles, placeNumberCandles: placeNumberCandles, setCandleScale: setCandleScale, updateSpawn: updateSpawn };
+    return { layout: layout, placeCandles: placeCandles, placeNumberCandles: placeNumberCandles, placeToppers: placeToppers, setCandleScale: setCandleScale, updateSpawn: updateSpawn };
   }
   window.CakePlacement = { create: create };
 })();
