@@ -1,12 +1,19 @@
-/* placement.js — putting candles on a cake (v1.20, refactor step 7).
-   create(deps) → { layout(n, surfaces), placeCandles(n, surfaces, hex, animateFrom, cs),
-                    placeNumberCandles(age, surface, hex), setCandleScale(sp, i, k), updateSpawn(now) }
-   layout: where n candles go on the cake's tops, in rings; placeCandles: one instanced set per
-   candle style in use, holders, wicks, flames (and their flame records in deps.flames), each
-   placed by hand from the seed; placeNumberCandles: the extruded digits, side by side;
-   updateSpawn: the candles popping in one by one. The parts come from candles.js (deps.candles).
+/* placement.js — putting candles and toppers on a cake (v1.20; front-first and footprints v1.28).
+   create(deps) → { layout(n, surfaces, opts), placeCandles(n, surfaces, hex, animateFrom, cs, opts) → how many placed,
+                    placeToppers(T, surface, hex) → the row's footprint, placeNumberCandles(age, surface, hex),
+                    setCandleScale(sp, i, k), updateSpawn(now), last() → { wanted, placed } }
+   Without toppers, candles take the familiar arrangement: one in the middle, a neat ring for a
+   few, even rings for many. With toppers (v1.28) they go FRONT FIRST: spots round the rings,
+   outer ring first, nearest the front (θ = 0, where the builder opens and the recipient's view
+   lands) first, filled symmetrically — an odd count puts one dead centre, the rest go in mirrored
+   pairs — so candles stand in front of the toppers and only go behind when there are lots.
+   FOOTPRINTS (v1.28): whatever already stands on the top — the topper row, the sparklers — is
+   passed in as opts.blocks, and a spot closer to one than a candle needs (its holder, its lean,
+   its flame) is skipped. Spacing tightens until they fit; the rest spill to the tier below; if
+   even that runs out, fewer are placed and last() says how many.
+   The parts come from candles.js (deps.candles).
    deps: candles, flames[], wicks[] (emptied in place per build), D {spawn}, EASE, built(),
-         flameMat, flameMesh(phase). */
+         flameMat, flameMesh(phase), toppers. */
 (function () {
   function create(deps) {
     var K = deps.candles, _m4 = new THREE.Matrix4();   // K, not C: placeCandles already uses C for each candle's params
@@ -22,48 +29,101 @@
       if (!rings.length && surface.rMin === 0) rings.push({ r: 0, cap: 1 });
       return rings;
     }
-    function layout(n, surfaces, opts) {
-      if (n === 0) return [];
-      var top = surfaces[0];
-      if (opts && opts.toppers && n <= 8) {           // toppers have the middle; up to 8 candles stand in an arc behind them
-        var rr2 = top.rMax * 0.72, out = [];
-        for (var q = 0; q < n; q++) {
-          var a = Math.PI * (n === 1 ? 1 : 0.55 + 0.9 * q / (n - 1));   // an arc across the back: θ = π is straight behind
-          out.push({ x: Math.sin(a) * rr2, z: Math.cos(a) * rr2, y: top.y });
+    // ---- v1.28: footprints and front-first ----
+    var TWO_PI = Math.PI * 2;
+    var PAD = 0.17;                                     // a candle's clearance from anything: its holder, its lean, its flame
+    var lastInfo = { wanted: 0, placed: 0 };
+    // A spot is clear when it's at least PAD from every block: a circle { x, z, r } (a sparkler) or
+    // a rectangle { x0, x1, z0, z1 } (the topper row).
+    function clearOf(p, blocks) {
+      for (var i = 0; blocks && i < blocks.length; i++) {
+        var b = blocks[i], d = (b.r !== undefined)
+          ? Math.hypot(p.x - b.x, p.z - b.z) - b.r
+          : Math.hypot(Math.max(b.x0 - p.x, 0, p.x - b.x1), Math.max(b.z0 - p.z, 0, p.z - b.z1));
+        if (d < PAD) return false;
+      }
+      return true;
+    }
+    function frontDist(a) { a = ((a % TWO_PI) + TWO_PI) % TWO_PI; return Math.round(Math.min(a, TWO_PI - a) * 1e6) / 1e6; }
+    // Every clear spot on one surface at spacing s, ring by ring from the outside in. Each ring comes
+    // two ways — with a spot dead centre at the front, or with a pair straddling it — nearest the front first.
+    function slotsFor(sf, s, blocks) {
+      return ringsFor(sf, s).map(function (rg) {
+        function variant(off) {
+          var out = [];
+          for (var k = 0; k < rg.cap; k++) {
+            var a = rg.r === 0 ? 0 : (k + off) / rg.cap * TWO_PI;
+            var p = { x: Math.sin(a) * rg.r, z: Math.cos(a) * rg.r, y: sf.y, f: frontDist(a) };
+            if (clearOf(p, blocks)) out.push(p);
+          }
+          return out.sort(function (p, q) { return (p.f - q.f) || (p.x - q.x); });
         }
-        return out;
+        var A = variant(0);
+        return { aligned: A, half: rg.cap > 1 ? variant(0.5) : A };
+      });
+    }
+    // An odd number from a ring: the centre spot and pairs. An even number: pairs only. Symmetric
+    // either way, unless something in the way makes that impossible.
+    function takeFrom(rg, want) {
+      var A = rg.aligned, H = rg.half;
+      if (want >= Math.max(A.length, H.length)) return A.length >= H.length ? A : H;
+      var pref = (want % 2) ? A : H, other = (pref === A) ? H : A;
+      return (pref.length >= want ? pref : other).slice(0, want);
+    }
+    function frontFirst(n, surfaces, blocks) {
+      var plan = null;
+      for (var s = 0.46; s >= 0.2 - 1e-9; s -= 0.02) {          // the largest spacing that fits them all
+        plan = surfaces.map(function (sf, i) { return slotsFor(sf, s, i === 0 ? blocks : null); });
+        var total = 0;
+        plan.forEach(function (rings) { rings.forEach(function (rg) { total += Math.max(rg.aligned.length, rg.half.length); }); });
+        if (total >= n) break;
       }
+      var pts = [], left = n;                                    // top tier first, outer ring first; then the tier below
+      plan.forEach(function (rings) { rings.forEach(function (rg) {
+        if (left <= 0) return;
+        var got = takeFrom(rg, left); pts = pts.concat(got); left -= got.length;
+      }); });
+      return pts;
+    }
+    // The arrangement for a cake with no toppers (unchanged from before v1.28). `phase` turns it,
+    // to step a ring round a sparkler.
+    function neat(n, surfaces, phase) {
+      var top = surfaces[0];
       if (n === 1) return [{ x: 0, z: 0, y: top.y }];
-      if (n <= 8) {
-        // Small counts: one neat ring, growing with the count.
-        var rr = Math.min(top.rMax * 0.6, 0.35 + n * 0.09);
-        return ringPoints(n, rr, top.y, 0);
-      }
-      // Largest spacing that fits n across the surfaces.
+      if (n <= 8) return ringPoints(n, Math.min(top.rMax * 0.6, 0.35 + n * 0.09), top.y, phase);
       var s = 0.46, plan = null;
       while (s >= 0.2) {
         var total = 0, per = [];
-        surfaces.forEach(function (sf, si) {
-          var rings = ringsFor(sf, s);
-          if (opts && opts.toppers && si === 0) rings = rings.filter(function (rg) { return rg.r >= sf.rMax * 0.6; });   // v1.23: more candles keep to the outer rings round the toppers
-          per.push(rings);
-          rings.forEach(function (rg) { total += rg.cap; });
-        });
+        surfaces.forEach(function (sf) { var rings = ringsFor(sf, s); per.push(rings); rings.forEach(function (rg) { total += rg.cap; }); });
         if (total >= n) { plan = per; break; }
         s -= 0.02;
       }
-      if (!plan) { s = 0.2; plan = surfaces.map(function (sf, si) { var rg = ringsFor(sf, s); return (opts && opts.toppers && si === 0) ? rg.filter(function (x) { return x.r >= sf.rMax * 0.6; }) : rg; }); }
-
-      // Fill rings outer→inner on the top surface, then the next surface.
+      if (!plan) { s = 0.2; plan = surfaces.map(function (sf) { return ringsFor(sf, s); }); }
       var pts = [], left = n;
       for (var i = 0; i < surfaces.length && left > 0; i++) {
         var rings = plan[i];
         for (var k = 0; k < rings.length && left > 0; k++) {
           var take = Math.min(rings[k].cap, left);
-          pts = pts.concat(ringPoints(take, rings[k].r, surfaces[i].y, k * 0.37));
+          pts = pts.concat(ringPoints(take, rings[k].r, surfaces[i].y, k * 0.37 + phase));
           left -= take;
         }
       }
+      return pts;
+    }
+    function layout(n, surfaces, opts) {
+      opts = opts || {};
+      var blocks = opts.blocks || [], top = surfaces[0], pts = null;
+      lastInfo = { wanted: n, placed: 0 };
+      if (!n || !top) return [];
+      if (!opts.toppers) {
+        var tries = (n > 1 && n <= 8) ? 12 : 1;
+        for (var t = 0; t < tries && !pts; t++) {
+          var cand = neat(n, surfaces, t * TWO_PI / n / tries);
+          if (cand.every(function (p) { return p.y !== top.y || clearOf(p, blocks); })) pts = cand;
+        }
+      }
+      if (!pts) pts = frontFirst(n, surfaces, blocks);
+      lastInfo.placed = pts.length;
       return pts;
     }
     function ringPoints(count, r, y, phase) {
@@ -77,22 +137,31 @@
     function placeNumberCandles(age, surface, candleHex) {   // (kept for older callers) the number alone, as toppers
       placeToppers({ digits: String(age), emojis: [] }, surface, candleHex);
     }
-    // v1.22: toppers — a row on the top tier: the number's digits first, then the emojis, each a
-    // candle. Digits wear the candle colour; emojis their own printed face on cream wax.
+    // v1.22: toppers — a row on the top tier: the number's digits first, then the emojis. Digits
+    // wear the candle colour; emojis their own printed face on cream wax. They face the front (+z),
+    // where the builder opens and the recipient's view lands. Returns the row's FOOTPRINT (v1.28)
+    // so the candles keep clear of it.
+    var ROW_D = 0.23;                                   // half the row's depth: the wax, its hand-placed jitter and lean
     function placeToppers(T, surface, candleHex) {
-      if (!surface) return;
+      if (!surface) return null;
       var chars = String(T.digits || '').replace(/[^0-9]/g, '').slice(0, 2).split('');
+      function partsAt(H) {
+        var out = [];
+        if (window.CakeDigits) chars.forEach(function (ch) { var P = K.digitGeometry(ch, H); if (P) out.push({ P: P, material: function () { return K.makeWaxMaterial(candleHex); } }); });
+        (T.emojis || []).forEach(function (key) { var P = deps.toppers && deps.toppers.part(key, H * 0.92); if (P) out.push({ P: P, material: P.material }); });
+        return out.slice(0, 3);
+      }
+      function widthOf(ps) { return ps.reduce(function (w, q) { return w + q.P.width; }, 0) + K.NUM.spacing * (ps.length - 1); }
       var H = K.NUM.height * Math.max(0.7, Math.min(1, surface.rMax / 1.95));   // smaller on a smaller top tier
-      var parts = [];
-      if (window.CakeDigits) chars.forEach(function (ch) { var P = K.digitGeometry(ch, H); if (P) parts.push({ P: P, material: function () { return K.makeWaxMaterial(candleHex); } }); });
-      (T.emojis || []).forEach(function (key) { var P = deps.toppers && deps.toppers.part(key, H * 0.92); if (P) parts.push({ P: P, material: P.material }); });
-      parts = parts.slice(0, 3);
-      if (!parts.length) return;
-      var widths = parts.map(function (q) { return q.P.width; });
-      parts = parts.map(function (q) { var P = q.P; P.__material = q.material; return P; });
-      var total = parts.reduce(function (w, p) { return w + p.width; }, 0) + K.NUM.spacing * (parts.length - 1);
-      var x = -total / 2, fs = 0.28;
-      parts.forEach(function (P, i) {
+      var parts = partsAt(H);
+      if (!parts.length) return null;
+      // v1.28: the row must fit across the top with a little rim to spare — shrink it, all together, if not.
+      var gaps = K.NUM.spacing * (parts.length - 1), total = widthOf(parts);
+      var room = 2 * Math.sqrt(Math.max(0, surface.rMax * surface.rMax - ROW_D * ROW_D)) * 0.96;
+      if (total > room && total > gaps) { H *= Math.max(0.3, (room - gaps) / (total - gaps)); parts = partsAt(H); total = widthOf(parts); }
+      var x = -total / 2;
+      parts.forEach(function (q, i) {
+        var P = q.P;
         var sd = window.CakeFrosting ? CakeFrosting.seedOf() : 0;
         function h(k) { var n = Math.sin((i + 3) * 127.1 + k * 311.7 + sd * 74.7) * 43758.5453; return n - Math.floor(n); }
         var cx = x + P.width / 2; x += P.width + K.NUM.spacing;
@@ -101,7 +170,7 @@
         grp.rotation.set((h(2) - 0.5) * 0.06, (h(3) - 0.5) * 0.12, (h(4) - 0.5) * 0.05);   // placed by hand
         // v1.23: toppers are decorations in candle wax, not candles — no wick, no flame, and so no
         // glow from within (that glow is the flame's light); blowing out is only for candles.
-        var mat = P.__material();
+        var mat = q.material();
         mat.emissiveIntensity = 0;
         grp.add(new THREE.Mesh(P.geo, mat));
         var spike = new THREE.Mesh(K.numberSpikeGeo, K.holderMat);
@@ -109,10 +178,11 @@
         grp.add(spike);
         deps.built().add(grp);
       });
+      return { x0: -total / 2 - 0.03, x1: total / 2 + 0.03, z0: -ROW_D, z1: ROW_D };
     }
     function placeCandles(n, surfaces, candleHex, animateFrom, cs, opts) {
       var pts = layout(n, surfaces, opts);
-      if (!pts.length) return;
+      if (!pts.length) return 0;
       if (animateFrom === undefined) animateFrom = Infinity;
 
       // Thinner, shorter candles when they're packed tight.
@@ -213,6 +283,7 @@
           setCandleScale(deps.D.spawn, i, 0);
         }
       }
+      return pts.length;
     }
     function setCandleScale(sp, i, k) {
       var p = sp.pts[i], C = sp.params[i], m = _m4;
@@ -234,7 +305,8 @@
       }
       if (allDone) sp.done = true;                         // (each style's mesh is flagged in setCandleScale)
     }
-    return { layout: layout, placeCandles: placeCandles, placeNumberCandles: placeNumberCandles, placeToppers: placeToppers, setCandleScale: setCandleScale, updateSpawn: updateSpawn };
+    return { layout: layout, placeCandles: placeCandles, placeNumberCandles: placeNumberCandles, placeToppers: placeToppers, setCandleScale: setCandleScale, updateSpawn: updateSpawn,
+             last: function () { return lastInfo; }, PAD: PAD };
   }
   window.CakePlacement = { create: create };
 })();

@@ -176,3 +176,10 @@ Ceremonies become 280ms crossfades. Candles light all at once. Flames flicker at
 - [ ] Skippable by tap wherever someone could be in a hurry.
 - [ ] Runs at 60fps on the oldest phone available, with 100 candles.
 - [ ] Reduced-motion mode still communicates everything.
+
+> **Update (v1.28, 25 Sept 2026): the message is on the FRONT.** Supersedes "the message lives
+> permanently on the back of the cake and is found by spinning" (13 Sept). The recipient's view now
+> opens round the back of the closed box; opening it swings the cake round to face them — the same
+> way as the idle turn, ~2.4s, `lift` — holds ~2s for the writing, then the idle turn resumes. A touch
+> cancels the turn; reduced motion starts at the front. The message, the toppers and the first
+> candles all face the front, and the builder opens there too. Spinning fast still blows the candles out.

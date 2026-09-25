@@ -1,29 +1,31 @@
-# Cake — v1.27 (the sky is drawn, so the line through the flames is gone)
+# Cake — v1.28 (the message on the front; candles, toppers and sprinkles that know where things are)
 
-The tag reads **v1.27**.
+The tag reads **v1.28**.
 
-**The line through the flames.** On the iPhone a horizontal line swept through each flame as the
-camera tilted: below it the flame had its soft halo, above it the halo was gone. The line was the
-far edge of the floor. The camera sees 100 units; the floor is 400 wide, so it's cut off there,
-just below eye level. The fog paints the far floor the sky's colour, so the edge was invisible —
-but below it the canvas was opaque floor and above it the canvas was EMPTY, with the CSS sky
-showing through. The halo adds light without recording coverage, so above the edge it left
-"colour on an empty pixel", which WebGL leaves undefined: Chrome (and the test harness) added it
-over the page anyway; iPhone Safari threw it away. Hence a line only the phone could see, and why
-`?backdrop=0` (no floor: empty canvas everywhere) made the flame look the same at every angle.
+**The message is on the front.** It used to sit on the back, to be found by spinning. Now the
+writing, the toppers and the first candles all face the same way, the builder opens on that front,
+and the recipient's view starts round the BACK of the closed box: opening it swings the cake round
+to face them (the same way as its idle turn, about 2.4 seconds, easing in and out), holds for two
+seconds so the writing can be read, then the idle turn resumes. A touch stops the turn. With
+reduced motion the view simply starts at the front. The blowing-out hint now reads "Make a wish —
+then spin it fast to blow them out".
 
-**The fix.** The sky is now the canvas's clear colour: the same measured colour the fog uses, in
-screen values, at full opacity (`stage.js`). Every pixel is opaque, the flame and halo blend onto
-a real sky in WebGL, and every browser draws the same picture. The flame now looks like its
-below-the-line self (soft halo) at every angle. The sparklers' glow and sparks had the same
-problem above the floor's edge; they're fixed by the same change.
+**Candles in front of the toppers.** With toppers on the cake, candles fill the outer ring front
+first, symmetrically (an odd count puts one dead centre, the rest go in pairs), and only go behind
+the toppers when there are lots of them. Without toppers, candles keep their familiar arrangement.
 
-- `?sky=0` puts the old transparent canvas back, for comparison.
-- With `?backdrop=0` the sky is still drawn (no floor or fog, but no empty canvas either).
+**No clipping.** The topper row and the sparklers reserve their real footprints and no candle
+stands inside one. Spacing tightens until they fit; the rest go to the tier below; if even that
+runs out, the Candles tray says how many fit. The topper row also shrinks to fit a narrow top tier.
 
-**Also:** the refactor's rename had leaked into text people see — "Tap a V.slice to V.cut it",
-"Send a V.slice back to…", and the slice share titles. Now "slice" and "cut" again (plus the same
-slip in a few code comments).
+**Sprinkles only on icing.** Never on bare sponge or fillings, never under a ribbon. With no tier
+iced, the Sprinkles tray dims and says why, and Shuffle only adds sprinkles to iced cakes.
 
-Changed files: `stage.js`, `scene.js`, `debug.js`, `app.js`, `cut.js`, `index.html`, `README.md`,
-`tools/README.md`.
+Checked in the harness: 5 candles stand in front of "30❤" in a symmetric arc, 1.49 units clear of
+the toppers and sparklers; a narrow top fits 6 candles (4 in front, 2 behind), all clear; a plain
+ring steps round two sparklers; of 8,116 sprinkles none sit under the ribbon, and a naked cake gets
+none; the recipient's view turns from the back (3.34) to the front (0.2) and holds; the six saved
+links decode unchanged.
+
+Changed files: `app.js`, `placement.js`, `sprinkles.js`, `message.js`, `index.html`, `style.css`,
+`README.md`, `docs/cake-feel-spec.md`.

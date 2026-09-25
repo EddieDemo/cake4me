@@ -128,7 +128,7 @@
     d.cm = Math.random() < B.numberChance ? 1 : 0;
     d.cs = B.candleStyles[randInt(0, B.candleStyles.length - 1)];
     var sr = Math.random(); d.sk = sr < B.sparklers[1] ? 2 : sr < B.sparklers[0] + B.sparklers[1] ? 1 : 0;
-    d.sa = Math.random() < B.sprinkleChance ? randInt(3, 10) : 0;
+    d.sa = (!baked && Math.random() < B.sprinkleChance) ? randInt(3, 10) : 0;   // sprinkles go on icing (v1.28)
     d.spal = [0, 0, 0, 1, 2][randInt(0, 4)];
     d.sr = randInt(0, 999);
     d.age = Math.random() < 0.3 ? randInt(1, 12) : randInt(13, 90);
@@ -164,6 +164,10 @@
   function syncSprinkles() {
     var a = $('f-sa'); if (a) a.value = draft.sa;
     Array.prototype.forEach.call($('spr-pal').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-spal') === draft.spal); });
+    // v1.28: sprinkles stick to icing — with no tier iced there's nowhere for them to go.
+    var iced = draft.fds.some(function (v) { return v; }) || draft.frsty.some(function (v) { return v === 4; });
+    Array.prototype.forEach.call(document.querySelectorAll('#tray-sprinkles .rowline'), function (r) { r.classList.toggle('dim', !iced); });
+    var sh = $('spr-hint'); if (sh) { sh.hidden = iced; sh.style.display = iced ? 'none' : ''; }
   }
   function syncCandleMode() {
     syncSprinkles();
@@ -492,6 +496,14 @@
   var showMessage = true;
 
   var tierGroups = [];
+  var lastBlocks = [];       // v1.28: the footprints the candles kept clear of (for the harness)
+  // v1.28: when candles don't all fit (a narrow top, three toppers), the Candles tray says so.
+  function showFitHint() {
+    var el = document.getElementById('fit-hint'); if (!el) return;
+    var info = PLACE.last(), short = info.wanted - info.placed;
+    el.textContent = short > 0 ? 'Only ' + info.placed + ' of ' + info.wanted + ' candles fit on this cake — try a wider top tier, or fewer toppers.' : '';
+    el.hidden = short <= 0; el.style.display = short > 0 ? '' : 'none';
+  }
   var D = { spawn: null };   // v1.20: the decor's per-build state (the candles' pop-in)
 
   // One tier: its materials, its body (naked stack, frosting, or fondant), the message band,
@@ -583,6 +595,7 @@
       var rbGeo = CakeShapes.ribbon(rbR, rbY, rw, CYL_SEG, 0, Math.PI * 2, hand);
       if (!TM.fdOn && window.CakeFrosting) CakeFrosting.spongeWobble(rbGeo, rr, 1e3, SPONGE_WOBBLE);   // follows the baked wall's wobble, still bridging the fillings
       var ribbon = new THREE.Mesh(rbGeo, RIBBONS.makeRibbonMaterial(B.cfg, rt)); ribbon.userData.noSprinkle = true;
+      ribbon.userData.band = { y: rbY, w: rw, tilt: (hand && hand.tilt) || 0, at: (hand && hand.tiltAt) || 0 };   // sprinkles keep off it (v1.28)
       ribbon.position.y = B.y;
       tg.add(ribbon);
     }
@@ -645,12 +658,16 @@
     if (!window.CakeDebug || CakeDebug.on('sprinkles')) placeSprinkles(cfg, tiers);
     if (window.CakeDebug && !CakeDebug.on('candles')) { /* switched off for bisecting */ }
     else {
-      var hasToppers = !!(cfg.tn || cfg.te);             // v1.22: toppers on the top tier, candles behind them
+      var hasToppers = !!(cfg.tn || cfg.te);             // v1.22: toppers on the top tier; candles in front of them first (v1.28)
       var emojis = cfg.te ? cfg.te.split('.') : [];
       if (emojis.length && !TOPPERS.ready()) { TOPPERS.ensure(rebuildForToppers); emojis = []; }   // outlines arrive → build again
-      if (hasToppers) PLACE.placeToppers({ digits: cfg.tn, emojis: emojis }, surfaces[0], candleHex);
-      PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers });
+      // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
+      var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis }, surfaces[0], candleHex); if (row) blocks.push(row); }
+      lastBlocks = blocks;
+      PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
     }
+    showFitHint();
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
     // began mutating its config in place, came back to life when v0.60 made the tier switch
@@ -1601,8 +1618,11 @@
     buildBox(h);
     box.visible = lid.visible = ribbon.visible = true;
     box.position.y = 0; lid.position.y = h - 0.04; lid.rotation.set(0, 0, 0); ribbon.position.y = h - 0.04; ribbon.scale.set(1, 1, 1);
-    camAzimuth = -0.4;
-    S.omega = SPIN.idle; S.tiltX = 0; S.bankZ = 0; S.spinFree = false;
+    // v1.28: the recipient starts round the BACK of the box; opening it swings the cake round to
+    // face them — the message, the toppers and the front candles arrive together. The box holds
+    // still until then (it can still be dragged), so the turn always has somewhere to come from.
+    camAzimuth = reduceMotion ? FRONT_AZ : FRONT_AZ + Math.PI;
+    S.omega = 0; S.idleResumeAt = Infinity; S.tiltX = 0; S.bankZ = 0; S.spinFree = false;
     camElev = CAM_ELEV_BASE; camRoll = 0; camZoom = 1; frameCamera();
     spinEnabled = true;          // the box is handled exactly like the cake
     setFrame('box', 1.7, true);
@@ -1611,10 +1631,24 @@
     document.getElementById('mic-status').innerHTML = '&nbsp;';
     document.getElementById('vs-revealed').classList.remove('on');
   }
+  // v1.28: the turntable swings the cake round to face the recipient — the same way its idle turn
+  // goes, easing in and out — then holds for the writing to be read before the idle turn resumes.
+  // A touch cancels it (the 'turn' tag). Reduced motion: the view simply starts at the front.
+  var FRONT_AZ = 0.2;          // the front, a touch off square so the cake reads as solid
+  function turnToFront(delay) {
+    var d = ((camAzimuth - FRONT_AZ) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    if (d > Math.PI * 1.75) d -= Math.PI * 2;          // only just past the front: back up rather than go all the way round
+    var dur = Math.round(600 + 1800 * Math.min(1, Math.abs(d) / Math.PI));
+    S.omega = 0; S.idleResumeAt = performance.now() + delay + dur + SPIN.catchIdleDelay;
+    if (reduceMotion || Math.abs(d) < 0.05) return;
+    var from = camAzimuth, to = from - d;
+    tween({ delay: delay, duration: dur, ease: EASE.lift, tag: 'turn', update: function (k) { camAzimuth = from + (to - from) * k; } });
+  }
   function openBox() {
     if (boxOpenDone) return; boxOpenDone = true;
     MIC.unlock();
     var h = BOX.h;
+    turnToFront(700);                                   // as the box sinks away and the cake rises
     // 1. ribbon loosens and drops
     tween({ duration: 280, ease: EASE.soft, update: function (k) { ribbon.scale.set(1 + 0.15 * k, 1, 1 + 0.15 * k); ribbon.position.y = (h - 0.04) - 1.2 * k; ribbon.traverse(function (o) { if (o.material) { o.material.transparent = true; o.material.opacity = 1 - k; } }); },
       done: function () { ribbon.visible = false; ribbon.traverse(function (o) { if (o.material) { o.material.opacity = 1; o.material.transparent = false; } }); } });
@@ -2473,7 +2507,7 @@
       var on = e.target.checked ? 1 : 0;
       if (fondAll) draft.fds = draft.fds.map(function () { return on; }); else draft.fds[curTier] = on;
       draft = STORE.set(draft, { silent: true });
-      syncFrosting(); updateColourNote();
+      syncFrosting(); syncSprinkles(); updateColourNote();
       STORE.commit();
       if (on) frostOn();
     });
@@ -2859,7 +2893,7 @@
     MIC.stop();
     CONF.clear();
     built.position.y = 0; built.scale.set(1, 1, 1);
-    spinEnabled = true; S.spinFree = false; S.omega = SPIN.idle; S.tiltX = 0; S.bankZ = 0;
+    spinEnabled = true; S.spinFree = false; S.omega = SPIN.idle; S.idleResumeAt = 0; S.tiltX = 0; S.bankZ = 0;
     camElev = CAM_ELEV_BASE; camRoll = 0; camZoom = 1; frameCamera();
     blow.enabled = false;
     els.linkpanel.classList.remove('stage1', 'stage2', 'away');
@@ -2926,7 +2960,7 @@
       syncForm();
       showSheet('builder');
       STORE.commit({ showMessage: true });
-      camAzimuth = Math.PI;                // looking at the message side while they write it
+      camAzimuth = FRONT_AZ;               // the front (v1.28): the message, the toppers — what the recipient sees first
     }
     resize();
   }
@@ -2976,6 +3010,8 @@
     light: function (i) { applyLightPreset(i | 0, 0); updateRoomLights(); syncFrosting(); },
     settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
+    __layout: function () { return PLACE.last(); }, __blocks: function () { return lastBlocks; },
+    __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return CakeSprinkles.tierKey(t); }); },
     __tierAt: function (x, y) { return tierAt(x, y); }, __tm: function (i) { var t=tierTops(config)[i]; var TM=BODY.tierMaterials(config, t); return { frosting: TM.frosting.toString(16), hasBase: !!TM.base, style: TM.style, fdOn: TM.fdOn, msgTier: messageMesh && messageMesh.__tier ? messageMesh.__tier.idx : null }; }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
     renderer: renderer,               // for cake.renderer.info.programs — count should not grow after load

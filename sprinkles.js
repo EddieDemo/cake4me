@@ -55,6 +55,13 @@
       U.uP1Pos.value.copy(candleLight.position).applyMatrix4(V); U.uP1Col.value.copy(candleLight.color).multiplyScalar(candleLight.intensity); U.uP1Cut.value = candleLight.distance;
       U.uP2Pos.value.copy(sparkLight.position).applyMatrix4(V); U.uP2Col.value.copy(sparkLight.color).multiplyScalar(sparkLight.intensity); U.uP2Cut.value = sparkLight.distance;
     }
+    // What a tier's sprinkles may land on (v1.28): they stick to icing, never bare sponge or filling.
+    // Fondant: all of it. A semi-naked scrape: only its frosted top. A naked tier: nothing.
+    function coverOf(cfg, i) {
+      if (cfg.fds ? cfg.fds[i] : cfg.fd) return 'all';
+      if ((cfg.frsty ? cfg.frsty[i] : cfg.fr) === 4) return 'top';
+      return 'none';
+    }
     function placeSprinkles(cfg, tiers) {
       sprinkleSets = {};
       var amt = cfg.sa | 0; if (!amt) return;
@@ -65,12 +72,15 @@
       tiers.forEach(function (tier, i) {
         var ct = canon[i] || tier;
         var tg = deps.tierGroups()[i]; if (!tg) return;
+        var cover = coverOf(cfg, i); if (cover === 'none') return;
+        var bands = [];                                  // the ribbons round this tier: nothing lands under them (v1.28)
         tg.updateMatrixWorld(true);
         var inv = new THREE.Matrix4().copy(tg.matrixWorld).invert();
         var upper = tiers[i + 1], upperR = upper ? (upper.r || 0) + 0.02 : -1;
         // Gather this tier's outer surface as triangles (tier-group coordinates).
         var tris = [], topY = -1e9, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), m4 = new THREE.Matrix4();
         tg.traverse(function (o) {
+          if (o.userData && o.userData.band) { var bd = o.userData.band; bands.push({ y: o.position.y + bd.y, w: bd.w, tilt: bd.tilt, at: bd.at }); }
           if (!o.isMesh || o.isInstancedMesh || (o.userData && o.userData.noSprinkle) || !o.geometry || !o.geometry.attributes.position) return;
           if (o.material && !Array.isArray(o.material) && o.material.transparent) return;
           m4.multiplyMatrices(inv, o.matrixWorld);
@@ -85,6 +95,7 @@
             var cx = (a.x + b.x + c.x) / 3, cz = (a.z + b.z + c.z) / 3;
             if (nrm.x * cx + nrm.z * cz < 0 && Math.abs(nrm.y) < 0.9) nrm.negate();     // outward
             if (nrm.y < -0.3) continue;                                                   // undersides
+            if (cover === 'top' && nrm.y <= 0.9) continue;                                // a scrape's sides are mostly sponge
             if (nrm.y > 0.9) topY = Math.max(topY, (a.y + b.y + c.y) / 3);
             tris.push([a.clone(), b.clone(), c.clone(), nrm, area]);
           }
@@ -101,8 +112,16 @@
           var px = T[0].x + (T[1].x - T[0].x) * u + (T[2].x - T[0].x) * v, py = T[0].y + (T[1].y - T[0].y) * u + (T[2].y - T[0].y) * v, pz = T[0].z + (T[1].z - T[0].z) * u + (T[2].z - T[0].z) * v;
           var nn = T[3], rr = Math.sqrt(px * px + pz * pz), ang = Math.atan2(px, pz); if (ang < 0) ang += Math.PI * 2;
           if (nn.y > 0.9 && rr < upperR) continue;                                        // under the tier above
+          if (bands.length && Math.abs(nn.y) < 0.6) {                                      // under a ribbon: it would poke through
+            var under = false;
+            for (var bi = 0; bi < bands.length && !under; bi++) {
+              var Bd = bands[bi], b0 = Bd.y + Bd.tilt * Math.cos(ang - Bd.at);             // the band follows its hand-tied tilt
+              under = py > b0 - 0.04 && py < b0 + Bd.w + 0.04;
+            }
+            if (under) continue;
+          }
           if (msg && Math.abs(nn.y) < 0.6) {                                               // keep the writing clear
-            var dAng = Math.abs(ang - Math.PI), yRel = (py - (ct.y0 || 0)) / bodyH;
+            var dAng = Math.min(ang, Math.PI * 2 - ang), yRel = (py - (ct.y0 || 0)) / bodyH;
             if (dAng < msg.w * Math.PI + 0.12 && Math.abs(yRel - 0.5) < msg.h / 2 + 0.06) continue;
           }
           var s2 = 0.014 + 0.011 * Math.pow(rnd(), 1.3), e = 0.15 + 0.45 * rnd(), off = s2 * (1 - 2 * e);

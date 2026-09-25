@@ -692,3 +692,6 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 #f-tn { width: 5.5rem; font: inherit; font-size: 1.05rem; padding: 0.45rem 0.7rem; border-radius: 0.7rem; border: 1.5px solid rgba(59,42,42,0.15); background: #fff; color: #3b2a2a; }
 #f-te { flex: 1; min-width: 0; font: inherit; font-size: 1.5rem; letter-spacing: 0.15em; padding: 0.3rem 0.7rem; border-radius: 0.7rem; border: 1.5px solid rgba(59,42,42,0.15); background: #fff; color: #3b2a2a; }
 #toppers-hint { font-size: 0.8rem; color: rgba(59,42,42,0.6); padding: 0.2rem 0.2rem 0.3rem; line-height: 1.5; }
+
+/* v1.28 — sprinkles need icing: the tray dims when no tier has any */
+#tray-sprinkles .rowline.dim { opacity: .35; pointer-events: none; }

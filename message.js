@@ -1,6 +1,6 @@
 /* message.js — the writing on the cake (v1.10, refactor step 5).
    texture(text, ink, frostingHex, radius, bodyH, base, ownCanvas) → a CanvasTexture wrapped round
-   the tier's side, the text on the BACK (θ = π), fitted and wrapped to ~34% of the circumference;
+   the tier's side, the text on the FRONT (θ = 0; the back until v1.27), fitted and wrapped to ~34% of the circumference;
    lastSpan() → where the writing is (fractions of circumference and height), so sprinkles keep
    clear of it. One persistent canvas is redrawn for every live band (allocating 16MB per drag
    step is what used to make Safari reload). */
@@ -75,23 +75,27 @@
       lastSpan = { w: widest / W, h: blockH / H };          // so the sprinkles can leave the writing clear
       var startY = (H - blockH) / 2 + fit.ink.asc;   // centre the INK block, then step by baselines
 
+      var inkLum = (function () { var c = new THREE.Color(ink); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; })();
       fit.lines.forEach(function (ln, i) {
         var yy = startY + i * lineH;
-        // Piped look: soft shadow, a raised highlight, then the ink.
-        g.fillStyle = 'rgba(0,0,0,0.22)';
-        g.fillText(ln, W / 2 + size * 0.03, yy + size * 0.06);
-        var inkLum = (function () { var c = new THREE.Color(ink); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; })();
-        g.fillStyle = inkLum < THREE.Color.srgbToLinear(0.5) ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
-        g.fillText(ln, W / 2 - size * 0.02, yy - size * 0.03);
-        g.fillStyle = ink;
-        g.fillText(ln, W / 2, yy);
+        // The writing is centred on the FRONT (v1.28): u = 0 — which is also u = 1 — so every pass
+        // is drawn twice, centred on the canvas's left edge and on its right, and the two halves
+        // meet across the wrap. (Until v1.27 it sat mid-canvas: the back of the cake.)
+        [0, W].forEach(function (cx) {
+          // Piped look: soft shadow, a raised highlight, then the ink.
+          g.fillStyle = 'rgba(0,0,0,0.22)';
+          g.fillText(ln, cx + size * 0.03, yy + size * 0.06);
+          g.fillStyle = inkLum < THREE.Color.srgbToLinear(0.5) ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)';
+          g.fillText(ln, cx - size * 0.02, yy - size * 0.03);
+          g.fillStyle = ink;
+          g.fillText(ln, cx, yy);
+        });
       });
 
       var t = new THREE.CanvasTexture(c);
       t.encoding = THREE.sRGBEncoding;
       t.wrapS = THREE.RepeatWrapping;
-      t.offset.x = 0;                // canvas centre → BACK of the cylinder (theta = π).
-                                     // The message is always on the reverse side; you spin to find it.
+      t.offset.x = 0;                // canvas edges → the FRONT of the cylinder (theta = 0), since v1.28
       t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
       // Every band shares ONE canvas (v0.62), so the GPU copy must be taken NOW, before the next
       // caller repaints it. Without this, the warm-up's 'warm' band — painted after the real cake
