@@ -419,7 +419,7 @@
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
         opacity: LOOK.halo.opacity, toneMapped: false
       });
-      haloMat.__shared = true; haloTex.__shared = true;
+      CakeResources.keep(haloMat); CakeResources.keep(haloTex);
     }
     haloMat.opacity = LOOK.halo.opacity; haloMat.color.set(LOOK.halo.colour);
     return haloMat;

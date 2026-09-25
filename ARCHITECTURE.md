@@ -44,10 +44,10 @@ Definitions become data: finishes, candle styles, palettes, lighting presets, ge
 ## Order of work
 1. **Safety net + switches** — this version. `tools/`, golden links, `debug.js` (`?ao=0 ?flames=0
    ?halo=0 ?backdrop=0 ?shadows=0 ?sprinkles=0 ?sparklers=0 ?candles=0 ?cover= ?glow=`).
-2. **Schema + state** — named, versioned link with migrations; a store the UI binds to.
-3. **Scene + pipeline** — renderer/camera/lights/stage/post as modules; passes declared once.
-4. **Materials** — registry + cache + shaders as files + one patch helper.
-5. **Cake** — tiers, finishes as data-driven modules, sponge, ribbon, sprinkles, message.
+2. **Schema + state** — ✅ schema.js + palettes.js, named v2 links (v1.06). The store (UI binding) folds into step 7.
+3. **Scene + pipeline** — ✅ scene.js + pipeline.js, frozen clock, deterministic harness (v1.07) — renderer/camera/lights/stage/post as modules; passes declared once.
+4. **Materials** — ✅ registry (v1.08) · resources, shaders as files, patch helper (v1.09)
+5. **Cake** (next) — tiers, finishes as data-driven modules, sponge, ribbon, sprinkles, message.
 6. **Decor** — candles/styles/numbers/holders/flames/sparklers.
 7. **Interaction, then UI** — trays as components on the store.
 Each step: extract, run render+compare (expect ~0%), run golden_check, ship with the tag.

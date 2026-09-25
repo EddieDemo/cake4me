@@ -150,7 +150,7 @@
       d[i] = (nx / l * 0.5 + 0.5) * 255; d[i + 1] = (ny / l * 0.5 + 0.5) * 255; d[i + 2] = (1 / l * 0.5 + 0.5) * 255; d[i + 3] = 255;
     }
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
+    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; CakeResources.keep(t); t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;                                            // LINEAR encoding: data, not colour
   }
   function toRough(h, W, H, base, span) {
@@ -158,7 +158,7 @@
     var g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
     for (var i = 0; i < W * H; i++) { var r = Math.max(0.05, Math.min(1, base - span * (h[i] - 0.5) * 2)) * 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = r; d[i * 4 + 3] = 255; }   // ridges shinier
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
+    var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; CakeResources.keep(t); t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;
   }
   // Side textures span the full circumference (≈ 4 mock tiles), tops the full diameter.
@@ -509,12 +509,12 @@
     '\n}\n';
   var _flat = null;
   function flatTex() {
-    if (!_flat) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#8080ff'; g.fillRect(0, 0, 2, 2); _flat = new THREE.CanvasTexture(c); _flat.__shared = true; }
+    if (!_flat) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#8080ff'; g.fillRect(0, 0, 2, 2); _flat = new THREE.CanvasTexture(c); CakeResources.keep(_flat); }
     return _flat;
   }
   var _white = null;
   function whiteTex() {
-    if (!_white) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 2, 2); _white = new THREE.CanvasTexture(c); _white.__shared = true; }
+    if (!_white) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 2, 2); _white = new THREE.CanvasTexture(c); CakeResources.keep(_white); }
     return _white;
   }
   function dressFondant(mat, maps, R) {
@@ -533,10 +533,10 @@
     };
     mat.onBeforeCompile = function (shader) {
       for (var k in U) shader.uniforms[k] = U[k];
-      shader.vertexShader = BP_VERT_DECL + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + BP_VERT);
-      shader.fragmentShader = BP_FRAG_DECL + shader.fragmentShader
-        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness;')
-        .replace('#include <normal_fragment_maps>', BP_FRAG);
+      CakePatch.declare(shader, 'vertex', BP_VERT_DECL); CakePatch.after(shader, 'vertex', 'begin_vertex', BP_VERT);
+      CakePatch.declare(shader, 'fragment', BP_FRAG_DECL);
+      CakePatch.replace(shader, 'fragment', 'roughnessmap_fragment', 'float roughnessFactor = roughness;');
+      CakePatch.replace(shader, 'fragment', 'normal_fragment_maps', BP_FRAG);
     };
     mat.customProgramCacheKey = function () { return 'cake-biplanar-1'; };
     mat.userData.bp = U;
@@ -602,7 +602,7 @@
     var g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
     for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var v = fn(x, y), i = (y * W + x) * 4; d[i] = Math.min(255, v[0] * 255); d[i + 1] = Math.min(255, v[1] * 255); d[i + 2] = Math.min(255, v[2] * 255); d[i + 3] = 255; }
     g.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.__shared = true; t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; CakeResources.keep(t); t.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     return t;
   }
   // Rack patterns across the top (texture space = the tier's diameter). 0 plain · 1 wires · 2 bars.
@@ -661,7 +661,7 @@
     if (!crumbFoam && !now) {
       if (!crumbQueued) { crumbQueued = true; setTimeout(function () { crumbMaps(true, variant); }, 900); }
       if (!crumbPlaceholder) {
-        var mk1 = function (rgb) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 2, 2); var t = new THREE.CanvasTexture(c); t.__shared = true; return t; };
+        var mk1 = function (rgb) { var c = document.createElement('canvas'); c.width = c.height = 2; var g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 2, 2); var t = new THREE.CanvasTexture(c); CakeResources.keep(t); return t; };
         crumbPlaceholder = { a: mk1('#f0ece4'), n: mk1('#8080ff'), r: mk1('#f2f2f2') };
         crumbPlaceholder.a.encoding = THREE.sRGBEncoding;
       }
@@ -679,7 +679,7 @@
     }
     if (!crumbSets[variant]) {
       var h = crumbFoam.h, tile = variant === 'tight' ? CRUMB_TILE / 1.45 : CRUMB_TILE;
-      var rep = function (t) { var c = t.clone(); c.needsUpdate = true; c.repeat.set(1 / tile, 1 / tile); c.__shared = true; return c; };
+      var rep = function (t) { var c = t.clone(); c.needsUpdate = true; c.repeat.set(1 / tile, 1 / tile); CakeResources.keep(c); return c; };
       var fleck = function (x, y, seed, dens) { return phash(Math.floor(x / 2), Math.floor(y / 2), seed) > 1 - dens; };
       var a = toColour(function (x, y) {
         var v = Math.max(0, h[y * N + x]), k;
@@ -709,7 +709,8 @@
     var U = { uWrap: { value: wrap }, uScatter: { value: tint } };
     mat.onBeforeCompile = function (sh) {
       sh.uniforms.uWrap = U.uWrap; sh.uniforms.uScatter = U.uScatter;
-      sh.fragmentShader = 'uniform float uWrap; uniform vec3 uScatter;\n' + sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', chunk.replace(WRAP_DIFF,
+      CakePatch.declare(sh, 'fragment', 'uniform float uWrap; uniform vec3 uScatter;');
+      CakePatch.replace(sh, 'fragment', 'lights_physical_pars_fragment', chunk.replace(WRAP_DIFF,
         'float wNL = saturate( ( dot( geometry.normal, directLight.direction ) + uWrap ) / ( 1.0 + uWrap ) );' +
         '\n vec3 wIrr = wNL * directLight.color;\n #ifndef PHYSICALLY_CORRECT_LIGHTS\n wIrr *= PI;\n #endif' +
         '\n reflectedLight.directDiffuse += ( 1.0 - clearcoatDHR ) * ( irradiance + max( wIrr - irradiance, 0.0 ) * uScatter ) * BRDF_Diffuse_Lambert( material.diffuseColor );'));
@@ -782,7 +783,7 @@
     var g = rough.getContext('2d'), img = g.createImageData(RW, RH), d = img.data;
     for (var y = 0; y < RH; y++) for (var x = 0; x < RW; x++) { var q = rf(x / RW, y / RH) * 255, i = (y * RW + x) * 4; d[i] = d[i + 1] = d[i + 2] = q; d[i + 3] = 255; }
     g.putImageData(img, 0, 0);
-    var rt = new THREE.CanvasTexture(rough); rt.wrapS = rt.wrapT = THREE.RepeatWrapping; rt.__shared = true; rt.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
+    var rt = new THREE.CanvasTexture(rough); rt.wrapS = rt.wrapT = THREE.RepeatWrapping; CakeResources.keep(rt); rt.anisotropy = 8;   // v0.95: sharp at grazing angles instead of shimmering
     ribCloth[kind] = { n: toNormal(h, RW, RH, nk), r: rt };
     return ribCloth[kind];
   }
@@ -814,11 +815,11 @@
     var ax = kind === 1 ? 0.12 : 0.5, ay = kind === 1 ? 0.5 : 0.055;   // grosgrain smears across its ribs instead
     m.onBeforeCompile = function (sh) {
       sh.uniforms.uAx = { value: ax }; sh.uniforms.uAy = { value: ay };
-      sh.vertexShader = 'varying vec3 vRibT;\n' + sh.vertexShader.replace('#include <begin_vertex>',
-        '#include <begin_vertex>\n float rA = (abs(position.x)+abs(position.z) < 1e-5) ? 0.0 : atan(position.x, position.z);\n vRibT = normalize(normalMatrix * vec3(cos(rA), 0.0, -sin(rA)));');
+      CakePatch.declare(sh, 'vertex', 'varying vec3 vRibT;');
+      CakePatch.after(sh, 'vertex', 'begin_vertex', ' float rA = (abs(position.x)+abs(position.z) < 1e-5) ? 0.0 : atan(position.x, position.z);\n vRibT = normalize(normalMatrix * vec3(cos(rA), 0.0, -sin(rA)));');
       // The function goes in WITH the chunk it patches: three's light structs are declared there.
-      sh.fragmentShader = 'varying vec3 vRibT;\nuniform float uAx; uniform float uAy;\n' +
-        sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', ANISO_FN + '\n' + chunk.replace(RIB_SPEC,
+      CakePatch.declare(sh, 'fragment', 'varying vec3 vRibT;\nuniform float uAx; uniform float uAy;');
+      CakePatch.replace(sh, 'fragment', 'lights_physical_pars_fragment', ANISO_FN + '\n' + chunk.replace(RIB_SPEC,
           'vec3 aT = normalize( vRibT - geometry.normal * dot( vRibT, geometry.normal ) );' +
           '\n vec3 aB = normalize( cross( geometry.normal, aT ) );' +
           '\n reflectedLight.directSpecular += ( 1.0 - clearcoatDHR ) * irradiance * BRDF_Aniso( directLight, geometry.viewDir, geometry.normal, aT, aB, material.specularColor, uAx, uAy );'));

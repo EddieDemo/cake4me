@@ -8,8 +8,13 @@
 (function () {
   'use strict';
 
-  var SCHEMA_VERSION = 1;
   var MAX_CANDLES = 100;          // what a LINK may carry (old gifts keep their count)
+  // ---- v1.06: the schema and its data live in schema.js / palettes.js; these are the aliases ----
+  var PALETTES = CakePalettes.PALETTES, OCCASIONS = CakePalettes.OCCASIONS, SPONGES = CakePalettes.SPONGES, SC_TO_SP = CakePalettes.SC_TO_SP, TIERS = CakePalettes.TIERS, SHAPE = CakePalettes.SHAPE;
+  var SCHEMA_VERSION = CakeSchema.SCHEMA_VERSION, MAX_MSG = CakeSchema.MAX_MSG, MAX_NAME = CakeSchema.MAX_NAME, DEFAULTS = CakeSchema.DEFAULTS;
+  var normalize = CakeSchema.normalize, encodeConfig = CakeSchema.encode, decodeConfig = CakeSchema.decode;
+  var clampInt = CakeSchema.clampInt, clampIndex = CakeSchema.clampIndex, cleanText = CakeSchema.cleanText;
+  var parseRibbons = CakeSchema.parseRibbons, serializeRibbons = CakeSchema.serializeRibbons, constrainShape = CakeSchema.constrainShape, parseShape = CakeSchema.parseShape, serializeShape = CakeSchema.serializeShape;
   var BUILDER_MAX_CANDLES = 6;    // what the builder offers (v0.94: bigger birthdays get number candles)
   // ---- MVP feature flags (Phase 1, 21 Sept 2026) ----
   // These hide parts of the detailed builder. They change what a SENDER can choose, never what
@@ -133,33 +138,17 @@
     });
     return normalize(d);
   }
-  var MAX_MSG = 80;
-  var MAX_NAME = 24;
 
   // fr defaults to 1 (smooth) so links from before the sponge-first builder still decode as
   // frosted cakes; the BUILDER starts a fresh cake at fr = 0 (naked) — see newDraft().
   // rb: 0 none · 1 every tier · 2 = legacy (upper tiers only, which is what links before v0.57
   // showed). Missing → 2 so old links look exactly as they did; a fresh draft starts at 0.
-  var DEFAULTS = { v: SCHEMA_VERSION, to: '', from: '', m: '', n: 1, t: 1, fc: 0, ic: 0, cc: 0, bg: 1, rc: 0, tc: 0, o: 0, lt: '', ly: 3, fr: 1, rb: 2 };
   // Ribbon geometry: a strip lying ON the cake — inner face at the cake's radius, a hair thick,
   // bottom edge just above the base fillet. Width comes per tier from the settings below.
   var RIBBON = { thick: 0.02, lift: 0.16, widthMin: 0.12, widthStep: 0.05, steps: 8 };
   function ribbonWidth(step) { return RIBBON.widthMin + RIBBON.widthStep * Math.max(0, Math.min(RIBBON.steps - 1, step | 0)); }
   // Per-tier ribbon settings, three characters per tier: on (0/1), colour index, width step.
   // "rt" is the live array of {on, c, w}; "rbt" is its string form in the link.
-  function parseRibbons(str, legacyRb, legacyRc) {
-    var out = [], clean = String(str || '').replace(/[^0-9]/g, '');
-    for (var i = 0; i < 3; i++) {
-      if (clean.length >= (i + 1) * 3) {
-        out.push({ on: clean[i * 3] === '1', c: clampInt(+clean[i * 3 + 1], 0, PALETTES.ribbon.length - 1, 0), w: clampInt(+clean[i * 3 + 2], 0, RIBBON.steps - 1, 4) });
-      } else {
-        // No per-tier data: derive from the older rb/rc fields so old links look as they did.
-        var on = legacyRb === 1 || (legacyRb === 2 && i > 0);
-        out.push({ on: on, c: clampInt(legacyRc, 0, PALETTES.ribbon.length - 1, 0), w: 4 });
-      }
-    }
-    return out;
-  }
   // Ribbon POSITION per tier (v0.77): 0–9, where 0 puts the ribbon's bottom at the bottom of the
   // tier's straight wall and 9 its top at the top of it. −1 = the fixed lift older links used.
   function ribbonY(TM, tier, width, p) {
@@ -222,9 +211,6 @@
     var m = els && els.m; if (!m) return;
     m.placeholder = draft.cm === 1 ? 'Happy ' + ordinal(draft.age) + '!' : 'Happy birthday!';
   }
-  function serializeRibbons(rt) {
-    return rt.map(function (t) { return (t.on ? '1' : '0') + String(t.c % 10) + String(t.w % 10); }).join('');
-  }
   // The SPONGE is the object: the shape sliders size it, the fillings sit inside it, the grooves
   // are in it. Frosting is a layer ON the sponge. Smooth frosting is a shell of real thickness
   // (FROST_T on the sides, FROST_TOP on top) so a frosted tier is fractionally bigger than the
@@ -248,91 +234,6 @@
   var PRICES = { 1: '£4.49', 2: '£9.99', 3: '£24.99' };
   var SLICES = { 1: 8, 2: 16, 3: 24 };
 
-  var PALETTES = {
-    frosting: [
-      { name: 'Strawberry', hex: 0xF7A8C1 },
-      { name: 'Vanilla',    hex: 0xFFF1D6 },
-      { name: 'Chocolate',  hex: 0x5A3826 },
-      { name: 'Mint',       hex: 0xB9E4D0 },
-      { name: 'Lemon',      hex: 0xFFE27A },
-      { name: 'Lavender',   hex: 0xC9B8F0 },
-      { name: 'Sky',        hex: 0xA9D8F5 },
-      { name: 'Coral',      hex: 0xFF8A73 }
-    ],
-    candle: [
-      { name: 'White',  hex: 0xFFFFFF },
-      { name: 'Pink',   hex: 0xFF6F91 },
-      { name: 'Yellow', hex: 0xFFD166 },
-      { name: 'Blue',   hex: 0x4FC3F7 },
-      { name: 'Purple', hex: 0x9B6BFF },
-      { name: 'Gold',   hex: 0xE9C46A }
-    ],
-    filling: [
-      { name: 'Raspberry',  layers: [0xD6336C] },
-      { name: 'Lemon curd', layers: [0xFFD43B] },
-      { name: 'Ganache',    layers: [0x3E2723] },
-      { name: 'Pistachio',  layers: [0xA8D08D] },
-      { name: 'Blueberry',  layers: [0x4C5FD5] },
-      { name: 'Caramel',    layers: [0xC77B3B] },
-      { name: 'Cream',      layers: [0xFFF3C4] },
-      { name: 'Rainbow',    layers: [0xE63946, 0xF4A261, 0xFFD166, 0x52B788, 0x4C5FD5, 0x9B6BFF] }
-    ],
-    // Ribbons: the band round each upper tier and the bow on the gift box. These used to
-    // borrow the candle colour, so you couldn't have white candles and a red ribbon. One
-    // field covers both — they read as the same ribbon.
-    // The cake itself (v0.74). Index 0 is the original vanilla so older links are unchanged.
-    sponge: [
-      { name: 'Vanilla',     hex: 0xE9C07A },
-      { name: 'Chocolate',   hex: 0x6E4630 },
-      { name: 'Red velvet',  hex: 0xA8403F },
-      { name: 'Lemon',       hex: 0xF0D275 },
-      { name: 'Matcha',      hex: 0xAABD74 },
-      { name: 'Carrot',      hex: 0xC8894C },
-      { name: 'Strawberry',  hex: 0xE9A7AE }
-    ],
-    ribbon: [
-      { name: 'Pink',  hex: 0xFF6F91 },
-      { name: 'Red',   hex: 0xE03131 },
-      { name: 'Gold',  hex: 0xE9C46A },
-      { name: 'Cream', hex: 0xFFF1D6 },
-      { name: 'Sage',  hex: 0x9BBF9B },
-      { name: 'Blue',  hex: 0x4FC3F7 },
-      { name: 'Plum',  hex: 0x8E5A9B },
-      { name: 'Ink',   hex: 0x3B2A2A },
-      { name: 'White', hex: 0xFFFFFF }          // appended: indices in existing links are unchanged
-    ],
-    // Message colour. Index 0 keeps the old behaviour: dark or light picked from the
-    // frosting's luminance. Everything after it is an explicit choice.
-    text: [
-      { name: 'Auto',  auto: true },
-      { name: 'Ink',   hex: 0x3B2A2A },
-      { name: 'White', hex: 0xFFFAF0 },
-      { name: 'Gold',  hex: 0xE9C46A },
-      { name: 'Red',   hex: 0xE03131 },
-      { name: 'Pink',  hex: 0xFF6F91 },
-      { name: 'Blue',  hex: 0x2F6FB5 },
-      { name: 'Green', hex: 0x3E7B55 },
-      { name: 'Plum',  hex: 0x8E5A9B }
-    ],
-    // Background gradients. Index 0 is the legacy behaviour (derived from the frosting),
-    // kept so every link sent before v0.16 renders exactly as it did. Everything else is
-    // a deliberate choice, because a backdrop that matches the cake washes it out.
-    // One paint colour each. The world is a single featureless plane (stage.js), so the
-    // "sky" is the same paint receding into the distance — there is no second colour.
-    // (`layers` is kept for the swatch preview: a slightly lighter top hints at depth.)
-    background: [
-      { name: 'Match the cake', auto: true },
-      { name: 'Cream',     floor: 0xFFEBD2, layers: [0xFFF6E9, 0xFFE7CE] },
-      { name: 'Warm grey', floor: 0xE1DBD2, layers: [0xF2EFEA, 0xDCD6CE] },
-      { name: 'Blush',     floor: 0xF9DDE6, layers: [0xFFEDF2, 0xF7D9E3] },
-      { name: 'Sky',       floor: 0xC9E3F7, layers: [0xDFF1FF, 0xBFDFF5] },
-      { name: 'Mint',      floor: 0xCBE9DB, layers: [0xE4F6EE, 0xC2E6D6] },
-      { name: 'Dusk',      floor: 0x453E6B, layers: [0x6E6597, 0x3B3560] },
-      { name: 'Midnight',  floor: 0x161C33, layers: [0x24304A, 0x11162A] },
-      { name: 'Ink',       floor: 0x18131C, layers: [0x2A2430, 0x141018] },
-      { name: 'White',     floor: 0xFFFFFF, layers: [0xFFFFFF, 0xF4F4F4] }   // appended: indices unchanged
-    ]
-  };
 
   // Occasions. `rule` says whether and how it recurs, which is what the reminder needs:
   //   yearly   — recurs on a date the sender tells us (birthday, anniversary)
@@ -341,24 +242,6 @@
   //   becomes  — a one-off that turns into a yearly one (a birth → first birthday; a wedding → anniversary)
   //   none     — one-off; we offer a birthday reminder for the recipient instead
   // Mother's Day and Easter move by country/calendar and aren't expressible as a simple rule; skipped.
-  var OCCASIONS = [
-    { name: 'Birthday',        emoji: '🎂', rule: { type: 'yearly' },                     say: 'birthday' },
-    { name: 'Christmas',       emoji: '🎄', rule: { type: 'fixed', m: 12, d: 25 },          say: 'Christmas' },
-    { name: 'Anniversary',     emoji: '💍', rule: { type: 'yearly' },                     say: 'anniversary' },
-    { name: 'New baby',        emoji: '🍼', rule: { type: 'becomes', into: 'first birthday' }, say: 'first birthday' },
-    { name: 'Wedding',         emoji: '💒', rule: { type: 'becomes', into: 'anniversary' }, say: 'anniversary' },
-    { name: "Valentine's",     emoji: '❤️', rule: { type: 'fixed', m: 2, d: 14 },           say: "Valentine's" },
-    { name: "Mother's Day",    emoji: '🌷', rule: { type: 'none' } },
-    { name: "Father's Day",    emoji: '👔', rule: { type: 'weekday', m: 6, wd: 'SU', n: 3 }, say: "Father's Day" },
-    { name: 'Get well',        emoji: '🩹', rule: { type: 'none' } },
-    { name: 'Congratulations', emoji: '🎉', rule: { type: 'none' } },
-    { name: 'Thank you',       emoji: '🙏', rule: { type: 'none' } },
-    { name: 'Just because',    emoji: '✨', rule: { type: 'none' } },
-    { name: 'Graduation',      emoji: '🎓', rule: { type: 'none' } },
-    { name: 'Leaving',         emoji: '👋', rule: { type: 'none' } },
-    { name: 'Halloween',       emoji: '🎃', rule: { type: 'fixed', m: 10, d: 31 },          say: 'Halloween' },
-    { name: 'New Year',        emoji: '🥂', rule: { type: 'fixed', m: 1, d: 1 },            say: 'New Year' }
-  ];
   var REMIND_LEAD_DAYS = 3;
   // If the sender never picks an occasion, this is what the cake is sent as. "Just because"
   // makes no recurrence claim, so the reminder honestly asks for a birthday instead of
@@ -376,54 +259,22 @@
   // The sponges (v0.80): one curated list, each a crumb + crust pair in baked-in tones — muted, a
   // little brown, the crust always browner than the crumb — so none of them reads as icing.
   // `crumb` picks the crumb texture's flavour detail (frosting.js).
-  var SPONGES = [
-    { name: 'Classic vanilla', crumb: 0xFBE3A1, crust: 0xD8883A, detail: 'plain' },
-    { name: 'Honey sponge',    crumb: 0xF6D588, crust: 0xBF6A27, detail: 'plain' },
-    { name: 'Butter sponge',   crumb: 0xFFEDB8, crust: 0xE6A24E, detail: 'plain' },
-    { name: 'Lemon',           crumb: 0xFAE59A, crust: 0xD9963E, detail: 'lemon' },
-    { name: 'Chocolate',       crumb: 0x7B5238, crust: 0x4B2E1E, detail: 'tight' },
-    { name: 'Coffee',          crumb: 0xC0936A, crust: 0x8A5634, detail: 'plain' },
-    { name: 'Red velvet',      crumb: 0x9C3F36, crust: 0x6A2A25, detail: 'velvet' },
-    { name: 'Carrot',          crumb: 0xD6A873, crust: 0x9A5F31, detail: 'carrot' },
-    { name: 'Matcha',          crumb: 0xB9B97C, crust: 0x8E7E4A, detail: 'plain' }
-  ];
   // Links from before v0.80 stored a flavour (sc) and a bake (bk); map them onto the list.
-  var SC_TO_SP = [0, 4, 6, 3, 8, 7, 2];               // vanilla, chocolate, red velvet, lemon, matcha, carrot, strawberry → butter
   function spongeOf(cfg) { return SPONGES[clampIndex(cfg.sp, SPONGES)]; }
   function spongeColours(cfg) { var S = spongeOf(cfg); return { crust: S.crust, crumb: S.crumb }; }
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
-  var TIERS = {
-    1: [ { r: 2.2, h: 1.6 } ],                                                  // bottom tier first
-    2: [ { r: 2.5, h: 1.5 }, { r: 1.45, h: 1.3 } ],
-    3: [ { r: 2.7, h: 1.4 }, { r: 1.95, h: 1.2 }, { r: 1.2, h: 1.0 } ]
-  };
   var CAP_H = 0.32;
   // Tier proportions are the sender's (v0.60): per tier a width step and a height step, each
   // 0–9. Missing → the classic table above, so older links are untouched. Radius runs 0.9–2.7,
   // height 0.6–2.0. An upper tier can never be wider than the one below it minus a ledge.
-  var SHAPE = { rMin: 0.9, rMax: 2.7, hMin: 0.6, hMax: 2.0, steps: 10, ledge: 0 };   // ledge 0: a tier may be exactly as wide as the one below
-  function stepToR(st) { return SHAPE.rMin + (SHAPE.rMax - SHAPE.rMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
-  function stepToH(st) { return SHAPE.hMin + (SHAPE.hMax - SHAPE.hMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
-  function rToStep(r) { return Math.round((r - SHAPE.rMin) / (SHAPE.rMax - SHAPE.rMin) * (SHAPE.steps - 1)); }
-  function hToStep(h) { return Math.round((h - SHAPE.hMin) / (SHAPE.hMax - SHAPE.hMin) * (SHAPE.steps - 1)); }
+  var stepToR = CakeSchema.stepToR;
+  var stepToH = CakeSchema.stepToH;
+  var rToStep = CakeSchema.rToStep;
+  var hToStep = CakeSchema.hToStep;
   // The classic proportions as steps, per tier count — what a fresh draft starts with.
-  function classicShape(t) { return (TIERS[t] || TIERS[1]).map(function (x) { return { r: rToStep(x.r), h: hToStep(x.h) }; }); }
+  var classicShape = CakeSchema.classicShape;
   // Enforce the stack: each tier's radius ≤ the tier below minus the ledge (in steps).
-  function constrainShape(sh) {
-    for (var i = 1; i < sh.length; i++) {
-      var maxR = stepToR(sh[i - 1].r) - SHAPE.ledge;
-      if (stepToR(sh[i].r) > maxR) sh[i].r = Math.max(0, Math.floor(rToStep(maxR)));
-    }
-    return sh;
-  }
-  function parseShape(str, t) {
-    var clean = String(str || '').replace(/[^0-9]/g, ''), n = (TIERS[t] || TIERS[1]).length, out = [];
-    if (clean.length < n * 2) return classicShape(t);
-    for (var i = 0; i < n; i++) out.push({ r: clampInt(+clean[i * 2], 0, 9, 0), h: clampInt(+clean[i * 2 + 1], 0, 9, 0) });
-    return constrainShape(out);
-  }
-  function serializeShape(sh) { return sh.map(function (x) { return String(x.r) + String(x.h); }).join(''); }
   // THE tier list for a cake: radii and heights from the sender's shape. Everything that used
   // to read TIERS[cfg.t] reads this.
   // OUTER tier dimensions (what the camera, box, candles, cut and ribbon see), plus the sponge's
@@ -483,136 +334,6 @@
   //  Text fields are URI-encoded so '|' can't break the split. Version first.
   //  Decoders must ignore extra fields so v1 links survive later additions.
   // =====================================================================
-  function b64url(s) { return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
-  function unb64url(s) {
-    s = s.replace(/-/g, '+').replace(/_/g, '/');
-    while (s.length % 4) s += '=';
-    return atob(s);
-  }
-  function cleanText(s, max) {
-    return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
-  }
-  function clampInt(v, lo, hi, dflt) {
-    v = parseInt(v, 10);
-    if (isNaN(v)) return dflt;
-    return Math.max(lo, Math.min(hi, v));
-  }
-  function normalize(c) {
-    var out = {
-      v: SCHEMA_VERSION,
-      to: cleanText(c.to, MAX_NAME),
-      from: cleanText(c.from, MAX_NAME),
-      m: cleanText(c.m, MAX_MSG),
-      n: clampInt(c.n, 0, MAX_CANDLES, DEFAULTS.n),
-      t: TIERS[c.t] ? (c.t | 0) : 1,
-      fc: clampInt(c.fc, 0, PALETTES.frosting.length - 1, 0),
-      ic: clampInt(c.ic, 0, PALETTES.filling.length - 1, 0),
-      cc: clampInt(c.cc, 0, PALETTES.candle.length - 1, 0),
-      // Missing on pre-v0.16 links, which is exactly what index 0 means: derive it
-      // from the frosting, as those cakes always did. New fields append, never rename.
-      bg: clampInt(c.bg, 0, PALETTES.background.length - 1, 0),
-      // Appended after bg. Missing on older links → index 0 (Pink), which is what the
-      // default candle colour produced on those cakes anyway.
-      rc: clampInt(c.rc, 0, PALETTES.ribbon.length - 1, 0),
-      // Appended after rc. Missing on older links → 0 (Auto), which is what they did.
-      tc: clampInt(c.tc, 0, PALETTES.text.length - 1, 0),
-      // Appended after tc. Missing on older links → 0 (Birthday), which is what they were.
-      o: clampInt(c.o, 0, OCCASIONS.length - 1, 0),
-      // Lighting, appended after o: the room the sender lit the cake in (look.js serialises
-      // it; '' means "as designed"). Only digits, '.', '-' and '~' survive.
-      lt: String(c.lt || '').replace(/[^0-9.~-]/g, '').slice(0, 200),
-      ly: clampInt(c.ly, 1, 4, 3),          // sponge layers (fillings = ly − 1); 1 = just cake, no fillings
-      fr: clampInt(c.fr, 0, 5, 1),          // frosting (buttercream): 0 none · 4 semi-naked · 3 rustic / 5 smooth reserved · 1 = legacy shell (also what a very old link means)
-      rb: clampInt(c.rb, 0, 2, 2),          // ribbon (legacy summary): 0 none, 1 all tiers, 2 upper-only
-      rbt: String(c.rbt || '').replace(/[^0-9]/g, '').slice(0, 9),  // per-tier ribbons (v0.58); wins when present
-      tp: String(c.tp || '').replace(/[^0-9]/g, '').slice(0, 6),    // tier proportions (v0.60): width/height steps per tier
-      fct: String(c.fct || '').replace(/[^0-9]/g, '').slice(0, 3),  // FONDANT colour per tier (was the shell's colour); wins when present
-      fd: clampInt(c.fd, 0, 1, -1),         // fondant on/off (v0.67); -1 = missing, resolved below from the legacy fr
-      frt: String(c.frt || '').replace(/[^0-9]/g, '').slice(0, 3),  // frosting (buttercream) colour per tier (v0.67)
-      frst: String(c.frst || '').replace(/[^0-9]/g, '').slice(0, 3), // frosting STYLE per tier (v0.68); missing → fr on every tier
-      fdt: String(c.fdt || '').replace(/[^0-9]/g, '').slice(0, 3),  // fondant on/off per tier (v0.68); missing → fd on every tier
-      sc: clampInt(c.sc, 0, 6, 0),          // sponge colour (v0.74); missing → vanilla
-      bk: clampInt(c.bk, 0, 2, 0),          // bake (v0.79) — legacy; see sp
-      rm: clampInt(c.rm, 0, 1, 0),          // ribbon material (v0.84): 0 satin · 1 grosgrain
-      cm: clampInt(c.cm, 0, 1, 0),          // candle mode (v0.94): 0 candles · 1 number candles
-      cs: clampInt(c.cs, 0, 7, 0),
-      sk: clampInt(c.sk, 0, 2, 0),
-      sa: clampInt(c.sa, 0, 10, 0),         // hundreds and thousands (v1.00): 0 none … 10 fully covered
-      spal: clampInt(c.spal, 0, 2, 0),      // their colours: 0 rainbow · 1 pastel · 2 gold
-      sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
-      age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
-      sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake
-      sp: (c.sp !== undefined && c.sp !== '' && !isNaN(+c.sp)) ? clampInt(c.sp, 0, 8, 0)
-          : ((clampInt(c.sc, 0, 6, 0) === 0) ? clampInt(c.bk, 0, 2, 0) : SC_TO_SP[clampInt(c.sc, 0, 6, 0)]),   // the sponge (v0.80)
-      rk: clampInt(c.rk, 0, 2, 0),          // cooling-rack marks on a baked top: 0 none · 1 wires · 2 bars
-      ff: (function (f) { return f === 3 ? 2 : f; })(clampInt(c.ff, 0, 11, 0))   // 3 was Low sun (now a light preset) → Rustic; 4 was Coarse → Combed   // fondant finish; 3 was Low sun (now a light preset) → Rustic (v0.75): 0 grain · 1 swept · 2 rustic · 3 rustic, raking light. Missing → grain (flat fondant is retired)
-    };
-    // A legacy "smooth shell" (fr 1; 2/3 were reserved) IS fondant now: the field changes meaning,
-    // the picture doesn't. Reserved buttercream styles fall back to none.
-    var legacyShell = (out.fr === 1 || out.fr === 2 || out.fr === 3);
-    if (out.fd === -1) out.fd = legacyShell ? 1 : 0;
-    if (legacyShell || out.fr === 5) out.fr = 0;
-    // Live shape array; derived like rt. An explicit `sh` (UI edits) wins over the string.
-    out.sh = (c.sh && c.sh.length === (TIERS[out.t] || TIERS[1]).length)
-      ? constrainShape(c.sh.map(function (x) { return { r: clampInt(x.r, 0, 9, 0), h: clampInt(x.h, 0, 9, 0) }; }))
-      : parseShape(out.tp, out.t);
-    out.tp = serializeShape(out.sh);
-    // Frosting colour per tier. Live array `fcs`; string `fct` in the link; `fc` stays as the
-    // summary (the bottom tier) for the bow, the bleed and older readers.
-    var nT = out.sh.length;
-    if (c.fcs && c.fcs.length === nT) out.fcs = c.fcs.map(function (v) { return clampInt(v, 0, PALETTES.frosting.length - 1, 0); });
-    else if (out.fct.length >= nT) out.fcs = out.fct.slice(0, nT).split('').map(function (ch) { return clampInt(+ch, 0, PALETTES.frosting.length - 1, 0); });
-    else { out.fcs = []; while (out.fcs.length < nT) out.fcs.push(out.fc); }
-    out.fct = out.fcs.map(function (v) { return String(v % 10); }).join('');
-    // Buttercream colours per tier: live `frs`, link `frt`; missing → the fondant colours.
-    if (c.frs && c.frs.length === nT) out.frs = c.frs.map(function (v) { return clampInt(v, 0, PALETTES.frosting.length - 1, 0); });
-    else if (out.frt.length >= nT) out.frs = out.frt.slice(0, nT).split('').map(function (ch) { return clampInt(+ch, 0, PALETTES.frosting.length - 1, 0); });
-    else out.frs = out.fcs.slice();
-    out.frt = out.frs.map(function (v) { return String(v % 10); }).join('');
-    // Per-tier style and fondant. Live arrays win (UI edits); else the link strings; else the
-    // whole-cake fields, which stay as summaries (bottom tier) for older readers.
-    var okStyle = function (v) { v = clampInt(v, 0, 5, 0); return (v === 4) ? 4 : 0; };   // only none / semi-naked are real
-    if (c.frsty && c.frsty.length === nT) out.frsty = c.frsty.map(okStyle);
-    else if (out.frst.length >= nT) out.frsty = out.frst.slice(0, nT).split('').map(function (ch) { return okStyle(+ch); });
-    else { out.frsty = []; while (out.frsty.length < nT) out.frsty.push(okStyle(out.fr)); }
-    if (c.fds && c.fds.length === nT) out.fds = c.fds.map(function (v) { return v ? 1 : 0; });
-    else if (out.fdt.length >= nT) out.fds = out.fdt.slice(0, nT).split('').map(function (ch) { return ch === '1' ? 1 : 0; });
-    else { out.fds = []; while (out.fds.length < nT) out.fds.push(out.fd); }
-    out.frst = out.frsty.join(''); out.fdt = out.fds.join('');
-    out.fr = out.frsty[0]; out.fd = out.fds[0];
-    // `fc` is the OUTERMOST layer's bottom-tier colour (bow, bleed, older readers).
-    out.fc = out.fds[0] ? out.fcs[0] : (out.frsty[0] ? out.frs[0] : out.fcs[0]);
-    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)), a: (t.a === undefined ? undefined : clampInt(t.a, -4, 4, 0)) }; })
-                                       : parseRibbons(out.rbt, out.rb, out.rc);
-    out.rbt = serializeRibbons(out.rt);
-    // Positions: live `p` wins; else the link string `rbp` (one digit per tier); else −1 (legacy).
-    var rbpStr = String(c.rbp || '').replace(/[^0-9]/g, '');
-    out.rt.forEach(function (t, i) { if (t.p === undefined || (t.p < 0 && rbpStr.length > i)) t.p = rbpStr.length > i ? +rbpStr[i] : -1; });
-    out.rbp = out.rt.every(function (t) { return t.p < 0; }) ? '' : out.rt.map(function (t) { return String(t.p < 0 ? 1 : t.p); }).join('');
-    // Angle: 0–8 in the link (4 = level), ±4 steps of tilt in the builder.
-    var rbaStr = String(c.rba || '').replace(/[^0-8]/g, '');
-    out.rt.forEach(function (t, i) { if (t.a === undefined) t.a = rbaStr.length > i ? +rbaStr[i] - 4 : 0; else t.a = clampInt(t.a, -4, 4, 0); });
-    out.rba = out.rt.map(function (t) { return String((t.a || 0) + 4); }).join('');
-    // Legacy summary kept in step with the per-tier truth (the bow, older readers).
-    var firstOn = out.rt.filter(function (t) { return t.on; })[0];
-    out.rb = firstOn ? 1 : 0; if (firstOn) out.rc = firstOn.c;
-    return out;
-  }
-  function encodeConfig(c) {
-    c = normalize(c);
-    var parts = [c.v, encodeURIComponent(c.to), encodeURIComponent(c.from), encodeURIComponent(c.m),
-                 c.n, c.t, c.fc, c.ic, c.cc, c.bg, c.rc, c.tc, c.o, c.lt, c.ly, c.fr, c.rb, c.rbt, c.tp, c.fct, c.fd, c.frt, c.frst, c.fdt, c.sc, c.ff, c.rbp, c.bk, c.rk, c.sp, c.sd, c.rm, c.rba, c.cm, c.age, c.cs, c.sk, c.sa, c.spal, c.sr];
-    return b64url(parts.join('|'));
-  }
-  function decodeConfig(code) {
-    try {
-      var p = unb64url(code).split('|');
-      if ((p[0] | 0) < 1) return null;
-      var dec = function (s) { try { return decodeURIComponent(s || ''); } catch (e) { return ''; } };
-      return normalize({ to: dec(p[1]), from: dec(p[2]), m: dec(p[3]), n: p[4], t: p[5],
-                         fc: p[6], ic: p[7], cc: p[8], bg: p[9], rc: p[10], tc: p[11], o: p[12], lt: p[13], ly: p[14], fr: p[15], rb: p[16], rbt: p[17], tp: p[18], fct: p[19], fd: p[20], frt: p[21], frst: p[22], fdt: p[23], sc: p[24], ff: p[25], rbp: p[26], bk: p[27], rk: p[28], sp: p[29], sd: p[30], rm: p[31], rba: p[32], cm: p[33], age: p[34], cs: p[35], sk: p[36], sa: p[37], spal: p[38], sr: p[39] });
-    } catch (e) { return null; }
-  }
   function readHash() {
     var h = location.hash || '';
     var m = /[#&]c=([A-Za-z0-9_-]+)/.exec(h);
@@ -699,121 +420,17 @@
   //  Renderer, scene, camera, lights
   // =====================================================================
   var canvas = document.getElementById('cake');
-  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
-  var deviceDPR = window.devicePixelRatio || 1;
-  var pixelRatio = Math.min(deviceDPR, PIXEL.ceil);
-  renderer.setPixelRatio(pixelRatio);
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.setClearColor(0x000000, 0);
-
-  var scene = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  // ---- Screen-space ambient occlusion (v0.92) ----
-  // A real effect, not a painted one: after the frame is drawn, the actual geometry on screen is
-  // rendered again as depth and normals, and every pixel is darkened by how much nearby geometry
-  // crowds it — under the candle holders, in the icing's grooves, beneath the ribbon, where the
-  // tiers meet. Computed at half resolution (it's soft by nature) and multiplied onto the frame.
-  // Flames, sprites, confetti and anything transparent are left out, so they don't occlude.
-  // kernelRadius: how far round a point it looks (world units). maxDistance: how far BEHIND a point
-  // something may be and still count — small, or thin things like candles cast dark halos on
-  // whatever is far behind them. strength: how much of it to apply.
-  // v0.93: full resolution and a much tighter radius. At half resolution, the visible sliver of
-  // icing under a holder was only a pixel or two tall — the blur smeared its occlusion outward into
-  // a halo. Now the darkening sits where it belongs: under the holder, fading within millimetres.
-  var AO = { on: !window.CakeDebug || CakeDebug.on('ao'), scale: 1.0, kernelRadius: 0.045, minDistance: 0.0003, maxDistance: 0.003, kernelSize: 16, strength: 0.8, pass: null, w: 0, h: 0, mix: null };
-  var _aoSize = new THREE.Vector2();
-  // The flames: drawn last, into the same depth buffer, so the cake still hides them where it
-  // should — but nothing is multiplied onto them afterwards.
-  function renderFlames() {
-    if (!flames.length && !sparklers.length) return;
-    if (window.CakeDebug && !CakeDebug.on('flames')) return;
-    var ac = renderer.autoClear;
-    renderer.autoClear = false;
-    camera.layers.set(FLAME_LAYER);
-    renderer.render(scene, camera);
-    camera.layers.set(0);
-    renderer.autoClear = ac;
-  }
-  function renderAO() {
-    if (!AO.on || !THREE.SSAOPass || !THREE.SimplexNoise) return;
-    renderer.getDrawingBufferSize(_aoSize);
-    var w = Math.max(1, Math.round(_aoSize.x * AO.scale)), h = Math.max(1, Math.round(_aoSize.y * AO.scale));
-    if (!AO.pass) {
-      AO.pass = new THREE.SSAOPass(scene, camera, w, h);
-      // half the samples of the default: it's blurred afterwards anyway, and phones will thank us
-      var P0 = AO.pass; P0.kernel = []; P0.kernelSize = AO.kernelSize; P0.generateSampleKernel();
-      P0.ssaoMaterial.defines.KERNEL_SIZE = AO.kernelSize; P0.ssaoMaterial.uniforms.kernel.value = P0.kernel; P0.ssaoMaterial.needsUpdate = true;
-      // v0.95: 24-bit depth. At 16 bits, depth at our viewing distance was coarser than the
-      // occlusion test itself, so flat and curved surfaces occluded themselves in bands — the
-      // stripes in the background and the moiré on the cake as the camera moved.
-      if (P0.normalRenderTarget.depthTexture) P0.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
-      AO.w = w; AO.h = h;
-    } else if (w !== AO.w || h !== AO.h) { AO.pass.setSize(w, h); AO.w = w; AO.h = h; }
-    var P = AO.pass, U = P.ssaoMaterial.uniforms;
-    // the camera moves and zooms: keep the pass's copy of it current
-    U.cameraNear.value = camera.near; U.cameraFar.value = camera.far;
-    U.cameraProjectionMatrix.value.copy(camera.projectionMatrix);
-    U.cameraInverseProjectionMatrix.value.copy(camera.projectionMatrixInverse);
-    P.kernelRadius = AO.kernelRadius; P.minDistance = AO.minDistance; P.maxDistance = AO.maxDistance;
-    // depth and normals, without the things that shouldn't occlude
-    P.overrideVisibility();
-    // Only the cake (and its candles) take part: the backdrop and floor are far away, where the
-    // test is least reliable, and there's nothing on them to occlude.
-    scene.children.forEach(function (c) { if (c !== cakeGroup && !c.isLight && !c.isCamera) c.visible = false; });
-    scene.traverse(function (o) {
-      if (o.isSprite || o.isPoints || o.isLine || (o.material && !Array.isArray(o.material) && o.material.transparent) || (o.userData && o.userData.noAO)) o.visible = false;
-    });
-    P.renderOverride(renderer, P.normalMaterial, P.normalRenderTarget, 0x7777ff, 1.0);
-    P.restoreVisibility();
-    U.kernelRadius.value = P.kernelRadius; U.minDistance.value = P.minDistance; U.maxDistance.value = P.maxDistance;
-    P.renderPass(renderer, P.ssaoMaterial, P.ssaoRenderTarget);
-    P.renderPass(renderer, P.blurMaterial, P.blurRenderTarget);
-    // multiply the occlusion onto the frame already on screen, at AO.strength
-    if (!AO.mix) {
-      AO.mix = new THREE.ShaderMaterial({
-        uniforms: { tAO: { value: null }, uStrength: { value: AO.strength } },
-        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform sampler2D tAO; uniform float uStrength; varying vec2 vUv; void main(){ float a = texture2D(tAO, vUv).r; gl_FragColor = vec4(vec3(mix(1.0, a, uStrength)), 1.0); }',
-        blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
-        blendSrcAlpha: THREE.DstAlphaFactor, blendDstAlpha: THREE.ZeroFactor, depthTest: false, depthWrite: false
-      });
-    }
-    AO.mix.uniforms.tAO.value = P.blurRenderTarget.texture; AO.mix.uniforms.uStrength.value = AO.strength;
-    P.renderPass(renderer, AO.mix, null);
-  }
-  camera.position.set(0, 6.2, 12.4);
-  camera.lookAt(0, 1.35, 0);
-
-  // Lights. Intensities come from look.js when it's present: the environment provides
-  // most of the fill, so the direct lights step back.
-  var LI = (window.CakeLook && CakeLook.LOOK.lights) || { ambient: 0.55, key: 0.9, fill: 0.35 };
-  // Hemisphere light when the look supplies one (sky from above, warm bounce from below);
-  // flat ambient otherwise.
-  var ambientLight = LI.hemiSky
-    ? new THREE.HemisphereLight(new THREE.Color(LI.hemiSky), new THREE.Color(LI.hemiGround), LI.hemi)
-    : new THREE.AmbientLight(0xffffff, LI.ambient);
-  scene.add(ambientLight);
-  var key = new THREE.DirectionalLight(0xfff1dd, LI.key);
-  key.position.set(-4, 7, 5);
-  scene.add(key);
-  // The spot: off unless the look says otherwise. Aimed at the cake's centre.
-  var spot = new THREE.SpotLight(0xffffff, 0, 30, Math.PI / 6, 0.5, 2);
-  spot.visible = false; spot.target.position.set(0, 0.8, 0);
-  scene.add(spot); scene.add(spot.target);
-  var fill = new THREE.DirectionalLight(0xdcefff, LI.fill);
-  fill.position.set(5, 3, -2);
-  scene.add(fill);
-  // The look (shadows, optional environment and tone mapping) lives in look.js.
-  if (window.CakeLook) CakeLook.apply(renderer, scene, key);
-  // The stage (lit floor, fog, sky) lives in stage.js.
-  if (window.CakeStage && (!window.CakeDebug || CakeDebug.on('backdrop'))) CakeStage.attach(scene);
-  if (window.CakeDebug && !CakeDebug.on('shadows') && window.CakeLook) CakeLook.LOOK.shadows = false;
-  var candleLight = new THREE.PointLight(0xffb36b, 0, 8, 2);
-  scene.add(candleLight);
-  // The sparklers' light (v0.99). Always in the scene (at zero when there are none), so adding a
-  // sparkler never changes the number of lights — which would recompile every material.
-  var sparkLight = new THREE.PointLight(0xffd9a0, 0, 7, 2);
-  scene.add(sparkLight);
+  // ---- v1.07: the renderer, scene, camera and lights live in scene.js; the passes in pipeline.js ----
+  var SCENE = CakeScene.create(canvas, PIXEL);
+  var renderer = SCENE.renderer, scene = SCENE.scene, camera = SCENE.camera;
+  var ambientLight = SCENE.lights.ambient, key = SCENE.lights.key, spot = SCENE.lights.spot, fill = SCENE.lights.fill, candleLight = SCENE.lights.candle, sparkLight = SCENE.lights.spark;
+  var pixelRatio = SCENE.pixelRatio, deviceDPR = SCENE.deviceDPR;
+  var PIPE = CakePipeline.create({ renderer: renderer, scene: scene, camera: camera,
+    cakeRoot: function () { return cakeGroup; },
+    hasEmissive: function () { return flames.length > 0 || sparklers.length > 0; } });
+  var AO = PIPE.ao, FLAME_LAYER = CakePipeline.LAYER.emissive;
+  function renderAO() { PIPE.runPass('occlusion'); }
+  function renderFlames() { PIPE.runPass('emissive'); }
 
   // Nothing on screen is ever rotated: the camera orbits, the cake stays put and upright.
   var cakeGroup = new THREE.Group();
@@ -836,7 +453,7 @@
     grad.addColorStop(0.90, 'rgba(0,0,0,0.04)');
     grad.addColorStop(1.00, 'rgba(0,0,0,0)');
     g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
-    var t = new THREE.CanvasTexture(c); t.__shared = true; return t;
+    var t = new THREE.CanvasTexture(c); CakeResources.keep(t); return t;
   })();
   // Multiply blending: the disc darkens whatever is under it and can never add light — on a
   // cream floor it deepens the base, on a black floor it stays black. As a painted decal it
@@ -903,7 +520,7 @@
     var merged = CakeShapes.merge([cup, rib, spike], function () { return 0; });
     [cup, rib, spike].forEach(function (g) { g.dispose(); });
     merged.clearGroups();
-    merged.__shared = true;
+    CakeResources.keep(merged);
     return (holderGeos[key] = merged);
   }
   // Wax: light soaks into it (warm wrap lighting), a soft sheen that's glossier in the melted
@@ -917,7 +534,7 @@
       var g = c.getContext('2d'), im = g.createImageData(W, H);
       for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var v = fn(x / W, 1 - y / H, x, y), i = (y * W + x) * 4; im.data[i] = v[0] * 255; im.data[i + 1] = v[1] * 255; im.data[i + 2] = v[2] * 255; im.data[i + 3] = 255; }
       g.putImageData(im, 0, 0);
-      var t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; if (srgb) t.encoding = THREE.sRGBEncoding; t.__shared = true; return t;
+      var t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; if (srgb) t.encoding = THREE.sRGBEncoding; CakeResources.keep(t); return t;
     }
     var WW = 128, WH = 256, h = new Float32Array(WW * WH);
     for (var y = 0; y < WH; y++) for (var x = 0; x < WW; x++) {
@@ -944,8 +561,10 @@
     var wrapCompile = m.onBeforeCompile;
     m.onBeforeCompile = function (sh) {
       if (wrapCompile) wrapCompile(sh);
-      sh.vertexShader = 'attribute float aLit;\nvarying float vLit;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLit = aLit;');
-      sh.fragmentShader = 'varying float vLit;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vLit;');
+      CakePatch.declare(sh, 'vertex', 'attribute float aLit;\nvarying float vLit;');
+      CakePatch.after(sh, 'vertex', 'begin_vertex', ' vLit = aLit;');
+      CakePatch.declare(sh, 'fragment', 'varying float vLit;');
+      CakePatch.after(sh, 'fragment', 'emissivemap_fragment', ' totalEmissiveRadiance *= vLit;');
     };
     m.customProgramCacheKey = function () { return 'cake-candle-wax-1'; };
     return m;
@@ -955,7 +574,7 @@
     CakeFrosting.wrapLighting(holderMat, 0.5, new THREE.Color(1, 0.95, 0.9));    // plastic that light soaks into a little
     holderMat.customProgramCacheKey = function () { return 'cake-candle-holder-1'; };
   }
-  holderMat.__shared = true;
+  CakeResources.keep(holderMat);
   var wickGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6);
   var wickMat = new THREE.MeshStandardMaterial({ color: 0x2b1d14, roughness: 1 });
   var flameTex = makeFlameTexture();
@@ -964,9 +583,9 @@
     toneMapped: false,             // additive glow tuned by eye; ACES would dim it
     map: flameTex, transparent: true, depthWrite: false
   });
-  candleGeo.__shared = wickGeo.__shared = true;
-  wickMat.__shared = flameMat.__shared = true;
-  flameTex.__shared = true;
+  CakeResources.keepAll(candleGeo, wickGeo);
+  CakeResources.keepAll(wickMat, flameMat);
+  CakeResources.keep(flameTex);
 
   var flames = [];     // { sprite, base, phase, x, z, k, lit, leanX, leanZ }
   var wicks = [];
@@ -977,21 +596,8 @@
   // =====================================================================
   //  Build
   // =====================================================================
-  function clearGroup(g) {
-    while (g.children.length) {
-      var c = g.children[g.children.length - 1];
-      g.remove(c);
-      if (c.isGroup) { clearGroup(c); continue; }
-      if (c.geometry && !c.geometry.__shared) c.geometry.dispose();
-      if (c.material && !c.material.__shared) {
-        (Array.isArray(c.material) ? c.material : [c.material]).forEach(function (m) {
-          if (m.__shared) return;
-          if (m.map && !m.map.__shared) m.map.dispose();
-          m.dispose();
-        });
-      }
-    }
-  }
+  function clearGroup(g) { CakeResources.release(g); }   // v1.09: the policy lives in resources.js
+
 
   var lastBgKey = '';
   var messageMesh = null;   // body mesh of the tier carrying the message (for cheap message-only updates)
@@ -1006,7 +612,7 @@
     var SC = spongeColours(cfg); SPONGE = SC.crust; SPONGE_CRUMB = SC.crumb;   // every painter and material below reads these
     if (window.CakeFrosting) CakeFrosting.setSeed(cfg.sd);   // …and every texture and the baked wobble read this
     var keepMessageMap = (opts && opts.keepMessage && messageMesh && messageMesh.material[0] && messageMesh.material[0].map) ? messageMesh.material[0].map : null;
-    if (keepMessageMap) keepMessageMap.__shared = true;   // survives the clear below
+    if (keepMessageMap) CakeResources.keep(keepMessageMap);   // survives the clear below
     built.visible = true;
     var prevN = config ? (config.n | 0) : 0;            // only NEW candles pop in — a tier switch doesn't re-pop them
     config = cfg;
@@ -1043,8 +649,8 @@
       var frosting = TM.frosting;                         // this tier's own colour
       var ink = pickInk(frosting, cfg.tc);
       var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
-      if (frostingMat) { frostingMat.__shared = true; localShared.push(frostingMat); }
-      capMat.__shared = true; localShared.push(capMat);
+      if (frostingMat) { CakeResources.keep(frostingMat); localShared.push(frostingMat); }
+      CakeResources.keep(capMat); localShared.push(capMat);
       var bodyH = TM.bodyH, rr = TM.rr;
       var open = cfg.cutaway ? Math.PI / 4 : 0;          // dev wedge removed
       var tg = new THREE.Group();                        // this tier's meshes, so it can drop in
@@ -1063,7 +669,7 @@
           color: 0xffffff, roughness: TM.naked ? 0.95 : ((!TM.fdOn && TM.style === 4) ? 0.85 : 0.62),
           map: keptMap || makeMessageTexture(cfg.m, ink, frosting, rr, TM.fdOn ? bodyH : tier.hs, msgBase), vertexColors: true
         });
-        if (keptMap) keptMap.__shared = true;                 // don't let clearGroup dispose what we're reusing
+        if (keptMap) CakeResources.keep(keptMap);                 // don't let clearGroup dispose what we're reusing
         if (TM.maps) CakeFrosting.dressFondant(sideMat, TM.maps, rr);   // the writing sits on the finished fondant
         else if (!TM.fdOn && window.CakeFrosting) { var bm = CakeFrosting.spongeMaps(cfg.rk); bm.noAlbedo = true; CakeFrosting.dressFondant(sideMat, bm, tier.rs); }   // …or on the baked crust
         nightGlow(sideMat, 0xffffff, true);
@@ -1095,7 +701,7 @@
       // Cut faces (dev cut-away): two planes showing sponge + filling layers
       if (cfg.cutaway) {
         var faceMat = TM.face();
-        faceMat.__shared = true; localShared.push(faceMat);
+        CakeResources.keep(faceMat); localShared.push(faceMat);
         [0, open].forEach(function (theta) {
           var face = new THREE.Mesh(CakeShapes.cutFace(rr, bodyH, capH, scheme, pOpts), faceMat);
           face.position.set(0, y, 0);
@@ -1151,8 +757,8 @@
     // produce a fresh config, and was unwanted. Removed for good.)
 
     // Materials created for this build are "shared" only until the next build.
-    localShared.forEach(function (m) { m.__shared = false; });
-    if (keepMessageMap) keepMessageMap.__shared = false;
+    localShared.forEach(CakeResources.own);
+    if (keepMessageMap) CakeResources.own(keepMessageMap);
 
     fitShadow(tiersFor(cfg)[0].r);
     rebuildLandings(cfg);
@@ -1192,10 +798,6 @@
     if (old !== messageMesh.material[1]) { if (old.map) old.map.dispose(); old.dispose(); }
   }
 
-  function clampIndex(i, arr) {
-    i = i | 0;
-    return i < 0 || i >= arr.length ? 0 : i;
-  }
 
   // =====================================================================
   //  Candles
@@ -1298,7 +900,7 @@
     uv.needsUpdate = true;
     geo.computeVertexNormals();
     geo.setAttribute('aLit', new THREE.Float32BufferAttribute(new Float32Array(pos.count).fill(1), 1));   // the wax shader's per-candle glow switch; per digit it's driven by the material instead
-    geo.__shared = true;
+    CakeResources.keep(geo);
     return (digitCache[key] = { geo: geo, width: bb.max.x - bb.min.x, top: top,
       foot: lows.length ? lows.reduce(function (p, q) { return p + q; }, 0) / lows.length : 0 });
   }
@@ -1330,7 +932,7 @@
       grp.updateMatrixWorld(true);
       var fp = new THREE.Vector3(P.top.x, P.top.y + 0.18, 0).applyMatrix4(grp.matrix);
       var flame = new THREE.Sprite(flameMat.clone());
-      flame.material.__shared = false; flame.material.visible = false;
+      CakeResources.own(flame.material); flame.material.visible = false;
       flame.scale.set(fs * 0.7, fs, 1);
       flame.position.copy(fp);
       built.add(flame);
@@ -1347,7 +949,11 @@
     });
   }
   var numberSpikeGeo = new THREE.CylinderGeometry(0.03, 0.02, NUM.gap + 0.06, 12);
-  numberSpikeGeo.__shared = true;
+  CakeResources.keep(numberSpikeGeo);
+  // v1.09: the GLSL lives in shaders.js
+  var FLAME_VS = CakeShaders.flame.vertex, FLAME_FS = CakeShaders.flame.fragment;
+  var SPARK_VS = CakeShaders.sparks.vertex, SPARK_FS = CakeShaders.sparks.fragment;
+  var SPR_VS = CakeShaders.sprinkles.vertex, SPR_FS = CakeShaders.sprinkles.fragment;
   // ---- Flames (v0.96) ----
   // A flame is a small 3D teardrop with its own shader, not a flat picture: widest a third of the
   // way up, tapering to a fine tip. It glows from the inside — brightest where you look through
@@ -1356,49 +962,18 @@
   // (more at the tip than the root) and stretches its tip on several unrelated rhythms, each
   // flame on its own phase. A faint larger copy is its halo; a tiny ember marks the wick's tip.
   // The old sprite stays as an invisible anchor, so blowing out, smoke and the rest are unchanged.
-  var FLAME_VS = [
-    'uniform float uTime; uniform float uPhase; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
-    'void main(){',
-    '  vec3 p = position; float h = clamp(p.y / 0.30, 0.0, 1.0); vH = h;',
-    '  float t = uTime + uPhase;',
-    '  float sway = 0.55 * sin(t * 1.7) + 0.30 * sin(t * 3.9 + 1.3) + 0.15 * sin(t * 7.3 + 2.1);',
-    '  float sway2 = 0.5 * sin(t * 2.3 + 0.7) + 0.35 * sin(t * 5.1 + 2.2);',
-    '  float stretch = 1.0 + 0.10 * sin(t * 9.1) + 0.06 * sin(t * 15.7 + 1.1) + 0.04 * sin(t * 23.3 + 0.4);',
-    '  p.y *= stretch;',
-    '  p.x += 0.018 * sway * h * h; p.z += 0.012 * sway2 * h * h;',
-    '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
-    '  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vAxis = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));',
-    '  gl_Position = projectionMatrix * mv;',
-    '}'].join('\n');
-  var FLAME_FS = [
-    'uniform float uGlow; uniform float uCover; uniform float uOpaque; varying float vH; varying vec3 vN; varying vec3 vV; varying vec3 vAxis;',
-    'void main(){',
-    '  float f = abs(dot(normalize(vN), normalize(vV)));',
-    '  float core = pow(f, 2.2), edge = pow(f, 0.8);',
-    '  vec3 white = vec3(1.0, 0.95, 0.80), yellow = vec3(1.0, 0.76, 0.30), orange = vec3(1.0, 0.45, 0.12), blue = vec3(0.25, 0.35, 1.0);',
-    '  vec3 c = mix(orange, yellow, edge);',
-    '  c = mix(c, white, core * smoothstep(0.1, 0.35, vH) * (1.0 - smoothstep(0.55, 0.95, vH)));',
-    '  float root = 1.0 - smoothstep(0.0, 0.14, vH);',
-    '  c = mix(c, blue, root * 0.8);',
-    '  float cone = (1.0 - smoothstep(0.08, 0.3, vH)) * core;',
-    '  c *= 1.0 - 0.45 * cone;',
-    '  float a = edge * smoothstep(0.0, 0.24, vH) * (1.0 - 0.55 * root) * (1.0 - smoothstep(0.85, 1.0, vH) * 0.6);   // fades to nothing at the base: no hard edge where the candle hides it',
-    // The flame's HEART hides what's behind it (its own light brought with it); only the edges
-    // and the halo stay translucent. Otherwise the flame took its colour from the backdrop —
-    // rich against the wall, pale and grey against the bright floor, with the horizon line
-    // showing through it.
-    '  float alpha = a * max(uCover, uOpaque * core);',
-    '  gl_FragColor = vec4(c * uGlow * (a + (alpha - a * uCover)), alpha);',
-    '}'].join('\n');
-  var FLAME = { glow: window.CakeDebug ? CakeDebug.num('glow', 0.95) : 0.95, haloGlow: 0.1, cover: window.CakeDebug ? CakeDebug.num('cover', 0.55) : 0.55, lean: 0.6 };
-  var FLAME_LAYER = 1;   // cover: how much the heart hides what's behind it   // heart toned down: daylight flames read gold, not white
+  // v1.06: the flame no longer adds its light to whatever is behind it (which made it rich against
+  // the backdrop's wall and pale, with the horizon showing through, against the bright floor —
+  // ?backdrop=0 proved it). It's blended like an opaque-edged object, brighter to compensate; only
+  // the halo stays additive.
+  var FLAME = { glow: window.CakeDebug ? CakeDebug.num('glow', 1.6) : 1.6, haloGlow: 0.1, cover: window.CakeDebug ? CakeDebug.num('cover', 1.0) : 1.0, lean: 0.6 };
   var flameGeo = (function () {
     var p = [];
     for (var i = 0; i <= 24; i++) { var t = i / 24, r = 0.042 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.62)), 0.9) * Math.pow(1 - t, 0.25); p.push(new THREE.Vector2(Math.max(r, 0.0005), t * 0.30)); }
-    var g = new THREE.LatheGeometry(p, 20); g.__shared = true; return g;
+    var g = new THREE.LatheGeometry(p, 20); CakeResources.keep(g); return g;
   })();
-  var emberGeo = new THREE.SphereGeometry(0.009, 8, 6); emberGeo.__shared = true;
-  var emberMat = new THREE.MeshBasicMaterial({ color: 0xFF7A2A }); emberMat.__shared = true;
+  var emberGeo = new THREE.SphereGeometry(0.009, 8, 6); CakeResources.keep(emberGeo);
+  var emberMat = new THREE.MeshBasicMaterial({ color: 0xFF7A2A }); CakeResources.keep(emberMat);
   function flameMaterial(phase, glow, cover, opaque) {
     return new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 }, uPhase: { value: phase }, uGlow: { value: glow }, uCover: { value: cover || 0 }, uOpaque: { value: opaque || 0 } },
@@ -1425,6 +1000,7 @@
     g.__mats = [core.material, halo.material];
     return g;
   }
+  CakeMaterials.warm('flame', function () { return makeFlameMesh(0); });
   var _leanAxis = new THREE.Vector3(), _up3 = new THREE.Vector3(0, 1, 0);
   function updateFlameMesh(f, t, lx, lz) {
     var g = f.mesh; if (!g) return;
@@ -1465,7 +1041,7 @@
     for (var j = 0; j < pos.count; j++) uv.setY(j, pos.getY(j) + 0.5);
     uv.needsUpdate = true; return g;
   })();
-  twistGeo.__shared = taperGeo.__shared = true;
+  CakeResources.keepAll(twistGeo, taperGeo);
   var STYLE_GEO = [candleGeo, twistGeo, candleGeo, candleGeo, candleGeo, candleGeo, taperGeo];
   var STYLE_HEIGHT = [1, 1, 1, 1, 1, 1, 1.22];          // tapered candles stand taller
   var patternCache = {};
@@ -1481,7 +1057,7 @@
       var gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#FFFBF4'); gr.addColorStop(0.55, col); gr.addColorStop(1, col);
       g.fillStyle = gr; g.fillRect(0, 0, W, H);
     }
-    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.__shared = true;
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; CakeResources.keep(t);
     return (patternCache[key] = t);
   }
   var studioEnv = null;                                  // a soft studio for metal to reflect
@@ -1494,7 +1070,7 @@
     g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(60, 40, 90, 70); g.fillRect(330, 30, 120, 60);
     var t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding;
     var pm = new THREE.PMREMGenerator(renderer);
-    studioEnv = pm.fromEquirectangular(t).texture; studioEnv.__shared = true;
+    studioEnv = pm.fromEquirectangular(t).texture; CakeResources.keep(studioEnv);
     t.dispose(); pm.dispose();
     return studioEnv;
   }
@@ -1540,13 +1116,13 @@
     var wire = new THREE.CylinderGeometry(SPK.wire, SPK.wire, SPK.len * SPK.burnAt, 8); wire.translate(0, SPK.len * SPK.burnAt / 2, 0);
     var spent = new THREE.CylinderGeometry(SPK.wire * 1.3, SPK.wire * 1.3, SPK.len * (1 - SPK.burnAt), 8); spent.translate(0, SPK.len * (SPK.burnAt + 1) / 2, 0);
     spkStickGeo = { coat: coat, wire: wire, spent: spent };
-    [coat, wire, spent].forEach(function (g) { g.__shared = true; });
+    [coat, wire, spent].forEach(function (g) { CakeResources.keep(g); });
     spkMats = {
       wire: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.8, roughness: 0.4, envMap: getStudioEnv() }),
       coat: new THREE.MeshStandardMaterial({ color: 0x4a4744, roughness: 0.95, metalness: 0.05 }),
       spent: new THREE.MeshStandardMaterial({ color: 0x2a2522, roughness: 0.8 })
     };
-    Object.keys(spkMats).forEach(function (k) { spkMats[k].__shared = true; });
+    Object.keys(spkMats).forEach(function (k) { CakeResources.keep(spkMats[k]); });
     // the sparks: per quad, a seed; per vertex, which corner
     var N = SPK.sparks, B = SPK.burst, quads = N + N * B, seeds = new Float32Array(quads * 4 * 4), corner = new Float32Array(quads * 4 * 2), idx = [];
     function h(i, k) { var v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }
@@ -1565,42 +1141,12 @@
     spkSparkGeo.setAttribute('aSeed', new THREE.Float32BufferAttribute(seeds, 4));
     spkSparkGeo.setAttribute('aCorner', new THREE.Float32BufferAttribute(corner, 2));
     spkSparkGeo.setIndex(idx);
-    spkSparkGeo.__shared = true;
+    CakeResources.keep(spkSparkGeo);
     var c = document.createElement('canvas'); c.width = c.height = 128; var g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
     gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(0.12, 'rgba(255,240,200,0.9)'); gr.addColorStop(0.35, 'rgba(255,190,110,0.35)'); gr.addColorStop(1, 'rgba(255,150,60,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-    spkGlowTex = new THREE.CanvasTexture(c); spkGlowTex.__shared = true;
+    spkGlowTex = new THREE.CanvasTexture(c); CakeResources.keep(spkGlowTex);
   }
-  var SPARK_VS = [
-    'attribute vec4 aSeed; attribute vec2 aCorner; uniform float uTime; uniform vec3 uOrigin; varying vec3 vCol;',
-    'float h(float i, float k){ return fract(sin(i * 127.1 + k * 311.7) * 43758.5453); }',
-    'vec3 at(vec3 o, vec3 v, float t){ return o + v * t + vec3(0.0, -1.1 * t * t, 0.0); }',
-    'void main(){',
-    '  float i = aSeed.x;',
-    '  float life = 0.35 + 0.55 * h(i, 1.0);',
-    '  float age = mod(uTime + h(i, 2.0) * life, life);',
-    '  float th = h(i, 3.0) * 6.2832, ph = acos(1.0 - 2.0 * h(i, 4.0)), sp = 1.6 + 2.2 * h(i, 5.0);',
-    '  vec3 vel = vec3(sin(ph) * cos(th) * sp, cos(ph) * sp * 0.8 + 0.35, sin(ph) * sin(th) * sp);',
-    '  vec3 head, tail; float w; vec3 col; float fade = 1.0 - age / life;',
-    '  if (aSeed.y < 0.0) {',
-    '    head = at(uOrigin, vel, age); tail = at(uOrigin, vel, max(0.0, age - 0.16 - 0.12 * h(i, 6.0))); w = 0.006;',
-    '    col = mix(vec3(1.0, 0.75, 0.35), vec3(1.0, 0.97, 0.85), fade);',
-    '  } else {',
-    '    float k = aSeed.y, bT = age - life * 0.6;',
-    '    if (aSeed.z < 0.5 || bT < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vCol = vec3(0.0); return; }',
-    '    vec3 bp = at(uOrigin, vel, life * 0.6);',
-    '    float a2 = h(i * 13.0 + k, 8.0) * 6.2832, b2 = acos(1.0 - 2.0 * h(i * 13.0 + k, 9.0)), s2 = 0.6 + 0.5 * h(i * 13.0 + k, 10.0);',
-    '    vec3 v2 = vec3(sin(b2) * cos(a2), cos(b2), sin(b2) * sin(a2)) * s2;',
-    '    head = bp + v2 * bT; tail = bp + v2 * max(0.0, bT - 0.1); w = 0.004;',
-    '    col = vec3(1.0, 0.75, 0.35) * max(0.0, 1.0 - bT / (life * 0.4));',
-    '  }',
-    '  vec4 hv = modelViewMatrix * vec4(head, 1.0), tv = modelViewMatrix * vec4(tail, 1.0);',
-    '  vec2 d = hv.xy - tv.xy; vec2 side = normalize(vec2(-d.y, d.x) + 1e-6) * w;',
-    '  vec4 p = mix(tv, hv, aCorner.x); p.xy += side * aCorner.y;',
-    '  vCol = col * mix(0.15, 1.0, aCorner.x);                  // bright at the head, fading behind',
-    '  gl_Position = projectionMatrix * p;',
-    '}'].join('\n');
-  var SPARK_FS = 'varying vec3 vCol; void main(){ gl_FragColor = vec4(vCol * 1.5, 1.0); }';
   function makeSparkler() {
     sparklerParts();
     var g = new THREE.Group();
@@ -1619,6 +1165,7 @@
     g.__spark = { mat: mat, glow: glow, burn: burn, phase: Math.random() * 10 };
     return g;
   }
+  CakeMaterials.warm('sparkler', function () { return makeSparkler(); });
   function placeSparklers(n, surface) {
     n = Math.max(0, Math.min(SPK.max, n | 0));
     if (!n || !surface) return;
@@ -1663,37 +1210,6 @@
   var lastMessageSpan = null;                                 // by tier (keyed by its base height), for the slices
   var sprinkleMat = null, sprinkleLights = null;
   function prng(seed) { var a = seed | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  var SPR_VS = [
-    'attribute float aRadius; attribute vec3 aColor; uniform float uScale;',
-    'varying vec3 vCol; varying vec3 vCentre; varying float vR;',
-    'void main(){',
-    '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
-    '  vCentre = mv.xyz; vR = aRadius; vCol = aColor;',
-    '  gl_Position = projectionMatrix * mv;',
-    '  gl_PointSize = max(1.0, uScale * aRadius / -mv.z);',
-    '}'].join('\n');
-  var SPR_FS = [
-    'uniform mat4 projectionMatrix;                         // three sets it; the fragment shader must declare it',
-    'uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform vec3 uSky; uniform vec3 uGround; uniform vec3 uUp; uniform vec3 uFillDir; uniform vec3 uFillCol;',
-    'uniform vec3 uP1Pos; uniform vec3 uP1Col; uniform float uP1Cut; uniform vec3 uP2Pos; uniform vec3 uP2Col; uniform float uP2Cut;',
-    'varying vec3 vCol; varying vec3 vCentre; varying float vR;',
-    'vec3 point(vec3 lp, vec3 lc, float cut, vec3 p, vec3 n){ vec3 d = lp - p; float dist = length(d);',
-    '  float f = cut > 0.0 ? pow(clamp(1.0 - dist / cut, 0.0, 1.0), 2.0) : 0.0; return lc * f * max(dot(n, d / max(dist, 1e-4)), 0.0); }',
-    'void main(){',
-    '  vec2 c = gl_PointCoord * 2.0 - 1.0; c.y = -c.y; float r2 = dot(c, c); if (r2 > 1.0) discard;',
-    '  vec3 n = vec3(c, sqrt(1.0 - r2));',
-    '  vec3 p = vCentre + n * vR;',
-    '  vec4 clip = projectionMatrix * vec4(p, 1.0);',
-    '  gl_FragDepthEXT = (clip.z / clip.w) * 0.5 + 0.5;      // the depth a real ball would have',
-    '  vec3 amb = mix(uGround, uSky, dot(n, uUp) * 0.5 + 0.5);',
-    '  vec3 light = amb + uKeyCol * max(dot(n, uKeyDir), 0.0) + uFillCol * max(dot(n, uFillDir), 0.0) + point(uP1Pos, uP1Col, uP1Cut, p, n) + point(uP2Pos, uP2Col, uP2Cut, p, n);',
-    '  vec3 col = vCol * light;',
-    '  vec3 h = normalize(uKeyDir + vec3(0.0, 0.0, 1.0));',
-    '  col += uKeyCol * pow(max(dot(n, h), 0.0), 32.0) * 0.18;  // a soft sugary sheen',
-    '  gl_FragColor = vec4(col, 1.0);',
-    '  #include <tonemapping_fragment>',
-    '  #include <encodings_fragment>',
-    '}'].join('\n');
   function getSprinkleMaterial() {
     if (sprinkleMat) return sprinkleMat;
     sprinkleMat = new THREE.ShaderMaterial({
@@ -1703,7 +1219,7 @@
         uP2Pos: { value: new THREE.Vector3() }, uP2Col: { value: new THREE.Color(0, 0, 0) }, uP2Cut: { value: 0 } },
       vertexShader: SPR_VS, fragmentShader: SPR_FS, extensions: { fragDepth: true }
     });
-    sprinkleMat.__shared = true;
+    CakeResources.keep(sprinkleMat);
     return sprinkleMat;
   }
   var _sv3 = new THREE.Vector3(), _sBuf = new THREE.Vector2();
@@ -1794,6 +1310,19 @@
     pts.userData.noAO = true; pts.userData.noSprinkle = true;
     return pts;
   }
+  CakeMaterials.warm('sprinkles', function () { return sprinklePoints({ pos: new Float32Array(3), rad: new Float32Array([0.02]), col: new Float32Array(3), ang: new Float32Array([0]) }, 0, 7); });
+  CakeMaterials.warm('candles', function () {
+    var g = new THREE.Group(), white = new THREE.Color(1, 1, 1);
+    [styleMaterial(0, 0x4FC3F7), styleMaterial(2, 0x4FC3F7), styleMaterial(4, 0)].forEach(function (m) {   // wax, patterned wax, metal — instanced, WITH per-instance colour (a different program without it)
+      var im = new THREE.InstancedMesh(candleGeo, m, 1); im.setColorAt(0, white); g.add(im);
+    });
+    g.add(new THREE.InstancedMesh(holderGeo(0.065), holderMat, 1));             // holders
+    return g;
+  });
+  CakeMaterials.warm('number-candles', function () {
+    var dg = digitGeometry('1', 1); if (!dg) return null;
+    var g = new THREE.Group(); g.add(new THREE.Mesh(dg.geo, makeWaxMaterial(0x4FC3F7))); g.add(new THREE.Mesh(numberSpikeGeo, holderMat)); return g;
+  });
   function placeCandles(n, surfaces, candleHex, animateFrom, cs) {
     var pts = layout(n, surfaces);
     if (!pts.length) return;
@@ -1859,7 +1388,7 @@
       wicks.push(wick);
 
       var flame = new THREE.Sprite(flameMat.clone());   // an invisible anchor now (v0.96): the flame is a 3D mesh
-      flame.material.__shared = false; flame.material.visible = false;
+      CakeResources.own(flame.material); flame.material.visible = false;
       flame.scale.set(fs * 0.7, fs, 1);
       flame.position.set(top.x, top.y + 0.16, top.z);    // flames stay upright while the candle leans
       built.add(flame);
@@ -2178,7 +1707,7 @@
     g0.fillStyle = 'rgba(120,80,30,0.10)';
     for (var k0 = 0; k0 < 400; k0++) g0.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
     crumbTex = new THREE.CanvasTexture(c); crumbTex.encoding = THREE.sRGBEncoding;
-    crumbTex.wrapS = crumbTex.wrapT = THREE.RepeatWrapping; crumbTex.repeat.set(6, 1); crumbTex.__shared = true;
+    crumbTex.wrapS = crumbTex.wrapT = THREE.RepeatWrapping; crumbTex.repeat.set(6, 1); CakeResources.keep(crumbTex);
     return crumbTex;
   }
 
@@ -2294,7 +1823,7 @@
       var tex = semiCache[key];
       if (!tex) {
         tex = CakeFrosting.semiNakedTexture({ frostingRgb: rgb, paintBase: paintSponge, seed: (tier.idx || 0) + 1 });
-        tex.__shared = true;                         // owned by the cache, not by any one build
+        CakeResources.keep(tex);                         // owned by the cache, not by any one build
         semiKeys.push(key); semiCache[key] = tex;
         while (semiKeys.length > 12) { var old = semiKeys.shift(); semiCache[old].dispose(); delete semiCache[old]; }
       }
@@ -2539,6 +2068,7 @@
 
   var _right = new THREE.Vector3(), _upv = new THREE.Vector3(), _fwd = new THREE.Vector3();
   var clock = new THREE.Clock();
+  var FROZEN = !!(window.CakeDebug && CakeDebug.is('freeze'));
   var spinEnabled = true;     // off only while the cake is inside the closed box
   var running = false;
 
@@ -2581,6 +2111,7 @@
     if (window.CakeDev && CakeDev.on && !CakeDev.shouldRender(now)) { requestAnimationFrame(frame); return; }
     var dt = Math.min(clock.getDelta(), 0.05);
     var t = clock.elapsedTime;
+    if (FROZEN) t = 3.7;                                 // ?freeze=1: flames, sparks and flicker hold still (the harness compares stills); easing still settles
     var frameStart = now;
     updateTweens(now);
     updateSpawn(now);
@@ -2648,9 +2179,7 @@
       if (skyDirty || skyCalibrations < 3) { CakeStage.calibrate(renderer, scene); skyDirty = false; skyCalibrations++; }
       else CakeStage.finishCalibrate(renderer);        // the readback happens a frame later, when the GPU is done
     }
-    renderer.render(scene, camera);                      // everything but the flames (layer 0)
-    renderAO();                                          // real occlusion from the geometry on screen
-    renderFlames();                                      // then the flames, on top, still hidden behind the cake where they should be
+    PIPE.render();                                       // opaque → occlusion → emissive (pipeline.js)
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
     else tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
@@ -2667,7 +2196,7 @@
   var boxMat = new THREE.MeshStandardMaterial({ color: 0xFFF3E2, roughness: 0.9 });
   var boxEdgeMat = new THREE.MeshStandardMaterial({ color: 0xF2DCC2, roughness: 0.9 });
   var ribbonMat = new THREE.MeshStandardMaterial({ color: 0xFF6F91, roughness: 0.45 });
-  boxMat.__shared = boxEdgeMat.__shared = ribbonMat.__shared = true;
+  boxMat.__shared = CakeResources.keepAll(boxEdgeMat, ribbonMat);
   var ceremony = null;      // { active, finished }
   var boxMode = false;      // true while the box is the thing on screen (its own pivot/framing)
 
@@ -2819,7 +2348,7 @@
     grad.addColorStop(0.6, 'rgba(120,110,105,0.18)');
     grad.addColorStop(1, 'rgba(120,110,105,0)');
     g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
-    var t = new THREE.CanvasTexture(c); t.__shared = true; return t;
+    var t = new THREE.CanvasTexture(c); CakeResources.keep(t); return t;
   })();
   var smokes = [];   // { sprite, age, life, vx, vz }
   var smokeGroup = new THREE.Group(); cakeGroup.add(smokeGroup);
@@ -3225,13 +2754,13 @@
     for (var i = 0; i < arr.length; i++) arr[i] = 1;
     confettiGeo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   })();
-  confettiGeo.__shared = true;
+  CakeResources.keep(confettiGeo);
   // vertexColors MUST be true: in r128 the instancing-colour shader chunk writes
   // instanceColor into vColor, but the fragment shader only multiplies it into the
   // diffuse when USE_COLOR is defined — which comes from vertexColors, not from
   // instanceColor existing. Without it every piece renders white.
   var confettiMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, vertexColors: true });
-  confettiMat.__shared = true;
+  CakeResources.keep(confettiMat);
   var confetti = new THREE.InstancedMesh(confettiGeo, confettiMat, CONFETTI.max);
   confetti.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   // Allocate the colour buffer at full size up front. Letting setColorAt create it
@@ -4806,15 +4335,8 @@
   //  then throw the stand-ins away. renderer.compile walks every object with a material,
   //  visible or not, so nothing needs to be on screen.
   // =====================================================================
-  function warmCompile() {
-    var tmp = new THREE.Group(); tmp.name = 'warm-compile'; tmp.visible = false;
-    tmp.add(makeFlameMesh(0));                            // the flame shader
-    tmp.add(makeSparkler());                              // the sparkler: its stick, sparks and glow
-    tmp.add(sprinklePoints({ pos: new Float32Array(3), rad: new Float32Array([0.02]), col: new Float32Array(3), ang: new Float32Array([0]) }, 0, 7));   // the sprinkle shader
-    tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(2, 0x4FC3F7), 1));   // patterned wax
-    tmp.add(new THREE.InstancedMesh(candleGeo, styleMaterial(4, 0), 1));          // metal
-    var dg = digitGeometry('1', 1);                       // a number candle: wax on a plain mesh, and its spike
-    if (dg) { tmp.add(new THREE.Mesh(dg.geo, makeWaxMaterial(0x4FC3F7))); tmp.add(new THREE.Mesh(numberSpikeGeo, holderMat)); }
+  CakeMaterials.warm('cake', function () {
+    var tmp = new THREE.Group();
     var cfg = normalize(DEFAULTS); cfg.m = 'warm'; cfg.t = 2;
     var frosting = PALETTES.frosting[0].hex, filling = PALETTES.filling[7].layers;
     var frostingMat = new THREE.MeshStandardMaterial({ color: frosting, roughness: 0.62, vertexColors: true });
@@ -4835,14 +4357,22 @@
     tmp.add(new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 4, 8), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5 })));      // plate rim
     tmp.add(new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.5, side: THREE.DoubleSide }))); // ribbon band (double-sided)
     var smoke = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0.9, toneMapped: false })); tmp.add(smoke); // smoke wisp (linear-encoded texture)
+    return { object: tmp, dispose: function () { msgTex.dispose(); } };
+  });
+  // The warm-up: one of everything the registry knows, compiled in one pass at load.
+  function warmCompile() {
+    var W = CakeMaterials.warmGroup(), tmp = W.group;
     if (window.CakeLook) CakeLook.adopt(tmp);
     scene.add(tmp);
     // The box, the confetti mesh (count 0) and the floor already exist in the scene; the
     // built cake and its candles do too. compile() takes all of them in one pass.
     try { renderer.compile(scene, camera); } catch (e) {}
+    // compile() skips the shadow-map programs; one frame with the group sub-pixel small (but inside
+    // the light's view) makes every caster's depth program too, so the first real shadow costs nothing
+    tmp.visible = true; tmp.position.set(0, 1, 0); tmp.scale.setScalar(0.001);
+    try { if (window.CakeLook) CakeLook.adopt(tmp); PIPE.render(); } catch (e) {}
     scene.remove(tmp);
-    tmp.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
-    msgTex.dispose();
+    W.dispose();
   }
 
   function route() {
@@ -4973,6 +4503,8 @@
     relight: updateRoomLights,
     get tierGroups() { return tierGroups; },
     ao: AO,
+    light: function (i) { applyLightPreset(i | 0, false); updateRoomLights(); syncFrosting(); },
+    settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return Object.keys(sprinkleSets).map(function (k) { return k + ':' + sprinkleSets[k].rad.length; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return tierKey(t); }); },
     __tierAt: function (x, y) { return tierAt(x, y); }, __tm: function (i) { var t=tierTops(config)[i]; var TM=tierMaterials(config, t); return { frosting: TM.frosting.toString(16), hasBase: !!TM.base, style: TM.style, fdOn: TM.fdOn, msgTier: messageMesh && messageMesh.__tier ? messageMesh.__tier.idx : null }; }, __setCurTier: function (i, c) { return setCurTier(i, c); }, __pulse: function (i) { return pulseTier(i); },
