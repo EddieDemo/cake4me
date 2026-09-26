@@ -142,10 +142,48 @@
     }
     var studioEnv = null;                                  // a soft studio for metal to reflect
     // v1.37: metal in any colour — the number toppers' Metal finish. The colour is the metal's own tint
-    // (gold, silver, rose gold… or anything from the picker or the dropper); the studio reflections, the
-    // same ones the gold and silver candles use, do the rest.
-    function makeMetalMaterial(hex) {
-      return new THREE.MeshStandardMaterial({ color: hex, metalness: 0.95, roughness: 0.27, envMap: getStudioEnv(), envMapIntensity: 1.15 });
+    // (gold, silver, rose gold… or anything from the picker or the dropper).
+    // v1.38: metal has almost no colour of its own — it shows its surroundings, tinted — so it reads as
+    // metal only when the surroundings have contrast. The candles' soft beige studio made it read as
+    // glossy plastic. So metal gets its own reflection world: a JEWELLER'S STUDIO — a dark room, tall
+    // hard-edged light panels round it, a window band, a ceiling light and a thin bright horizon line —
+    // whose floor takes the backdrop's colour, so the metal reflects the scene it's in. The panels sit
+    // at different angles, so bright bands slide across the numbers as the cake turns. And the metal is
+    // pure (metalness 1: no plastic-like base shading) and sharper (roughness 0.14, was 0.27).
+    var metalEnvRT = null, metalEnvKey = null;
+    function getMetalEnv(tint) {
+      var key = tint == null ? 'none' : String(tint);
+      if (metalEnvRT && metalEnvKey === key) return metalEnvRT.texture;
+      var renderer = window.cake && cake.renderer; if (!renderer) return getStudioEnv();
+      var W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H;
+      var g = c.getContext('2d'), t = tint == null ? [40, 34, 30] : [tint >> 16 & 255, tint >> 8 & 255, tint & 255];
+      function mix(a, k) { return 'rgb(' + a.map(function (v, i) { return Math.round(v + (t[i] - v) * k); }).join(',') + ')'; }
+      function y(el) { return (0.5 - el / 180) * H; }     // elevation (degrees) → row
+      function x(az) { return az / 360 * W; }             // around the room (degrees) → column
+      var gr = g.createLinearGradient(0, 0, 0, H);         // the room: dark; below the horizon, the backdrop's colour
+      gr.addColorStop(0, 'rgb(92,86,82)'); gr.addColorStop(0.44, 'rgb(118,110,104)'); gr.addColorStop(0.5, mix([150, 142, 134], 0.35));
+      gr.addColorStop(0.6, mix([84, 78, 72], 0.45)); gr.addColorStop(1, mix([38, 34, 31], 0.35));
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      // a broad, soft reflector card where the numbers' faces look at first — so gold glows rather than
+      // going antique — fading at its sides so it's a gradient across the face, not a flat patch
+      var rc = g.createLinearGradient(x(226), 0, x(334), 0);
+      rc.addColorStop(0, 'rgba(255,250,242,0)'); rc.addColorStop(0.3, 'rgba(255,250,242,0.55)'); rc.addColorStop(0.7, 'rgba(255,250,242,0.55)'); rc.addColorStop(1, 'rgba(255,250,242,0)');
+      g.fillStyle = rc; g.fillRect(x(226), y(-3), x(108), y(-40) - y(-3));
+      g.fillStyle = '#ffffff';
+      [[18, 15], [128, 11], [205, 19], [296, 9]].forEach(function (p) { g.fillRect(x(p[0]), y(40), x(p[1]), y(-42) - y(40)); });   // tall panels
+      g.globalAlpha = 0.85; g.fillRect(x(52), y(21), x(64), y(9) - y(21));      // a window band above the horizon
+      g.globalAlpha = 1;    g.fillRect(0, y(80), W, y(60) - y(80));             // the ceiling light
+      g.globalAlpha = 0.6;  g.fillRect(0, y(0.8), W, Math.max(2, y(-0.8) - y(0.8)));   // the horizon line
+      g.globalAlpha = 1;
+      var tex = new THREE.CanvasTexture(c); tex.mapping = THREE.EquirectangularReflectionMapping; tex.encoding = THREE.sRGBEncoding;
+      var pm = new THREE.PMREMGenerator(renderer), rt = pm.fromEquirectangular(tex);
+      tex.dispose(); pm.dispose();
+      if (metalEnvRT) metalEnvRT.dispose();                // the old room (last backdrop) goes
+      metalEnvRT = rt; metalEnvKey = key;
+      return rt.texture;
+    }
+    function makeMetalMaterial(hex, tint) {
+      return new THREE.MeshStandardMaterial({ color: hex, metalness: 1, roughness: 0.14, envMap: getMetalEnv(tint), envMapIntensity: 1.3 });
     }
     function getStudioEnv(renderer) {
       if (studioEnv) return studioEnv;

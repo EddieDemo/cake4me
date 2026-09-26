@@ -729,7 +729,7 @@
       // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
       var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
       var tzStep = cfg.tz == null ? 4 : cfg.tz;           // v1.29: the Size slider, 60% … 140%
-      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep, font: cfg.tf | 0, metal: cfg.tm === 1 }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep, font: cfg.tf | 0, metal: cfg.tm === 1, envTint: backdropHexOf(cfg) }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
       else PLACE.noToppers();
       lastBlocks = blocks;
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
@@ -981,6 +981,14 @@
       if (k !== skyKey) { skyKey = k; skyDirty = true; }
     }
     updateBleed();
+  }
+  // v1.38: the backdrop's floor colour, straight from the cake's settings (as applyBackground works it
+  // out) — for the metal toppers' reflections, which are built before the backdrop is applied.
+  function backdropHexOf(cfg) {
+    var own = COL.backdrop(cfg); if (own != null) return own;
+    var opt = PALETTES.background[clampIndex(cfg.bg, PALETTES.background)];
+    if (opt.auto) return new THREE.Color(0xffe9c7).lerp(new THREE.Color(COL.frost(cfg, 0)), 0.15).getHex();
+    return opt.floor || opt.layers[1];
   }
   function applyBackground(frostingHex, bgIndex, own) {
     var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];

@@ -154,7 +154,7 @@
       var chars = String(T.digits || '').replace(/[^0-9]/g, '').slice(0, 2).split('');
       function partsAt(H) {
         var out = [];
-        if (window.CakeDigits) chars.forEach(function (ch) { var P = K.digitGeometry(ch, H, T.font | 0); if (P) out.push({ P: P, material: function () { return T.metal ? K.makeMetalMaterial(candleHex) : K.makeWaxMaterial(candleHex); } }); });   // v1.37: wax or metal
+        if (window.CakeDigits) chars.forEach(function (ch) { var P = K.digitGeometry(ch, H, T.font | 0); if (P) out.push({ P: P, material: function () { return T.metal ? K.makeMetalMaterial(candleHex, T.envTint) : K.makeWaxMaterial(candleHex); } }); });   // v1.37: wax or metal
         (T.emojis || []).forEach(function (key) { var P = deps.toppers && deps.toppers.part(key, H * 0.92); if (P) out.push({ P: P, material: P.material }); });
         return out.slice(0, 3);
       }
