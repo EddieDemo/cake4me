@@ -7,7 +7,7 @@
   <meta name="description" content="Someone sent you a cake.">
   <meta property="og:title" content="Someone sent you a cake 🎂">
   <meta property="og:description" content="Open it, blow out the candles, share a slice.">
-  <link rel="stylesheet" href="style.css?v=1.38">
+  <link rel="stylesheet" href="style.css?v=1.41">
 </head>
 <body class="mode-builder">
   <!-- v0.9: the cake (and the box) are objects you hold — spin, tilt, twist. No hash = builder. Hash = viewer. -->
@@ -311,63 +311,64 @@
 
   <script src="vendor/three.min.js"></script>
   <!-- Screen-space ambient occlusion (three r128 examples, unmodified) -->
-  <script src="vendor/SimplexNoise.js?v=1.38"></script>
-  <script src="vendor/Pass.js?v=1.38"></script>
-  <script src="vendor/CopyShader.js?v=1.38"></script>
-  <script src="vendor/SSAOShader.js?v=1.38"></script>
-  <script src="vendor/SSAOPass.js?v=1.38"></script>
-  <script src="debug.js?v=1.38"></script>
-  <script src="resources.js?v=1.38"></script>
-  <script src="patch.js?v=1.38"></script>
-  <script src="shaders.js?v=1.38"></script>
-  <script src="color.js?v=1.38"></script>
-  <script src="palettes.js?v=1.38"></script>
-  <script src="schema.js?v=1.38"></script>
-  <script src="store.js?v=1.38"></script>
-  <script src="animate.js?v=1.38"></script>
-  <script src="pcss.js?v=1.38"></script>
-  <script src="stage.js?v=1.38"></script>
-  <script src="look.js?v=1.38"></script>
-  <script src="shapes.js?v=1.38"></script>
-  <script src="digits.js?v=1.38"></script>
-  <script src="digits-classic.js?v=1.38"></script>
-  <script src="frosting.js?v=1.38"></script>
-  <script src="scene.js?v=1.38"></script>
-  <script src="pipeline.js?v=1.38"></script>
-  <script src="materials.js?v=1.38"></script>
-  <script src="sponge.js?v=1.38"></script>
-  <script src="tiers.js?v=1.38"></script>
-  <script src="ribbon.js?v=1.38"></script>
-  <script src="body.js?v=1.38"></script>
-  <script src="candles.js?v=1.38"></script>
-  <script src="flames.js?v=1.38"></script>
-  <script src="sparklers.js?v=1.38"></script>
-  <script src="emoji/index.js?v=1.38"></script>
+  <script src="vendor/SimplexNoise.js?v=1.41"></script>
+  <script src="vendor/Pass.js?v=1.41"></script>
+  <script src="vendor/CopyShader.js?v=1.41"></script>
+  <script src="vendor/SSAOShader.js?v=1.41"></script>
+  <script src="vendor/SSAOPass.js?v=1.41"></script>
+  <script src="debug.js?v=1.41"></script>
+  <script src="resources.js?v=1.41"></script>
+  <script src="patch.js?v=1.41"></script>
+  <script src="shaders.js?v=1.41"></script>
+  <script src="color.js?v=1.41"></script>
+  <script src="palettes.js?v=1.41"></script>
+  <script src="schema.js?v=1.41"></script>
+  <script src="store.js?v=1.41"></script>
+  <script src="animate.js?v=1.41"></script>
+  <script src="pcss.js?v=1.41"></script>
+  <script src="stage.js?v=1.41"></script>
+  <script src="look.js?v=1.41"></script>
+  <script src="rig.js?v=1.41"></script>
+  <script src="shapes.js?v=1.41"></script>
+  <script src="digits.js?v=1.41"></script>
+  <script src="digits-classic.js?v=1.41"></script>
+  <script src="frosting.js?v=1.41"></script>
+  <script src="scene.js?v=1.41"></script>
+  <script src="pipeline.js?v=1.41"></script>
+  <script src="materials.js?v=1.41"></script>
+  <script src="sponge.js?v=1.41"></script>
+  <script src="tiers.js?v=1.41"></script>
+  <script src="ribbon.js?v=1.41"></script>
+  <script src="body.js?v=1.41"></script>
+  <script src="candles.js?v=1.41"></script>
+  <script src="flames.js?v=1.41"></script>
+  <script src="sparklers.js?v=1.41"></script>
+  <script src="emoji/index.js?v=1.41"></script>
   <script>
     // A link with emoji toppers loads their outlines before the cake is built (v1.24), so the
     // recipient's cake is complete from the first frame. Everyone else loads them only when needed.
-    window.CAKE_VERSION = '1.38';
+    window.CAKE_VERSION = '1.41';
     (function () {
       var m = /[#&]c=([A-Za-z0-9_-]+)/.exec(location.hash || ''); if (!m) return;
-      try { var raw = atob(m[1].replace(/-/g, '+').replace(/_/g, '/')); if (/^2\|/.test(raw) && /\|te=[^|]/.test(raw)) document.write('<script src="emoji/outlines.js?v=1.38"><\/script>'); } catch (e) {}
+      try { var raw = atob(m[1].replace(/-/g, '+').replace(/_/g, '/')); if (/^2\|/.test(raw) && /\|te=[^|]/.test(raw)) document.write('<script src="emoji/outlines.js?v=1.41"><\/script>'); } catch (e) {}
     })();
   </script>
-  <script src="toppers.js?v=1.38"></script>
-  <script src="placement.js?v=1.38"></script>
-  <script src="smoke.js?v=1.38"></script>
-  <script src="mic.js?v=1.38"></script>
-  <script src="blowout.js?v=1.38"></script>
-  <script src="spin.js?v=1.38"></script>
-  <script src="confetti.js?v=1.38"></script>
-  <script src="cut.js?v=1.38"></script>
-  <script src="message.js?v=1.38"></script>
-  <script src="sprinkles.js?v=1.38"></script>
-  <script src="dev.js?v=1.38"></script>
-  <script src="oklch.js?v=1.38"></script>
-  <script src="theme.js?v=1.38"></script>
-  <script src="picker.js?v=1.38"></script>
-  <script src="dropper.js?v=1.38"></script>
-  <script src="app.js?v=1.38"></script>
-  <div id="build-tag" aria-hidden="true">v1.38</div>
+  <script src="toppers.js?v=1.41"></script>
+  <script src="placement.js?v=1.41"></script>
+  <script src="smoke.js?v=1.41"></script>
+  <script src="mic.js?v=1.41"></script>
+  <script src="blowout.js?v=1.41"></script>
+  <script src="spin.js?v=1.41"></script>
+  <script src="confetti.js?v=1.41"></script>
+  <script src="cut.js?v=1.41"></script>
+  <script src="message.js?v=1.41"></script>
+  <script src="sprinkles.js?v=1.41"></script>
+  <script src="dev.js?v=1.41"></script>
+  <script src="oklch.js?v=1.41"></script>
+  <script src="theme.js?v=1.41"></script>
+  <script src="picker.js?v=1.41"></script>
+  <script src="dropper.js?v=1.41"></script>
+  <script src="app.js?v=1.41"></script>
+  <div id="build-tag" aria-hidden="true">v1.41</div>
 </body>
 </html>

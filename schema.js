@@ -121,7 +121,7 @@
       tf: clampInt(c.tf, 0, 1, 0),
       tm: clampInt(c.tm, 0, 1, 0),              // number toppers' finish (v1.37): 0 Wax · 1 Metal              // number toppers' style (v1.36): 0 Fun · 1 Classic   // number toppers' colour (v1.31); 0 = match the candles          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
       te: (function (t) { return String(t == null ? '' : t).split('.').filter(function (k) { return /^[0-9a-f]+(-[0-9a-f]+)*$/.test(k); }); })(c.te),
-      lp: clampInt(c.lp, 0, 4, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead — travels with the cake now
+      lp: clampInt(c.lp, 0, 5, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead · Studio (v1.41) — travels with the cake
       lj: clampInt(c.lj, 0, 99, 0),         // the generator's small nudge to that preset, as a seed (0 = none), so the recipient sees the same light          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
       age: clampInt(c.age, 1, 99, 30),      // the age the number candles spell
       sd: clampInt(c.sd, 0, 999, 0),        // texture seed (v0.83): one number that arranges every pattern on this cake

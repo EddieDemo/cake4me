@@ -307,6 +307,7 @@
   }
   var envTarget = null;
   function applyEnvironment(renderer, scene) {
+    if (LOOK.rigOwnsEnvironment) return;                // v1.39: the lighting rig (rig.js) owns the environment
     if (envTarget) { envTarget.dispose(); envTarget = null; }
     if (!LOOK.environment) { scene.environment = null; return; }
     var tex = new THREE.CanvasTexture(drawStudio());

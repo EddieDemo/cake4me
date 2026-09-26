@@ -1,25 +1,33 @@
-# Cake — v1.38 (metal toppers that read as metal, not glossy plastic)
+# Cake — v1.41 (the lighting rig, step 3: a Studio preset)
 
-The tag reads **v1.38**.
+The tag reads **v1.41**.
 
-Metal has almost no colour of its own: it shows its surroundings, tinted. In v1.37 the metal toppers
-reflected the candles' soft beige studio — no darks, no hard edges — so they looked evenly coloured
-and softly shaded, which is what glossy plastic looks like. Now:
+**Studio**, a sixth preset under the Light chip — a product-photography rig lighting the whole cake:
 
-1. **A jeweller's-studio reflection world, just for metal**, drawn in code (nothing to download): a
-   room with tall, hard-edged, very bright light panels round it, a window band, a ceiling light, a
-   thin bright horizon line, and a broad soft reflector card where the numbers' faces look at first
-   (so gold glows rather than going antique). The panels sit at different angles, so bright and dark
-   bands slide across the numbers as the cake turns.
-2. **Purer, sharper metal**: metalness 1 (no plastic-like base shading), roughness 0.14 (was 0.27).
-3. **It reflects the scene it's in**: below the horizon, the room takes the backdrop's colour — worked
-   out from the cake's settings, so it's right on the first build — and it's rebuilt when the
-   backdrop changes.
+- **The key is a real local lamp, a big softbox** (the spot light): it pools on the cake and falls
+  off, so the room round it goes dim — the backdrop really darkens, because the lamp doesn't reach it.
+  It casts its own soft shadows.
+- **The room light drops to a faint glow**, and **the fill moves behind the cake as a cool rim**.
+- **The studio's other lights**: a big panel by the camera and strip lights left, right and behind.
+  They live in the rig's room picture, so they light everything softly through it (no shadows of
+  their own), and wherever a shiny face turns there's a light to catch, with dark between. In the
+  picture the lamp is a big bright rectangle and the rim a tall strip, so what metal reflects is the
+  very lights lighting the cake.
 
-The gold and silver candles keep their own look.
+Gold under Studio glows brighter than in Daylight, with crisp darker edges, and dims and brightens
+as the cake turns. The icing gets the product-shot mood: a pool of light, the room falling away.
+The link keeps it (`lp` 5), and Shuffle gives metal numbers the Studio now and then.
 
-Checked in the harness: rose gold on a dark backdrop, rich gold on blush and silver on sky, v1.37
-against v1.38, front and turned (see the comparison sheet, which also shows a first attempt that
-was too dark); no errors; the six saved links decode unchanged.
+A face mirrors the camera's angle to the other side, so the camera panel is centred on the front —
+off-centre, the faces reflected just past its edge (found and fixed in the harness).
 
-Changed files: `candles.js`, `placement.js`, `app.js`, `index.html`, `README.md`.
+Switching to or from Studio updates every material's shader once (the lamp's shadow turns on or
+off), as the spot light always has: a brief pause on a phone.
+
+Checked in the harness: pastel and gold cakes in Daylight and Studio, gold turning and from behind
+(see the comparison sheet); the Light chip shows Studio and the link keeps it; no errors; the six
+saved links decode unchanged.
+
+**Next:** step 4, tuning across all six presets.
+
+Changed files: `app.js`, `rig.js`, `schema.js`, `index.html`, `README.md`.

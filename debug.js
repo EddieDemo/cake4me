@@ -7,6 +7,7 @@
      ?sprinkles=0     ?sparklers=0          ?candles=0
      ?cover=0.9       the flame heart's opacity (0–1); ?glow=1.2 its brightness
      ?freeze=1        a frozen clock: no flicker, no sparks moving, no idle drift (for the harness)
+     ?rig=0           the lighting without its rig (v1.38 and before): no room picture for materials to see
      ?sky=0           the old transparent canvas: the CSS backdrop shows through above the floor's
                       edge (v1.26 and before — on iPhone, halos vanish above that line)
    Several can be combined: ?ao=0&halo=0. The version tag shows which are active. */
@@ -15,7 +16,7 @@
   (location.search || '').replace(/^\?/, '').split('&').forEach(function (kv) {
     if (!kv) return; var p = kv.split('='); q[decodeURIComponent(p[0])] = p.length > 1 ? decodeURIComponent(p[1]) : '1';
   });
-  var KNOWN = ['ao', 'flames', 'halo', 'backdrop', 'shadows', 'sprinkles', 'sparklers', 'candles', 'cover', 'glow', 'freeze', 'sky', 'v'];
+  var KNOWN = ['ao', 'flames', 'halo', 'backdrop', 'shadows', 'sprinkles', 'sparklers', 'candles', 'cover', 'glow', 'freeze', 'sky', 'rig', 'v'];
   function on(name) { return !(name in q) || !(q[name] === '0' || q[name] === 'false' || q[name] === 'off'); }
   function num(name, dflt) { var v = parseFloat(q[name]); return isNaN(v) ? dflt : v; }
   var active = KNOWN.filter(function (k) { return k in q && k !== 'v'; }).map(function (k) { return k + '=' + q[k]; });

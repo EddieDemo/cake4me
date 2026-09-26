@@ -182,7 +182,13 @@
       metalEnvRT = rt; metalEnvKey = key;
       return rt.texture;
     }
+    // v1.40: ALL metal — these toppers, the gold and silver candles, the sparkler wires — reflects the
+    // lighting rig (rig.js): the same room every other material sees, so under any preset metal is lit
+    // like everything else. Only without the rig (?rig=0) does metal fall back to a picture of its own
+    // (the jeweller's studio above for toppers, the soft studio for candles and wires).
+    function rigOn() { return !!(window.CakeLook && CakeLook.LOOK.rigOwnsEnvironment); }
     function makeMetalMaterial(hex, tint) {
+      if (rigOn()) return new THREE.MeshStandardMaterial({ color: hex, metalness: 1, roughness: 0.14 });
       return new THREE.MeshStandardMaterial({ color: hex, metalness: 1, roughness: 0.14, envMap: getMetalEnv(tint), envMapIntensity: 1.3 });
     }
     function getStudioEnv(renderer) {
@@ -201,8 +207,9 @@
     }
     function styleMaterial(style, candleHex) {
       if (style === 4 || style === 5) {
-        return new THREE.MeshStandardMaterial({ color: style === 4 ? 0xD8B25A : 0xD9DCE0, metalness: 0.9, roughness: 0.28,
-                                                envMap: getStudioEnv(), envMapIntensity: 1.1 });
+        var o = { color: style === 4 ? 0xD8B25A : 0xD9DCE0, metalness: 0.9, roughness: 0.28 };
+        if (!rigOn()) { o.envMap = getStudioEnv(); o.envMapIntensity = 1.1; }   // v1.40: the rig's room, when there is one
+        return new THREE.MeshStandardMaterial(o);
       }
       if (style === 2 || style === 3) {
         var m = makeWaxMaterial(0xffffff);

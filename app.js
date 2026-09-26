@@ -43,7 +43,20 @@
     { name: 'Warm',      keyScale: 1.1,  elevation: 32,   azimuth: -62,   kelvin: 3800, ambient: 0.92 },
     { name: 'Cool',      keyScale: 1.0,  elevation: 42,   azimuth: 30,    kelvin: 6400, ambient: 1.0 },
     { name: 'Low sun',   keyScale: 1.6,  elevation: 14,   azimuth: -80,   kelvin: 4600, ambient: 0.7 },
-    { name: 'Overhead',  keyScale: 0.9,  elevation: 72,   azimuth: -20,   kelvin: 5200, ambient: 1.05 }
+    { name: 'Overhead',  keyScale: 0.9,  elevation: 72,   azimuth: -20,   kelvin: 5200, ambient: 1.05 },
+    // v1.41: STUDIO — a product-photography rig, lighting the whole cake. The key is a real local lamp,
+    // a big softbox (the spot light): it pools on the cake and falls off, so the room round it goes dim.
+    // The room light drops to a faint glow; the fill moves behind the cake as a cool rim. In the rig's
+    // room picture the softbox is a big bright panel and the rim a tall strip — what shiny things reflect.
+    { name: 'Studio',    keyScale: 0.35, elevation: 55,   azimuth: -30,   kelvin: 5200, ambient: 0.42,
+      spot: { intensity: 2.4, elevation: 42, azimuth: -45, distance: 8, angle: 26, softness: 0.75, kelvin: 5200 },
+      rim:  { elevation: 34, azimuth: 165, scale: 4.5, kelvin: 7400 },
+      rigShapes: { spot: { box: [30, 40] }, fill: { box: [7, 48] } },
+      // …and the studio's other lights: a big panel by the camera and strip lights round the set, so
+      // wherever a shiny face turns there's a light to catch, with dark between. They live in the rig's
+      // room picture, so they light everything softly through it (no shadows of their own).
+      panels: [ { az: 0, el: -14, w: 52, h: 36, k: 1 },   // centred: a face mirrors the camera's angle to the other side { az: 95, el: 6, w: 9, h: 56, k: 1 },
+                { az: -95, el: 6, w: 9, h: 56, k: 1 }, { az: 200, el: 6, w: 12, h: 56, k: 1 } ] }
   ];
   var lightPreset = 0, lightJitter = 0;
   // v1.14: the preset (lp) and the generator's nudge to it (lj, a seed) are part of the cake, so
@@ -58,6 +71,13 @@
     LK.keyDir.azimuth = Math.round(P.azimuth + j * (r(3) - 0.5) * 50);
     LK.keyKelvin = Math.round((P.kelvin + j * (r(4) - 0.5) * 600) / 100) * 100;
     LK.ambientScale = P.ambient; LK.keyHex = -1;
+    // v1.41: a preset may bring the spot as its key softbox, move the fill (as a rim), and say how its
+    // lights are shaped in the rig's room picture. The others switch the spot off and put the fill back.
+    LK.spot.enabled = !!P.spot;
+    if (P.spot) { Object.keys(P.spot).forEach(function (k) { LK.spot[k] = P.spot[k]; }); LK.spot.hex = -1; LK.spot.castShadow = true; }
+    LK.fillDir = P.rim ? { elevation: P.rim.elevation, azimuth: P.rim.azimuth } : null;
+    LK.fillScale = P.rim ? P.rim.scale : 1; LK.fillKelvin = P.rim ? P.rim.kelvin : null;
+    LK.rigShapes = P.rigShapes || null; LK.rigPanels = P.panels || null;
   }
   function applyLightFromConfig(cfg) {                  // called by build(): the light is part of the cake
     if (!cfg || (cfg.lp === lightPreset && (cfg.lj | 0) === lightJitter && lightApplied)) return;
@@ -141,6 +161,7 @@
     d.tcl = 0;                                           // number toppers match the candles (v1.31)
     d.tf = (d.tn && +d.tn >= 18 && Math.random() < 0.4) ? 1 : 0;   // v1.36: grown-up birthdays go Classic now and then
     d.tm = d.tf && Math.random() < 0.8 ? 1 : 0;          // v1.37: Classic numbers are mostly metal
+    if (d.tm === 1 && Math.random() < 0.35) d.lp = 5;     // v1.41: metal numbers sometimes get the Studio
     d.cxs = (d.cxs && d.cxs.wc != null) ? { wc: d.cxs.wc } : {};   // Shuffle picks presets: exact colours go (the writing's stays)                                            // Shuffle always uses the standard topper size (v1.29)
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
@@ -449,6 +470,40 @@
   var SCENE = CakeScene.create(canvas, PIXEL);
   var renderer = SCENE.renderer, scene = SCENE.scene, camera = SCENE.camera;
   var ambientLight = SCENE.lights.ambient, key = SCENE.lights.key, spot = SCENE.lights.spot, fill = SCENE.lights.fill, candleLight = SCENE.lights.candle, sparkLight = SCENE.lights.spark;
+  // v1.39: the lighting RIG (rig.js): the room as a picture every material sees, painted from the same
+  // values as the lights. It replaces the hemisphere light's job (identically, for matte surfaces), so
+  // that light stays in the scene only as the values the sprinkles' own shader reads. ?rig=0: without it.
+  var RIG = (window.CakeRig && (!window.CakeDebug || CakeDebug.on('rig'))) ? CakeRig.create(renderer) : null;
+  var RIG_LIGHTS = { key: { size: 9, core: 1 }, fill: { size: 22, core: 0.55 }, spot: { size: 7, core: 1 } };
+  // v1.40: round the horizon the picture shows what's really there — the backdrop as it's seen, and at
+  // night the cake glowing in its own candlelight (the brightest thing the numbers see). That band adds
+  // a little light to the cake's sides, so the sky and the bounce are trimmed to keep the look as it was.
+  var RIG_TRIM = 0.93, RIG_CANDLE = 0.15, rigR = null, rigLitQ = -1;
+  function rigLitQuarter() {                             // candles lit, in quarters (so blowing them out rebuilds a few times, not per candle)
+    if (!flames.length) return 0;
+    var lit = litCount(); return lit <= 0 ? 0 : Math.ceil(lit / flames.length * 4);
+  }
+  function updateRig() {
+    if (!RIG || !rigR || !window.CakeLook) return;
+    var R = rigR;
+    var towards = function (l) { return l.position.clone().sub(l.target.position).normalize(); };
+    var shapes = CakeLook.LOOK.rigShapes || {};          // v1.41: a preset's softboxes and strips
+    var rigLight = function (l, k, I) { return { dir: towards(l), colour: l.color.clone().multiplyScalar(I), size: RIG_LIGHTS[k].size, core: RIG_LIGHTS[k].core, box: shapes[k] ? shapes[k].box : null }; };
+    var seen = floorPaint.clone().multiplyScalar(CakeLook.litFactor(R, key.position.clone().normalize(), key.color));
+    rigLitQ = rigLitQuarter();
+    var ci = darkness > 0 && rigLitQ > 0 ? CakeLook.candleIntensity(flames.length * rigLitQ / 4, darkness) * darkness : 0;
+    var glow = (ci > 0 && config) ? new THREE.Color(COL.frost(config, 0)).multiply(candleLight.color).multiplyScalar(ci * RIG_CANDLE) : null;
+    scene.environment = RIG.update({
+      sky: R.hemiSky.clone().multiplyScalar(R.hemi * RIG_TRIM), ground: R.hemiGround.clone().multiplyScalar(R.hemi * RIG_TRIM), seen: seen, glow: glow,
+      lights: [rigLight(key, 'key', R.key), rigLight(fill, 'fill', R.fill), (spot.visible && spot.intensity > 0) ? rigLight(spot, 'spot', spot.intensity) : null]
+        .concat((CakeLook.LOOK.rigPanels || []).map(function (q) {   // v1.41: a preset's panels (Studio)
+          var e = q.el * Math.PI / 180, a = q.az * Math.PI / 180;
+          return { dir: new THREE.Vector3(Math.cos(e) * Math.sin(a), Math.sin(e), Math.cos(e) * Math.cos(a)), colour: new THREE.Color(q.k, q.k, q.k),
+                   size: 10, core: 1, gain: 1, box: [q.w, q.h] };
+        }))
+    });
+  }
+  if (RIG) { ambientLight.visible = false; if (window.CakeLook) CakeLook.LOOK.rigOwnsEnvironment = true; }
   var pixelRatio = SCENE.pixelRatio, deviceDPR = SCENE.deviceDPR;
   CakeMessage.init(renderer);                           // the message texture asks the renderer for anisotropy and uploads early
   var PIPE = CakePipeline.create({ renderer: renderer, scene: scene, camera: camera,
@@ -522,7 +577,7 @@
   var candleGeo = CANDLES.candleGeo, HOLDER = CANDLES.HOLDER, holderMat = CANDLES.holderMat, wickGeo = CANDLES.wickGeo, wickMat = CANDLES.wickMat;
   var CANDLE_STYLES = CANDLES.CANDLE_STYLES, STYLE_ALL = CANDLES.STYLE_ALL, STYLE_HEIGHT = CANDLES.STYLE_HEIGHT, STYLE_GEO = CANDLES.STYLE_GEO;
   var NUM = CANDLES.NUM, numberSpikeGeo = CANDLES.numberSpikeGeo, CANDLE_HAND = CANDLES.CANDLE_HAND;
-  function getStudioEnv() { return CANDLES.studioEnv(renderer); }
+  function getStudioEnv() { return RIG ? null : CANDLES.studioEnv(renderer); }   // v1.40: with the rig, metal reflects its room (the sparkler wires too)
   var FLAMES = CakeFlames.create();
   var FLAME = FLAMES.FLAME;
   function updateFlameMesh(f, t, lx, lz) { return FLAMES.updateFlameMesh(f, t, lx, lz, _right, _fwd); }
@@ -955,7 +1010,13 @@
     var R = CakeLook.roomLights(darkness, floorPaint);
     if (ambientLight.isHemisphereLight) { ambientLight.intensity = R.hemi; ambientLight.color.copy(R.hemiSky); ambientLight.groundColor.copy(R.hemiGround); }
     else ambientLight.intensity = R.hemi;
-    key.intensity = R.key; fill.intensity = R.fill;
+    key.intensity = R.key;
+    // v1.41: the fill — where it's always been, or where the preset puts it (Studio: behind, as a rim)
+    var LKf = CakeLook.LOOK;
+    fill.intensity = R.fill * (LKf.fillScale || 1);
+    if (LKf.fillDir) { var fe = LKf.fillDir.elevation * Math.PI / 180, fa = LKf.fillDir.azimuth * Math.PI / 180; fill.position.set(9.5 * Math.cos(fe) * Math.sin(fa), 9.5 * Math.sin(fe), 9.5 * Math.cos(fe) * Math.cos(fa)); }
+    else fill.position.set(5, 3, -2);
+    if (LKf.fillKelvin) CakeLook.kelvinToColor(LKf.fillKelvin, fill.color); else fill.color.setHex(0xdcefff);
     CakeLook.keyPosition(key.position);              // elevation / azimuth from the look
     if (CakeLook.LOOK.keyHex >= 0) key.color.setHex(CakeLook.LOOK.keyHex);
     else CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
@@ -968,6 +1029,7 @@
       markHeavy();
     }
     candleLight.distance = CakeLook.LOOK.night.distance; candleLight.decay = CakeLook.LOOK.night.decay;
+    rigR = R; updateRig();                               // v1.39: the room as a picture, from the same values as the lights
     if (window.CakeStage) {
       var kd = key.position.clone().normalize();
       roomLit = CakeLook.litFactor(R, kd, key.color);
@@ -1235,6 +1297,7 @@
     updateSprinkleLights();
     if (flames.length) {
       var lit = litCount();
+      if (RIG && darkness > 0 && rigLitQuarter() !== rigLitQ) updateRig();   // v1.40: the candlelit cake in the room picture follows the candles
       var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
       // Ease toward it so each extinguished wave reads as a wave of dimming, not a step.
       candleLight.intensity += (target * (0.92 + 0.08 * Math.sin(t * 7)) - candleLight.intensity) * Math.min(1, dt * 6);
@@ -3233,6 +3296,7 @@
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
     __toppers: function () { return TOPPERS; }, __digit: function (ch, H, font) { return CANDLES.digitGeometry(ch, H, font); }, __recent: function () { return recent.slice(); },
     __dropAt: function (x, y) { var D = dropper(); return D ? D.baseAt(x, y) : null; },
+    __rig: function () { return RIG; },
     __layout: function () { return PLACE.last(); },   // incl. topperH, topperCapped (v1.29) __blocks: function () { return lastBlocks; },
     __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return CakeSprinkles.tierKey(t); }); },
