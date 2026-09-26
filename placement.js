@@ -213,6 +213,11 @@
         S.lit = new THREE.InstancedBufferAttribute(new Float32Array(S.count).fill(1), 1);
         g.setAttribute('aLit', S.lit);
         S.mesh = new THREE.InstancedMesh(g, K.styleMaterial(st, candleHex), S.count);
+        // v1.33: a plain candle's colour is carried ONCE — by each candle's own, slightly varied colour
+        // (set below) — not by the wax material as well: the two multiplied, so candles came out deeper
+        // than their swatch (a pale blue as a strong one). The set colour is kept for the dropper.
+        var plain = !(st === 2 || st === 3 || st === 4 || st === 5);
+        if (plain) { S.mesh.material.color.setRGB(1, 1, 1); S.mesh.userData.baseHex = candleHex; }
         S.next = 0;
       });
       var holders = new THREE.InstancedMesh(K.holderGeo(radius), K.holderMat, pts.length);

@@ -699,3 +699,55 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 /* v1.29 — the toppers' Size slider waits for a topper */
 #tz-row.dim { opacity: .35; pointer-events: none; }
 #tz-row input[type=range] { flex: 1; }
+
+/* v1.31 — recent colours lead each colour row, then a hairline, then the presets */
+.swatch-sep { flex: 0 0 1px; align-self: stretch; margin: 0.25rem 0.15rem; background: currentColor; opacity: .2; }
+#tcl-row.dim { opacity: .35; pointer-events: none; }
+
+/* v1.32 — the Custom swatch (leads every colour row) and the colour picker sheet */
+.swatch.custom { position: relative; background: conic-gradient(#ff5f6d, #ffc371, #f9f871, #7be495, #56ccf2, #a47dff, #ff5f6d); }
+.swatch.custom::after { content: '+'; position: absolute; inset: 24%; border-radius: 50%; background: #fff; color: #3b2a2a;
+  display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+.picker { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; max-width: 560px; margin: 0 auto; box-sizing: border-box;
+  padding: 0.6rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px)); color: #3b2a2a;
+  background: #faf7f4; border-radius: 1.2rem 1.2rem 0 0; box-shadow: 0 -8px 30px rgba(40, 25, 20, 0.18); }
+.picker[hidden] { display: none; }
+.pk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.pk-head button { font: inherit; font-size: 1rem; border: 0; background: none; color: inherit; padding: 0.35rem 0.2rem; }
+.pk-done, .pk-title { font-weight: 600; }
+.pk-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.65rem; }
+.pk-sw { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
+.pk-hex { width: 6.4em; font: inherit; font-size: 16px; font-variant-numeric: tabular-nums; padding: 0.35rem 0.5rem; border-radius: 0.6rem;
+  border: 1px solid rgba(0, 0, 0, 0.14); background: #fff; color: inherit; text-transform: uppercase; }
+.pk-read { margin-left: auto; font-size: 0.75rem; opacity: 0.6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk-plane, .pk-hue { position: relative; touch-action: none; }
+.pk-plane { height: 9.5rem; margin-bottom: 0.7rem; }
+.pk-hue { height: 1.6rem; }
+.pk-plane canvas, .pk-hue canvas { display: block; width: 100%; height: 100%; border-radius: 0.8rem; }
+.pk-knob { position: absolute; width: 1.35rem; height: 1.35rem; margin: -0.675rem 0 0 -0.675rem; border-radius: 50%; box-sizing: border-box;
+  border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); pointer-events: none; }
+.pk-hue .pk-knob { top: 50%; background: transparent; }
+
+/* v1.33 — the dropper: its button in the picker, and the screen you pick on */
+.pk-drop { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; padding: 0; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff; color: #3b2a2a; display: grid; place-items: center; }
+.pk-drop svg { width: 1.05rem; height: 1.05rem; }
+.dropper { position: fixed; inset: 0; z-index: 70; touch-action: none; cursor: crosshair; }
+.dropper[hidden] { display: none; }
+.dr-bar { position: absolute; left: 50%; top: calc(0.8rem + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.45rem 0.4rem 0.9rem; border-radius: 999px; white-space: nowrap;
+  background: rgba(250, 247, 244, 0.96); color: #3b2a2a; font-size: 0.88rem; box-shadow: 0 4px 16px rgba(40, 25, 20, 0.18); cursor: default; }
+.dr-bar button { font: inherit; border: 0; border-radius: 999px; padding: 0.3rem 0.85rem; background: #3b2a2a; color: #fff; }
+.dr-loupe { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); pointer-events: none; }
+.dr-aim { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.45); pointer-events: none; }
+.dr-hex { position: absolute; transform: translateX(-50%); padding: 0.12rem 0.5rem; border-radius: 0.5rem; background: rgba(30, 20, 20, 0.78);
+  color: #fff; font-size: 0.75rem; font-variant-numeric: tabular-nums; pointer-events: none; }
+
+/* v1.34 — "Theme the cake from this colour", under the picker's hue strip */
+.pk-theme { display: block; width: 100%; margin-top: 0.75rem; padding: 0.6rem 0.9rem; border: 0; border-radius: 999px;
+  font: inherit; font-size: 0.95rem; background: #3b2a2a; color: #fff; }
+/* v1.34 — the picker's row has the dropper too: the hex box keeps its width, the readout gives way */
+.pk-hex { flex: 0 0 auto; width: 7.2em; box-sizing: border-box; }
+.pk-read { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: right; }

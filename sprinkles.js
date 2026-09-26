@@ -27,6 +27,17 @@
     var sprinkleSets = {};                                 // by tier (keyed by its base height), for the slices
     var sprinkleMat = null, sprinkleLights = null;
     function prng(seed) { var a = seed | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+    // v1.33, for the dropper: a sprinkle's colour is stored converted for the shader, so find which
+    // palette colour it is and give that back exactly.
+    function colourAt(pts, i, cfg) {
+      var a = pts && pts.geometry && pts.geometry.attributes.aColor; if (!a || i == null || i >= a.count) return null;
+      var pal = SPR.palettes[deps.clampInt(cfg.spal, 0, SPR.palettes.length - 1, 0)], best = null, bd = Infinity;
+      pal.forEach(function (h) {
+        var c = new THREE.Color(h).convertSRGBToLinear(), d = Math.pow(c.r - a.getX(i), 2) + Math.pow(c.g - a.getY(i), 2) + Math.pow(c.b - a.getZ(i), 2);
+        if (d < bd) { bd = d; best = h; }
+      });
+      return best;
+    }
     function getSprinkleMaterial() {
       if (sprinkleMat) return sprinkleMat;
       sprinkleMat = new THREE.ShaderMaterial({
@@ -153,7 +164,7 @@
     }
     function keys() { return Object.keys(sprinkleSets).map(function (k) { return k + ':' + sprinkleSets[k].rad.length; }); }
     CakeMaterials.warm('sprinkles', function () { return sprinklePoints({ pos: new Float32Array(3), rad: new Float32Array([0.02]), col: new Float32Array(3), ang: new Float32Array([0]) }, 0, 7); });
-    return { place: placeSprinkles, forSlice: forSlice, updateLights: updateSprinkleLights, keys: keys, SPR: SPR };
+    return { colourAt: colourAt, place: placeSprinkles, forSlice: forSlice, updateLights: updateSprinkleLights, keys: keys, SPR: SPR };
   }
   window.CakeSprinkles = { create: create, tierKey: tierKey };
 })();

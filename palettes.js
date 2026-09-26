@@ -22,6 +22,21 @@
       { name: 'Purple', hex: 0x9B6BFF },
       { name: 'Gold',   hex: 0xE9C46A }
     ],
+    // v1.31: number toppers' colours. The first follows the candles (as before v1.31, and the default).
+    topper: [
+      { name: 'Match candles', auto: true },
+      { name: 'White',  hex: 0xFFFFFF },
+      { name: 'Cream',  hex: 0xFFF1D6 },
+      { name: 'Pink',   hex: 0xFF6F91 },
+      { name: 'Coral',  hex: 0xFF8A73 },
+      { name: 'Red',    hex: 0xE03131 },
+      { name: 'Yellow', hex: 0xFFD166 },
+      { name: 'Gold',   hex: 0xE9C46A },
+      { name: 'Mint',   hex: 0x7ED3B2 },
+      { name: 'Blue',   hex: 0x4FC3F7 },
+      { name: 'Purple', hex: 0x9B6BFF },
+      { name: 'Ink',    hex: 0x3B2A2A }
+    ],
     filling: [
       { name: 'Raspberry',  layers: [0xD6336C] },
       { name: 'Lemon curd', layers: [0xFFD43B] },

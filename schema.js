@@ -116,7 +116,8 @@
       sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement
       // Toppers (v1.22): on the top tier only, 3 at most — each digit of the number, and each emoji, is one.
       tn: String(c.tn == null ? '' : c.tn).replace(/[^0-9]/g, '').slice(0, 2),
-      tz: clampInt(c.tz, 0, 8, 4),          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
+      tz: clampInt(c.tz, 0, 8, 4),
+      tcl: clampInt(c.tcl, 0, PALETTES.topper.length - 1, 0),   // number toppers' colour (v1.31); 0 = match the candles          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
       te: (function (t) { return String(t == null ? '' : t).split('.').filter(function (k) { return /^[0-9a-f]+(-[0-9a-f]+)*$/.test(k); }); })(c.te),
       lp: clampInt(c.lp, 0, 4, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead — travels with the cake now
       lj: clampInt(c.lj, 0, 99, 0),         // the generator's small nudge to that preset, as a seed (0 = none), so the recipient sees the same light          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
@@ -165,6 +166,9 @@
     out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)), a: (t.a === undefined ? undefined : clampInt(t.a, -4, 4, 0)) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
+    // v1.31: exact colours of a slot's own (a recent colour now; the picker's later). Live `cxs`
+    // { slot: 0xRRGGBB } wins; else the link string `cx`. A slot without one uses its preset.
+    out.cxs = parseCx(c.cxs, c.cx); out.cx = serializeCx(out.cxs);
     // Positions: live `p` wins; else the link string `rbp` (one digit per tier); else −1 (legacy).
     var rbpStr = String(c.rbp || '').replace(/[^0-9]/g, '');
     out.rt.forEach(function (t, i) { if (t.p === undefined || (t.p < 0 && rbpStr.length > i)) t.p = rbpStr.length > i ? +rbpStr[i] : -1; });
@@ -196,7 +200,7 @@
     } catch (e) { return null; }
   }
   // ---- v2: named fields ----
-  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj', 'tn', 'te', 'tz'];
+  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj', 'tn', 'te', 'tz', 'tcl', 'cx'];
   var V2_DEFAULT = null;
   function v2Default() { if (!V2_DEFAULT) V2_DEFAULT = normalize({}); return V2_DEFAULT; }
   function encodeV2(c) {
@@ -222,12 +226,31 @@
   }
   // Merging a partial change into a config: an explicit whole-cake string beats the live
   // per-tier array it would otherwise be reconstructed from (v1.16, from app.js's set()).
+  // Colour slots (v1.31): f0–f2 icing per tier · r0–r2 ribbon per tier · cc candles · tc number
+  // toppers · wc writing · fl filling · bg backdrop · sp sponge. In the link: slot + 6 hex digits, joined by '.'.
+  var CX_SLOT = /^(f[0-2]|r[0-2]|cc|tc|wc|fl|bg|sp)$/;   // sp: the sponge's crumb (v1.32; its crust is worked out)
+  function parseCx(live, str) {
+    var out = {};
+    if (live && typeof live === 'object') {
+      Object.keys(live).forEach(function (k) { var v = live[k]; if (CX_SLOT.test(k) && v === (v & 0xffffff)) out[k] = v; });
+      return out;
+    }
+    String(str || '').toLowerCase().split('.').forEach(function (e) {
+      var m = /^([a-z][a-z0-9])([0-9a-f]{6})$/.exec(e);
+      if (m && CX_SLOT.test(m[1])) out[m[1]] = parseInt(m[2], 16);
+    });
+    return out;
+  }
+  function serializeCx(cxs) {
+    return Object.keys(cxs).sort().map(function (k) { return k + ('000000' + cxs[k].toString(16)).slice(-6); }).join('.');
+  }
   function merge(base, partial) {
     var next = {};
     for (var k in base) next[k] = base[k];
     for (var j in partial) next[j] = partial[j];
     if ('rbt' in partial || 'rbp' in partial || 'rba' in partial) delete next.rt;
     if ('tp' in partial) delete next.sh;
+    if ('cx' in partial) delete next.cxs;
     if ('fct' in partial) delete next.fcs;
     if ('frt' in partial) delete next.frs;
     if ('frst' in partial || 'fr' in partial) delete next.frsty;

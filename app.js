@@ -137,7 +137,9 @@
     var ek = Object.keys(window.CakeEmoji || {}), ne = Math.random() < B.emojiChance ? randInt(1, 3 - d.tn.length) : 0, picks = [];
     for (var q = 0; q < ne && ek.length; q++) picks.push(ek[randInt(0, ek.length - 1)]);
     d.te = picks.join('.');
-    d.tz = 4;                                            // Shuffle always uses the standard topper size (v1.29)
+    d.tz = 4;
+    d.tcl = 0;                                           // number toppers match the candles (v1.31)
+    d.cxs = (d.cxs && d.cxs.wc != null) ? { wc: d.cxs.wc } : {};   // Shuffle picks presets: exact colours go (the writing's stays)                                            // Shuffle always uses the standard topper size (v1.29)
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
     d.rk = B.racks[randInt(0, B.racks.length - 1)];
@@ -150,7 +152,26 @@
     d.rt = [0, 1, 2].map(function (i) {
       return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]), p: randInt(0, 9), a: randInt(-2, 2) };
     });
+    // v1.34: the colours are one THEME (theme.js): from one of an emoji topper's own colours when
+    // there is one, else a random colour, with a strategy (a hue family, neighbours, opposites, three
+    // hues, or neutral with an accent) and ramps whose hue bends as they lighten and darken.
+    if (window.CakeTheme) {
+      var e0 = d.te ? d.te.split('.')[0] : '', epal = e0 && window.CakeEmojiPalettes ? CakeEmojiPalettes[e0] : null;
+      applyTheme(d, CakeTheme.make({ tiers: n, palette: epal, baked: baked, cakeHex: baked ? SPONGES[clampIndex(d.sp, SPONGES)].crust : null }), null);
+    }
     return normalize(d);
+  }
+  // v1.34: a theme's colours onto a cake's parts, as exact colours. `keep` = { slots, hex }: the part
+  // being edited keeps exactly its colour. The writing keeps its own colour if it has one.
+  function applyTheme(d, T, keep) {
+    var cx = {}; if (d.cxs && d.cxs.wc != null) cx.wc = d.cxs.wc;
+    var n = (d.fcs || [0]).length;
+    for (var t = 0; t < n; t++) { cx['f' + t] = T.icing[Math.min(t, T.icing.length - 1)]; cx['r' + t] = T.ribbon; }
+    cx.cc = T.candles; if (T.topper != null) cx.tc = T.topper; cx.bg = T.backdrop;
+    if (T.sponge != null) cx.sp = T.sponge; if (T.filling != null) cx.fl = T.filling;
+    if (keep) keep.slots.forEach(function (k) { cx[k] = keep.hex; });
+    d.cxs = cx; d.tcl = 0;
+    return d;
   }
 
   // fr defaults to 1 (smooth) so links from before the sponge-first builder still decode as
@@ -196,6 +217,8 @@
     if (tz && document.activeElement !== tz) tz.value = step;
     var out = $('tz-out'); if (out) out.textContent = Math.round(60 + 10 * step) + '%';
     var row = $('tz-row'); if (row) row.classList.toggle('dim', !used);
+    var crow = $('tcl-row'); if (crow) crow.classList.toggle('dim', !draft.tn);   // v1.31: colour is for numbers (emojis wear their own)
+    if (els.swTcl) { syncSwatches(els.swTcl, draft.tcl); refreshAutoSwatch(); }
   }
   // When the emoji outlines arrive after a build that needed them: the builder rebuilds through the
   // store; the viewer rebuilds its config (the link preloads them, so this is rare there).
@@ -254,7 +277,28 @@
   // little brown, the crust always browner than the crumb — so none of them reads as icing.
   // `crumb` picks the crumb texture's flavour detail (frosting.js).
   // Links from before v0.80 stored a flavour (sc) and a bake (bk); map them onto the list.
-  function spongeOf(cfg) { return SPONGES[clampIndex(cfg.sp, SPONGES)]; }
+  // v1.31: any colour slot can hold an exact colour of its own (cfg.cxs, keyed by slot — see
+  // schema.js): a recent colour now, the picker's later. A slot without one uses its preset.
+  function ownHex(cfg, slot) { var v = cfg && cfg.cxs ? cfg.cxs[slot] : undefined; return v == null ? null : v; }
+  var COL = {
+    frost: function (cfg, t) { var v = ownHex(cfg, 'f' + (t || 0)); if (v != null) return v;
+      return PALETTES.frosting[clampIndex(t ? (cfg.fcs ? cfg.fcs[t] : cfg.fc) : cfg.fc, PALETTES.frosting)].hex; },
+    candle: function (cfg) { var v = ownHex(cfg, 'cc'); return v != null ? v : PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex; },
+    ribbon: function (cfg) { var v = ownHex(cfg, 'r0'); return v != null ? v : PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex; },
+    filling: function (cfg) { var v = ownHex(cfg, 'fl'); return v != null ? [v] : PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers; },
+    topper: function (cfg) {                            // number toppers: their own colour, or the candles'
+      var v = ownHex(cfg, 'tc'); if (v != null) return v;
+      var i = clampIndex(cfg.tcl, PALETTES.topper); return i === 0 ? COL.candle(cfg) : PALETTES.topper[i].hex;
+    },
+    ink: function (cfg) { return ownHex(cfg, 'wc'); },
+    backdrop: function (cfg) { return ownHex(cfg, 'bg'); }
+  };
+  function spongeOf(cfg) {
+    // v1.32: a sponge of its own colour: that's the crumb, and the crust is baked from it (oklch.js).
+    var own = ownHex(cfg, 'sp');
+    if (own != null && window.CakeOklch) return { name: 'Custom', crumb: own, crust: CakeOklch.crustOf(own), detail: 'plain' };
+    return SPONGES[clampIndex(cfg.sp, SPONGES)];
+  }
   function spongeColours(cfg) { var S = spongeOf(cfg); return { crust: S.crust, crumb: S.crumb }; }
   var INK_DARK = '#3b2a2a';
   var INK_LIGHT = '#fffaf0';
@@ -502,7 +546,8 @@
   var showMessage = true;
 
   var tierGroups = [];
-  var lastBlocks = [];       // v1.28: the footprints the candles kept clear of (for the harness)
+  var lastBlocks = [];
+  var snapWant = null;       // v1.33: the dropper wants a still of the cake, taken right after the next frame       // v1.28: the footprints the candles kept clear of (for the harness)
   // v1.28: when candles don't all fit (a narrow top, three toppers), the Candles tray says so.
   function showFitHint() {
     var info = PLACE.last();
@@ -523,7 +568,7 @@
     tier.idx = i;
     var TM = BODY.tierMaterials(B.cfg, tier);
     var frosting = TM.frosting;                         // this tier's own colour
-    var ink = BODY.pickInk(frosting, B.cfg.tc);
+    var ink = BODY.pickInk(frosting, B.cfg.tc, COL.ink(B.cfg));
     var frostingMat = TM.side, capMat = TM.cap, msgBase = TM.base, scheme = TM.scheme, capH = TM.capH, pOpts = TM.profileOpts;
     if (frostingMat) { CakeResources.keep(frostingMat); B.localShared.push(frostingMat); }
     CakeResources.keep(capMat); B.localShared.push(capMat);
@@ -642,11 +687,11 @@
     var candleFrom = animate ? Math.min(prevN, MAX_CANDLES) : Infinity;   // candles with index ≥ this pop in
 
     var tiers = tiersFor(cfg);
-    var frosting = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
-    var filling = PALETTES.filling[clampIndex(cfg.ic, PALETTES.filling)].layers;
-    var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
-    var ribbonHex = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
-    var ink = BODY.pickInk(frosting, cfg.tc);
+    var frosting = COL.frost(cfg, 0);
+    var filling = COL.filling(cfg);
+    var candleHex = COL.candle(cfg);
+    var ribbonHex = COL.ribbon(cfg);
+    var ink = BODY.pickInk(frosting, cfg.tc, COL.ink(cfg));
 
     // Frosting is a choice (v0.54). Naked: the sponge itself, slightly smaller, wearing its
     // filling stripes round the side and a thin crumb top. Frosted: the one-shell frosting.
@@ -674,7 +719,7 @@
       // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
       var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
       var tzStep = cfg.tz == null ? 4 : cfg.tz;           // v1.29: the Size slider, 60% … 140%
-      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep }, surfaces[0], candleHex); if (row) blocks.push(row); }
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
       else PLACE.noToppers();
       lastBlocks = blocks;
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
@@ -697,7 +742,8 @@
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = window.CakeLook ? CakeLook.candleIntensity(flames.length, darkness) : Math.min(1.6, 0.25 + flames.length * 0.03);
 
-    if (lastBgKey !== frosting + '|' + cfg.bg) { lastBgKey = frosting + '|' + cfg.bg; applyBackground(frosting, cfg.bg); }
+    var bgOwn = COL.backdrop(cfg);
+    if (lastBgKey !== frosting + '|' + cfg.bg + '|' + bgOwn) { lastBgKey = frosting + '|' + cfg.bg + '|' + bgOwn; applyBackground(frosting, cfg.bg, bgOwn); }
   }
 
   // Cheap path for typing: swap only the message texture.
@@ -708,7 +754,7 @@
     // the writing must span sponge AND fillings — so a message change rebuilds the tier.
     if (messageMesh.__stack) { build(config); return; }
     var tier = messageMesh.__tier, bodyH = messageMesh.__bodyH;
-    var frosting = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
+    var frosting = COL.frost(config, 0);
     var old = messageMesh.material[0];
     var mat;
     if (m && showMessage) {
@@ -716,7 +762,7 @@
       frosting = TMm.frosting;                             // its OUTERMOST layer colour
       mat = new THREE.MeshStandardMaterial({
         color: 0xffffff, roughness: TMm.naked ? 0.95 : ((!TMm.fdOn && TMm.style === 4) ? 0.85 : 0.62),
-        map: makeMessageTexture(m, BODY.pickInk(frosting, config.tc), frosting, TMm.rr, bodyH, TMm.base), vertexColors: true
+        map: makeMessageTexture(m, BODY.pickInk(frosting, config.tc, COL.ink(config)), frosting, TMm.rr, bodyH, TMm.base), vertexColors: true
       });
       if (TMm.maps) CakeFrosting.dressFondant(mat, TMm.maps, TMm.rr);
       BODY.nightGlow(mat, 0xffffff, true);
@@ -842,7 +888,7 @@
   // cake is boxed or gone.
   function updateBleed() {
     if (!window.CakeLook || !config) return;
-    var frosting = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
+    var frosting = COL.frost(config, 0);
     var r = tiersFor(config)[0].r;
     var onFloor = !boxMode && built.visible !== false || !!V.cut;
     var left = V.cut ? CUT.slicesLeft() + (V.cut.lifted ? 1 : 0) : 1;
@@ -926,10 +972,11 @@
     }
     updateBleed();
   }
-  function applyBackground(frostingHex, bgIndex) {
+  function applyBackground(frostingHex, bgIndex, own) {
     var opt = PALETTES.background[clampIndex(bgIndex, PALETTES.background)];
     var top, bottom;
-    if (opt.auto) {
+    if (own != null) { bottom = new THREE.Color(own); top = bottom; }   // v1.31: an exact colour of its own
+    else if (opt.auto) {
       top = new THREE.Color(frostingHex).lerp(new THREE.Color(0xffffff), 0.72);
       bottom = new THREE.Color(0xffe9c7).lerp(new THREE.Color(frostingHex), 0.15);
     } else {
@@ -1190,6 +1237,7 @@
       else CakeStage.finishCalibrate(renderer);        // the readback happens a frame later, when the GPU is done
     }
     PIPE.render();                                       // opaque → occlusion → emissive (pipeline.js)
+    if (snapWant) { var sw = snapWant; snapWant = null; try { sw(renderer.domElement); } catch (e) {} }   // the frame is still in the canvas here
     if (window.CakeDev && CakeDev.on) CakeDev.tick(performance.now());   // measure; the ladder is off in dev
     else tunePixelRatio(now, performance.now() - frameStart);
     requestAnimationFrame(frame);
@@ -1265,12 +1313,12 @@
 
   function startCeremony(onReady) {
     killTweens();
-    var candleHex = PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex;
-    var frostingHex = PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex;
+    var candleHex = COL.candle(config);
+    var frostingHex = COL.frost(config, 0);
     // Box takes a tint of the frosting; ribbon takes the candle colour unless that's too pale to read.
     boxMat.color.setHex(lighten(frostingHex, 0.55));
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
-    var rib = PALETTES.ribbon[clampIndex(config.rc, PALETTES.ribbon)].hex;
+    var rib = COL.ribbon(config);
     // Only nudge it if a pale ribbon would vanish against a pale box.
     if (BODY.luminance(rib) > THREE.Color.srgbToLinear(0.82) && BODY.luminance(lighten(frostingHex, 0.55)) > THREE.Color.srgbToLinear(0.75)) rib = darken(rib, 0.32);   // linear luminance (color.js)
     ribbonMat.color.setHex(rib);
@@ -1594,8 +1642,8 @@
     setViewerState('blow'); blow.enabled = true;
   }
   function reveal() {
-    var pal = [PALETTES.frosting[clampIndex(config.fc, PALETTES.frosting)].hex,
-               PALETTES.candle[clampIndex(config.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166, 0xFF6F91];
+    var pal = [COL.frost(config, 0),
+               COL.candle(config), 0xffffff, 0xFFD166, 0xFF6F91];
     CONF.burst(pal.map(function (h) { return hexCss(h); }), V.mode === 'slice' ? 40 : 160);
     setTimeout(showRevealedControls, 700);
   }
@@ -1619,11 +1667,11 @@
     resetBlow({ enabled: false, lastWave: 0, micLevel: 0, micHold: 0, total: flames.length, revealed: false });
     boxOpenDone = false;
     // Closed box, ribbon on, cake inside
-    var candleHex = PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex;
-    var frostingHex = PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex;
+    var candleHex = COL.candle(cfg);
+    var frostingHex = COL.frost(cfg, 0);
     boxMat.color.setHex(lighten(frostingHex, 0.55));
     boxEdgeMat.color.setHex(lighten(frostingHex, 0.35));
-    var rib = PALETTES.ribbon[clampIndex(cfg.rc, PALETTES.ribbon)].hex;
+    var rib = COL.ribbon(cfg);
     if (BODY.luminance(rib) > THREE.Color.srgbToLinear(0.82) && BODY.luminance(lighten(frostingHex, 0.55)) > THREE.Color.srgbToLinear(0.75)) rib = darken(rib, 0.32);   // linear luminance (color.js)
     ribbonMat.color.setHex(rib);
     var h = Math.max(2.9, cakeHeight() + 0.18);
@@ -1953,7 +2001,7 @@
     setViewerState('slice');
     // A little confetti as it lands, then the actions. No blow step to wait for.
     setTimeout(function () {
-      var pal = [PALETTES.frosting[clampIndex(cfg.fc, PALETTES.frosting)].hex, PALETTES.candle[clampIndex(cfg.cc, PALETTES.candle)].hex, 0xffffff, 0xFFD166];
+      var pal = [COL.frost(cfg, 0), COL.candle(cfg), 0xffffff, 0xFFD166];
       CONF.burst(pal.map(function (h) { return hexCss(h); }), 40);
     }, 700);
     setTimeout(showSliceDone, 2200);
@@ -2197,7 +2245,7 @@
   var els = {
     builder: $('builder'), linkpanel: $('linkpanel'), viewerFoot: $('viewer-foot'),
     to: $('f-to'), from: $('f-from'), m: $('f-m'), mCount: $('m-count'), n: $('f-n'), nOut: $('n-out'),
-    tiers: $('tiers'), swFc: $('sw-fc'), swFrc: $('sw-frc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'),
+    tiers: $('tiers'), swFc: $('sw-fc'), swFrc: $('sw-frc'), swIc: $('sw-ic'), swCc: $('sw-cc'), swRc: $('sw-rc'), swTc: $('sw-tc'), swBg: $('sw-bg'), swTcl: $('sw-tcl'), swSp: $('sw-sp'),
     getLink: $('get-link'), linkOut: $('link-out'), share: $('share-link'), copy: $('copy-link'),
     copyHint: $('copy-hint'), open: $('open-link'), edit: $('edit-cake')
   };
@@ -2216,6 +2264,7 @@
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'swatch';
+      b.setAttribute('data-i', i);
       b.title = item.name;
       b.setAttribute('aria-label', item.name);
       if (item.auto) {
@@ -2237,14 +2286,17 @@
         b.style.background = hexCssStr(item.hex);
       }
       b.addEventListener('click', function () {
+        var sl = slotsOf(container);                     // v1.31: a preset replaces any exact colour of its own
+        if (sl && draft.cxs) sl.forEach(function (k) { delete draft.cxs[k]; });
         if (key === 'rc') { draft.rt[curTier].c = i; draft = STORE.set(draft, { silent: true }); }   // per tier
         else if (key === 'fc') { if (fondAll) draft.fcs = draft.fcs.map(function () { return i; }); else draft.fcs[curTier] = i; draft = STORE.set(draft, { silent: true }); }
         else if (key === 'frc') { if (frostAll) draft.frs = draft.frs.map(function () { return i; }); else draft.frs[curTier] = i; draft = STORE.set(draft, { silent: true }); }
         else draft[key] = i;
         syncSwatches(container, i);
-        if (key === 'fc' || key === 'frc' || key === 'tc') refreshAutoSwatch();
+        if (key === 'fc' || key === 'frc' || key === 'tc' || key === 'cc') refreshAutoSwatch();
         updateColourNote();
         STORE.commit({ showMessage: true });
+        if (sl) pushRecent(hexOfItem(item));
       });
       container.appendChild(b);
     });
@@ -2253,7 +2305,9 @@
   // Both "Auto" swatches preview what they'd actually produce for the current frosting.
   function refreshAutoSwatch() {
     if (!draft) return;
-    var f = PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex;
+    var tA = els.swTcl && els.swTcl.querySelector('.swatch-auto');   // v1.31: "Match candles" shows the candles' colour
+    if (tA) tA.style.background = hexCssStr(COL.candle(draft));
+    var f = COL.frost(draft, 0);
     if (els.swBg) {
       var bgEl = els.swBg.querySelector('.swatch-auto');
       if (bgEl) {
@@ -2268,9 +2322,128 @@
     }
   }
   function syncSwatches(container, active) {
-    Array.prototype.forEach.call(container.children, function (b, i) {
-      b.setAttribute('aria-pressed', i === active ? 'true' : 'false');
+    if (currentOwn(container) != null) active = -1;       // an exact colour of its own: no preset is on
+    Array.prototype.forEach.call(container.querySelectorAll('.swatch:not(.recent):not(.custom)'), function (b, i) {
+      var idx = b.hasAttribute('data-i') ? +b.getAttribute('data-i') : i;
+      b.setAttribute('aria-pressed', idx === active ? 'true' : 'false');
     });
+    renderRecents(container);
+  }
+  // v1.31: RECENT colours — the last few you've used anywhere, shown at the start of every colour
+  // row (bar sponge, which waits for the picker: its colour is two shades), so one colour can go on
+  // the icing, the ribbon, the candles… Kept on this device, not in the link.
+  var RECENT_KEY = 'cake4me.recent', RECENT_MAX = 8, RECENT_SHOWN = 4;
+  var recent = (function () {
+    try { var r = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      return Array.isArray(r) ? r.filter(function (h) { return h === (h & 0xffffff); }).slice(0, RECENT_MAX) : []; }
+    catch (e) { return []; }
+  })();
+  function hexOfItem(item) {
+    if (!item || item.auto) return null;
+    if (item.hex != null) return item.hex;
+    if (item.floor != null) return item.floor;
+    if (item.crumb != null) return item.crumb;           // a sponge: its crumb
+    return (item.layers && item.layers.length === 1) ? item.layers[0] : null;
+  }
+  function colourRows() { return [els.swFc, els.swRc, els.swCc, els.swTcl, els.swTc, els.swIc, els.swBg, els.swSp].filter(Boolean); }
+  function listOf(c) {
+    return c === els.swFc ? PALETTES.frosting : c === els.swRc ? PALETTES.ribbon : c === els.swCc ? PALETTES.candle
+         : c === els.swTcl ? PALETTES.topper : c === els.swTc ? PALETTES.text : c === els.swIc ? PALETTES.filling : c === els.swSp ? SPONGES : PALETTES.background;
+  }
+  function slotsOf(c) {                                  // which slot(s) a colour row sets
+    if (!draft || !c) return null;
+    if (c === els.swFc) return fondAll ? draft.fcs.map(function (_, i) { return 'f' + i; }) : ['f' + curTier];
+    if (c === els.swRc) return ['r' + curTier];
+    return c === els.swCc ? ['cc'] : c === els.swTcl ? ['tc'] : c === els.swTc ? ['wc'] : c === els.swIc ? ['fl'] : c === els.swBg ? ['bg'] : c === els.swSp ? ['sp'] : null;
+  }
+  function currentOwn(c) { var sl = slotsOf(c); var v = (sl && draft.cxs) ? draft.cxs[sl[0]] : undefined; return v == null ? null : v; }
+  function pushRecent(hex) {
+    if (hex == null) return;
+    recent = [hex].concat(recent.filter(function (h) { return h !== hex; })).slice(0, RECENT_MAX);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch (e) { /* private mode: just this visit */ }
+    colourRows().forEach(renderRecents);
+  }
+  function renderRecents(c) {
+    if (!c || !draft) return;
+    Array.prototype.slice.call(c.querySelectorAll('.recent, .swatch-sep, .custom')).forEach(function (el) { el.parentNode.removeChild(el); });
+    if (!slotsOf(c)) return;
+    var own = currentOwn(c), presets = listOf(c).map(hexOfItem), show = [];
+    if (own != null) show.push(own);                     // this slot's own colour always shows, pressed
+    recent.forEach(function (h) { if (show.length < RECENT_SHOWN && show.indexOf(h) < 0 && presets.indexOf(h) < 0) show.push(h); });
+    var first = c.firstChild;
+    // v1.32: the Custom swatch leads every colour row: it opens the picker (picker.js).
+    var cu = document.createElement('button'); cu.type = 'button'; cu.className = 'swatch custom';
+    cu.title = 'Custom colour'; cu.setAttribute('aria-label', 'Custom colour');
+    cu.addEventListener('click', function () { openPicker(c); });
+    c.insertBefore(cu, first);
+    show.forEach(function (h) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'swatch recent';
+      var css = hexCssStr(h); b.style.background = css; b.title = 'Recent colour'; b.setAttribute('aria-label', 'Recent colour ' + css);
+      b.setAttribute('aria-pressed', h === own ? 'true' : 'false');
+      b.addEventListener('click', function () { applyOwn(c, h); });
+      c.insertBefore(b, first);
+    });
+    var sep = document.createElement('span'); sep.className = 'swatch-sep'; sep.setAttribute('aria-hidden', 'true'); c.insertBefore(sep, first);
+    c.scrollLeft = 0;
+  }
+  function applyOwn(c, hex) {                            // a recent colour, exactly, on this slot
+    var sl = slotsOf(c); if (!sl) return;
+    if (!draft.cxs) draft.cxs = {};
+    sl.forEach(function (k) { draft.cxs[k] = hex; });
+    draft = STORE.set(draft, { silent: true });
+    syncSwatches(c, -1); refreshAutoSwatch(); updateColourNote();
+    STORE.commit({ showMessage: true });
+    pushRecent(hex);
+  }
+  // v1.32: the custom colour picker. It starts from whatever colour that part shows now, updates the
+  // cake live as you drag, and Done keeps the colour (and adds it to Recent); Cancel puts back what was.
+  function currentHexOf(c) {
+    var own = currentOwn(c); if (own != null) return own;
+    if (c === els.swFc) return COL.frost(draft, fondAll ? 0 : curTier);
+    if (c === els.swRc) { var rt = draft.rt && draft.rt[curTier]; return PALETTES.ribbon[clampIndex(rt ? rt.c : draft.rc, PALETTES.ribbon)].hex; }
+    if (c === els.swCc) return COL.candle(draft);
+    if (c === els.swTcl) return COL.topper(draft);
+    if (c === els.swTc) return parseInt(BODY.pickInk(COL.frost(draft, 0), draft.tc, null).slice(1), 16);
+    if (c === els.swIc) return COL.filling(draft)[0];
+    if (c === els.swBg) return floorPaint.getHex();
+    if (c === els.swSp) return spongeOf(draft).crumb;
+    return 0xffffff;
+  }
+  function titleOf(c) {
+    return c === els.swFc ? 'Icing' : c === els.swRc ? 'Ribbon' : c === els.swCc ? 'Candles' : c === els.swTcl ? 'Number toppers'
+         : c === els.swTc ? 'Writing' : c === els.swIc ? 'Filling' : c === els.swBg ? 'Backdrop' : c === els.swSp ? 'Sponge' : 'Colour';
+  }
+  // v1.33: the dropper — a colour straight off the cake (dropper.js), offered inside the picker.
+  var DROP = null;
+  function dropper() {
+    if (!DROP && window.CakeDropper) DROP = CakeDropper.create({ renderer: renderer, camera: camera, scene: scene,
+      snapshot: function (fn) { snapWant = fn; },
+      backdrop: function () { return floorPaint.getHex(); },
+      sprinkleAt: function (pts, i) { return SPRINKLES.colourAt ? SPRINKLES.colourAt(pts, i, draft || config) : null; } });
+    return DROP;
+  }
+  function roleOf(c) {
+    return c === els.swFc ? 'icing' : c === els.swRc ? 'ribbon' : c === els.swCc ? 'candles' : c === els.swTcl ? 'topper'
+         : c === els.swBg ? 'backdrop' : c === els.swSp ? 'sponge' : c === els.swIc ? 'filling' : 'writing';
+  }
+  function openPicker(c) {
+    var sl = slotsOf(c); if (!sl || !window.CakePicker) return;
+    var beforeAll = JSON.parse(JSON.stringify(draft.cxs || {})), beforeTcl = draft.tcl;   // v1.34: a theme touches every part
+    var before = {}; sl.forEach(function (k) { before[k] = draft.cxs ? draft.cxs[k] : undefined; });
+    function put(fn) { if (!draft.cxs) draft.cxs = {}; sl.forEach(fn); draft = STORE.set(draft, { silent: true }); }
+    CakePicker.open({ hex: currentHexOf(c), title: titleOf(c),
+      input: function (hex) { put(function (k) { draft.cxs[k] = hex; }); scheduleBuild({ showMessage: true }); },
+      done: function (hex) { applyOwn(c, hex); syncForm(); },
+      theme: window.CakeTheme ? function (hex) {         // v1.34: the whole cake themed round this colour; each tap, another
+        var baked = !draft.fds.some(function (v) { return v; });
+        applyTheme(draft, CakeTheme.make({ tiers: draft.fcs.length, base: hex, anchor: roleOf(c), baked: baked, cakeHex: baked ? spongeOf(draft).crust : null }), { slots: sl, hex: hex });
+        draft = STORE.set(draft, { silent: true }); scheduleBuild({ showMessage: true });
+      } : null,
+      drop: function (back) { var D = dropper(); if (!D) return back(null); S.omega = 0; D.start(back); },   // hold the cake still while picking
+      cancel: function () {
+        draft.cxs = beforeAll; draft.tcl = beforeTcl; draft = STORE.set(draft, { silent: true });
+        syncForm(); refreshAutoSwatch(); updateColourNote(); STORE.commit({ showMessage: true });
+      } });
   }
   function syncTiers(active) {
     Array.prototype.forEach.call(els.tiers.children, function (b) {
@@ -2299,7 +2472,7 @@
     syncCandleMode();
     syncTiers(draft.t);
     // frosting swatches: see syncFrostTiers (per tier)
-    Array.prototype.forEach.call($('sw-sp').children, function (b, i) { b.setAttribute('aria-pressed', i === draft.sp ? 'true' : 'false'); });
+    syncSwatches(els.swSp, draft.sp);                    // v1.32: with its Custom swatch and recent colours
     syncSwatches(els.swIc, draft.ic);
     syncSwatches(els.swCc, draft.cc);
     // ribbon swatches: see syncRibbon (per tier)
@@ -2451,8 +2624,8 @@
   function updateColourNote() {
     var note = $('colour-note');
     if (!note) return;
-    var outer = (draft.fds[0] || draft.frsty[0]) ? PALETTES.frosting[clampIndex(draft.fc, PALETTES.frosting)].hex : SPONGE;   // fc = the message tier's outermost colour
-    var ink = BODY.pickInk(outer, draft.tc);
+    var outer = (draft.fds[0] || draft.frsty[0]) ? COL.frost(draft, 0) : SPONGE;   // fc = the message tier's outermost colour
+    var ink = BODY.pickInk(outer, draft.tc, COL.ink(draft));
     // Their cake, their call — but say so if it'll be hard to read.
     // inkContrast is a real (linear-luminance) WCAG ratio now; 3:1 is the large-text minimum.
     note.textContent = inkContrast(ink, outer) < 3.0
@@ -2603,7 +2776,10 @@
       var b = document.createElement('button'); b.type = 'button'; b.className = 'swatch split'; b.title = S.name; b.setAttribute('aria-label', S.name);
       b.style.setProperty('--crumb', '#' + ('000000' + S.crumb.toString(16)).slice(-6));
       b.style.setProperty('--crust', '#' + ('000000' + S.crust.toString(16)).slice(-6));
-      b.addEventListener('click', function () { draft.sp = i; draft = STORE.set(draft, { silent: true }); syncFrosting(); updateColourNote(); STORE.commit(); });
+      b.addEventListener('click', function () {
+        if (draft.cxs) delete draft.cxs.sp;                 // v1.32: a preset replaces a sponge of its own colour
+        draft.sp = i; draft = STORE.set(draft, { silent: true }); syncFrosting(); updateColourNote(); STORE.commit(); pushRecent(S.crumb);
+      });
       $('sw-sp').appendChild(b);
     });
     // Finishes: small lit previews, in the order they're shown.
@@ -2631,6 +2807,7 @@
     makeSwatches(els.swRc, PALETTES.ribbon, 'rc');
     makeSwatches(els.swTc, PALETTES.text, 'tc');
     makeSwatches(els.swBg, PALETTES.background, 'bg');
+    makeSwatches(els.swTcl, PALETTES.topper, 'tcl');     // v1.31: number toppers
 
     els.to.addEventListener('input', function () { draft.to = cleanText(els.to.value, MAX_NAME); });
     els.from.addEventListener('input', function () { draft.from = cleanText(els.from.value, MAX_NAME); });
@@ -3029,7 +3206,8 @@
     light: function (i) { applyLightPreset(i | 0, 0); updateRoomLights(); syncFrosting(); },
     settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
-    __toppers: function () { return TOPPERS; },
+    __toppers: function () { return TOPPERS; }, __recent: function () { return recent.slice(); },
+    __dropAt: function (x, y) { var D = dropper(); return D ? D.baseAt(x, y) : null; },
     __layout: function () { return PLACE.last(); },   // incl. topperH, topperCapped (v1.29) __blocks: function () { return lastBlocks; },
     __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
     __tierY0: function () { return tierTops(config).map(function (t) { return CakeSprinkles.tierKey(t); }); },

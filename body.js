@@ -25,7 +25,8 @@
       var gm = deps.glowMats(); if (gm.length > 64) gm.splice(0, gm.length - 64);   // old builds' materials fall away
     }
 
-    function pickInk(frostingHex, tcIndex) {
+    function pickInk(frostingHex, tcIndex, custom) {
+      if (custom != null) return deps.hexCss(custom);     // v1.31: an exact colour of its own
       var opt = deps.PALETTES.text[deps.clampIndex(tcIndex, deps.PALETTES.text)];
       if (!opt.auto) return deps.hexCss(opt.hex);
       return luminance(frostingHex) > THREE.Color.srgbToLinear(0.42) ? deps.INK_DARK : deps.INK_LIGHT;   // luminance is linear now
@@ -98,12 +99,13 @@
 
     function tierMaterials(cfg, tier) {
       var ti = tier.idx !== undefined ? tier.idx : 0;
-      var fondantHex = deps.PALETTES.frosting[deps.clampIndex(cfg.fcs ? cfg.fcs[ti] : cfg.fc, deps.PALETTES.frosting)].hex;
+      var fondantHex = (cfg.cxs && cfg.cxs['f' + ti] != null) ? cfg.cxs['f' + ti]   // v1.31: an exact colour of its own
+        : deps.PALETTES.frosting[deps.clampIndex(cfg.fcs ? cfg.fcs[ti] : cfg.fc, deps.PALETTES.frosting)].hex;
       var creamHex = deps.PALETTES.frosting[deps.clampIndex(cfg.frs ? cfg.frs[ti] : cfg.fc, deps.PALETTES.frosting)].hex;
       var fdOn = cfg.fds ? !!cfg.fds[ti] : !!cfg.fd, style = cfg.frsty ? cfg.frsty[ti] : cfg.fr;
       // "frosting" below is the colour of the OUTERMOST layer on this tier — what the writing sits on.
       var frosting = fdOn ? fondantHex : (style ? creamHex : fondantHex);
-      var filling = deps.PALETTES.filling[deps.clampIndex(cfg.ic, deps.PALETTES.filling)].layers;
+      var filling = (cfg.cxs && cfg.cxs.fl != null) ? [cfg.cxs.fl] : deps.PALETTES.filling[deps.clampIndex(cfg.ic, deps.PALETTES.filling)].layers;
       var naked = !style && !fdOn;
       var thick = deps.frostingHasThickness(cfg, ti);
       // Geometry: the sponge itself (rs/hs, grooved) unless the frosting has thickness, in which

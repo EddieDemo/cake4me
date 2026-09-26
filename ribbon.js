@@ -46,7 +46,8 @@
       return Math.max(CakeShapes.radiusAt(prof, y), CakeShapes.radiusAt(prof, y + w), CakeShapes.radiusAt(prof, y + w * 0.5));
     }
     function makeRibbonMaterial(cfg, rt) {
-      var hex = deps.PALETTES.ribbon[deps.clampIndex(rt.c, deps.PALETTES.ribbon)].hex;
+      var ti = cfg.rt ? cfg.rt.indexOf(rt) : -1, own = (ti >= 0 && cfg.cxs) ? cfg.cxs['r' + ti] : null;   // v1.31: an exact colour of its own
+      var hex = own != null ? own : deps.PALETTES.ribbon[deps.clampIndex(rt.c, deps.PALETTES.ribbon)].hex;
       return window.CakeFrosting ? CakeFrosting.ribbonMaterial(hex, cfg.rm)
                                  : new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, side: THREE.DoubleSide });
     }
