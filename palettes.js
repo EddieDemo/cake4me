@@ -35,7 +35,13 @@
       { name: 'Mint',   hex: 0x7ED3B2 },
       { name: 'Blue',   hex: 0x4FC3F7 },
       { name: 'Purple', hex: 0x9B6BFF },
-      { name: 'Ink',    hex: 0x3B2A2A }
+      { name: 'Ink',    hex: 0x3B2A2A },
+      // v1.37: metal-friendly tints (they're fine in wax too)
+      { name: 'Rich gold', hex: 0xD8B25A },
+      { name: 'Silver',    hex: 0xD9DCE0 },
+      { name: 'Rose gold', hex: 0xE8A790 },
+      { name: 'Champagne', hex: 0xF1D7A7 },
+      { name: 'Copper',    hex: 0xC77B4A }
     ],
     filling: [
       { name: 'Raspberry',  layers: [0xD6336C] },

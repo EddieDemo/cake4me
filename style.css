@@ -751,3 +751,20 @@ body.dark-bg .slice-head p { color: rgba(255,255,255,0.8); }
 /* v1.34 — the picker's row has the dropper too: the hex box keeps its width, the readout gives way */
 .pk-hex { flex: 0 0 auto; width: 7.2em; box-sizing: border-box; }
 .pk-read { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+
+/* v1.35 — the picker's top row as a fixed grid: before · now · the hex box (fills the middle) · the
+   dropper (pinned right). The page's general text-box rule (full width, block, padding) outranked
+   the hex box's own and pushed the dropper off the screen on iPhone; these rules are specific
+   enough to win. The L·C·H readout sits in the corner of the colour square instead. */
+.picker .pk-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
+.picker input.pk-hex[type="text"] { display: block; width: 100%; min-width: 0; max-width: none; margin: 0; box-sizing: border-box;
+  padding: 0.4rem 0.6rem; font-size: 16px; line-height: 1.2; border-radius: 0.6rem; }
+.picker .pk-drop { justify-self: end; }
+.picker .pk-read { position: absolute; top: 0.45rem; right: 0.55rem; margin: 0; padding: 0.1rem 0.45rem; border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.78); font-size: 0.72rem; opacity: 1; color: #3b2a2a; pointer-events: none; text-align: right; }
+
+/* v1.36 — Fun / Classic numbers wait for a number */
+#tf-row.dim { opacity: .35; pointer-events: none; }
+
+/* v1.37 — Wax / Metal waits for a number */
+#tm-row.dim { opacity: .35; pointer-events: none; }

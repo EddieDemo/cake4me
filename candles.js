@@ -141,6 +141,12 @@
       return (patternCache[key] = t);
     }
     var studioEnv = null;                                  // a soft studio for metal to reflect
+    // v1.37: metal in any colour — the number toppers' Metal finish. The colour is the metal's own tint
+    // (gold, silver, rose gold… or anything from the picker or the dropper); the studio reflections, the
+    // same ones the gold and silver candles use, do the rest.
+    function makeMetalMaterial(hex) {
+      return new THREE.MeshStandardMaterial({ color: hex, metalness: 0.95, roughness: 0.27, envMap: getStudioEnv(), envMapIntensity: 1.15 });
+    }
     function getStudioEnv(renderer) {
       if (studioEnv) return studioEnv;
       if (!renderer) renderer = window.cake && cake.renderer;
@@ -202,10 +208,11 @@
     // middle of its foot holds it a few millimetres off the icing. Built once per digit and height.
     var NUM = { height: 1.3, depth: 0.24, bevel: 0.045, gap: 0.05, spacing: 0.08, glow: 0.55 };
     var digitCache = {};
-    function digitGeometry(ch, H) {
-      var key = ch + '@' + H.toFixed(3);
+    function digitGeometry(ch, H, font) {
+      var classic = font === 1 && window.CakeDigitsClassic;   // v1.36: 1 = the Classic digits (digits-classic.js)
+      var key = (classic ? 'c' : '') + ch + '@' + H.toFixed(3);
       if (digitCache[key]) return digitCache[key];
-      var G = window.CakeDigits && CakeDigits.glyphs[ch];
+      var set = classic ? window.CakeDigitsClassic : window.CakeDigits, G = set && set.glyphs[ch];
       if (!G) return null;
       var sp = new THREE.ShapePath();
       G.c.forEach(function (c) {
@@ -243,7 +250,7 @@
     var numberSpikeGeo = new THREE.CylinderGeometry(0.03, 0.02, NUM.gap + 0.06, 12);
     CakeResources.keep(numberSpikeGeo);
     CakeResources.keepAll(candleGeo, wickGeo); CakeResources.keep(wickMat);
-    return { candleGeo: candleGeo, HOLDER: HOLDER, holderGeo: holderGeo, holderMat: holderMat, wickGeo: wickGeo, wickMat: wickMat, makeWaxMaterial: makeWaxMaterial,
+    return { candleGeo: candleGeo, HOLDER: HOLDER, holderGeo: holderGeo, holderMat: holderMat, wickGeo: wickGeo, wickMat: wickMat, makeWaxMaterial: makeWaxMaterial, makeMetalMaterial: makeMetalMaterial,
              CANDLE_STYLES: CANDLE_STYLES, STYLE_ALL: STYLE_ALL, STYLE_GEO: STYLE_GEO, STYLE_HEIGHT: STYLE_HEIGHT, styleMaterial: styleMaterial, candleStyleOf: candleStyleOf,
              studioEnv: getStudioEnv, CANDLE_HAND: CANDLE_HAND, candleHand: candleHand, composeCandle: composeCandle, composeHolder: composeHolder, candleTop: candleTop,
              NUM: NUM, digitGeometry: digitGeometry, numberSpikeGeo: numberSpikeGeo };

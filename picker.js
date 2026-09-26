@@ -16,8 +16,8 @@
     root.innerHTML = '<div class="pk-head"><button type="button" class="pk-cancel">Cancel</button><span class="pk-title"></span><button type="button" class="pk-done">Done</button></div>' +
       '<div class="pk-row"><span class="pk-sw pk-old" title="Before"></span><span class="pk-sw pk-new" title="Now"></span>' +
       '<input class="pk-hex" type="text" maxlength="7" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Hex colour">' +
-      '<button type="button" class="pk-drop" title="Pick from the cake" aria-label="Pick a colour from the cake"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg></button><span class="pk-read"></span></div>' +
-      '<div class="pk-plane"><canvas></canvas><span class="pk-knob"></span></div>' +
+      '<button type="button" class="pk-drop" title="Pick from the cake" aria-label="Pick a colour from the cake"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg></button></div>' +
+      '<div class="pk-plane"><canvas></canvas><span class="pk-knob"></span><span class="pk-read"></span></div>' +
       '<div class="pk-hue"><canvas></canvas><span class="pk-knob"></span></div>' +
       '<button type="button" class="pk-theme">✨ Theme the cake from this colour</button>';
     document.body.appendChild(root);

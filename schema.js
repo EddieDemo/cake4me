@@ -117,7 +117,9 @@
       // Toppers (v1.22): on the top tier only, 3 at most — each digit of the number, and each emoji, is one.
       tn: String(c.tn == null ? '' : c.tn).replace(/[^0-9]/g, '').slice(0, 2),
       tz: clampInt(c.tz, 0, 8, 4),
-      tcl: clampInt(c.tcl, 0, PALETTES.topper.length - 1, 0),   // number toppers' colour (v1.31); 0 = match the candles          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
+      tcl: clampInt(c.tcl, 0, PALETTES.topper.length - 1, 0),
+      tf: clampInt(c.tf, 0, 1, 0),
+      tm: clampInt(c.tm, 0, 1, 0),              // number toppers' finish (v1.37): 0 Wax · 1 Metal              // number toppers' style (v1.36): 0 Fun · 1 Classic   // number toppers' colour (v1.31); 0 = match the candles          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
       te: (function (t) { return String(t == null ? '' : t).split('.').filter(function (k) { return /^[0-9a-f]+(-[0-9a-f]+)*$/.test(k); }); })(c.te),
       lp: clampInt(c.lp, 0, 4, 0),          // light preset (v1.14): Daylight · Warm · Cool · Low sun · Overhead — travels with the cake now
       lj: clampInt(c.lj, 0, 99, 0),         // the generator's small nudge to that preset, as a seed (0 = none), so the recipient sees the same light          // sparklers (v0.99): 0–2, alongside candles or numbers          // candle style (v0.98): 0 classic … 6 tapered · 7 all, mixed
@@ -200,7 +202,7 @@
     } catch (e) { return null; }
   }
   // ---- v2: named fields ----
-  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj', 'tn', 'te', 'tz', 'tcl', 'cx'];
+  var V2_FIELDS = ['to', 'from', 'm', 'n', 't', 'fc', 'ic', 'cc', 'bg', 'rc', 'tc', 'o', 'lt', 'ly', 'fr', 'rb', 'rbt', 'tp', 'fct', 'fd', 'frt', 'frst', 'fdt', 'sc', 'ff', 'rbp', 'bk', 'rk', 'sp', 'sd', 'rm', 'rba', 'cm', 'age', 'cs', 'sk', 'sa', 'spal', 'sr', 'lp', 'lj', 'tn', 'te', 'tz', 'tcl', 'cx', 'tf', 'tm'];
   var V2_DEFAULT = null;
   function v2Default() { if (!V2_DEFAULT) V2_DEFAULT = normalize({}); return V2_DEFAULT; }
   function encodeV2(c) {

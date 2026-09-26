@@ -139,6 +139,8 @@
     d.te = picks.join('.');
     d.tz = 4;
     d.tcl = 0;                                           // number toppers match the candles (v1.31)
+    d.tf = (d.tn && +d.tn >= 18 && Math.random() < 0.4) ? 1 : 0;   // v1.36: grown-up birthdays go Classic now and then
+    d.tm = d.tf && Math.random() < 0.8 ? 1 : 0;          // v1.37: Classic numbers are mostly metal
     d.cxs = (d.cxs && d.cxs.wc != null) ? { wc: d.cxs.wc } : {};   // Shuffle picks presets: exact colours go (the writing's stays)                                            // Shuffle always uses the standard topper size (v1.29)
     d.sd = randInt(0, 999);                              // this cake's own arrangement of every texture
     d.ff = B.finishes[randInt(0, B.finishes.length - 1)];
@@ -159,6 +161,8 @@
       var e0 = d.te ? d.te.split('.')[0] : '', epal = e0 && window.CakeEmojiPalettes ? CakeEmojiPalettes[e0] : null;
       applyTheme(d, CakeTheme.make({ tiers: n, palette: epal, baked: baked, cakeHex: baked ? SPONGES[clampIndex(d.sp, SPONGES)].crust : null }), null);
     }
+    // v1.37: metal numbers mostly in a classic metal — gold, silver, rose gold, champagne, copper — else the theme's tint.
+    if (d.tm === 1 && Math.random() < 0.7) d.cxs.tc = [0xD8B25A, 0xD8B25A, 0xD9DCE0, 0xE8A790, 0xF1D7A7, 0xC77B4A][randInt(0, 5)];
     return normalize(d);
   }
   // v1.34: a theme's colours onto a cake's parts, as exact colours. `keep` = { slots, hex }: the part
@@ -217,7 +221,13 @@
     if (tz && document.activeElement !== tz) tz.value = step;
     var out = $('tz-out'); if (out) out.textContent = Math.round(60 + 10 * step) + '%';
     var row = $('tz-row'); if (row) row.classList.toggle('dim', !used);
-    var crow = $('tcl-row'); if (crow) crow.classList.toggle('dim', !draft.tn);   // v1.31: colour is for numbers (emojis wear their own)
+    var crow = $('tcl-row'); if (crow) crow.classList.toggle('dim', !draft.tn);
+    var frow = $('tf-row');                              // v1.36: Fun or Classic numbers
+    if (frow) { frow.classList.toggle('dim', !draft.tn);
+      Array.prototype.forEach.call(frow.querySelectorAll('[data-tf]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-tf') === (draft.tf | 0)); }); }
+    var mrow = $('tm-row');                              // v1.37: Wax or Metal numbers
+    if (mrow) { mrow.classList.toggle('dim', !draft.tn);
+      Array.prototype.forEach.call(mrow.querySelectorAll('[data-tm]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-tm') === (draft.tm | 0)); }); }   // v1.31: colour is for numbers (emojis wear their own)
     if (els.swTcl) { syncSwatches(els.swTcl, draft.tcl); refreshAutoSwatch(); }
   }
   // When the emoji outlines arrive after a build that needed them: the builder rebuilds through the
@@ -719,7 +729,7 @@
       // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
       var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
       var tzStep = cfg.tz == null ? 4 : cfg.tz;           // v1.29: the Size slider, 60% … 140%
-      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep, font: cfg.tf | 0, metal: cfg.tm === 1 }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
       else PLACE.noToppers();
       lastBlocks = blocks;
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
@@ -2840,6 +2850,13 @@
       if (v !== e.target.value) e.target.value = v;
       draft.tn = v; draft = STORE.set(draft, { silent: true }); syncToppers(); syncMessageNudge(); scheduleBuild();
     });
+    Array.prototype.forEach.call(document.querySelectorAll('#tf-row [data-tf]'), function (b) {   // v1.36
+      // v1.37: each style brings its natural finish — Classic in metal, Fun in wax; Finish can change it after.
+      b.addEventListener('click', function () { draft.tf = +b.getAttribute('data-tf'); draft.tm = draft.tf; draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#tm-row [data-tm]'), function (b) {   // v1.37
+      b.addEventListener('click', function () { draft.tm = +b.getAttribute('data-tm'); draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });
+    });
     $('f-tz').addEventListener('input', function (e) {   // v1.29: topper size
       draft.tz = clampInt(e.target.value, 0, 8, 4); draft = STORE.set(draft, { silent: true }); syncToppers(); scheduleBuild();
     });
@@ -3206,7 +3223,7 @@
     light: function (i) { applyLightPreset(i | 0, 0); updateRoomLights(); syncFrosting(); },
     settle: function () { camY = camTargetY; frameRadius = frameTarget; frameCamera(); },   // snap the camera's easing to its targets (the harness's renderer is too slow to let it settle)   // a light preset, without the generator's jitter (the harness needs a fixed one)
     __sprinkleKeys: function () { return SPRINKLES.keys(); },
-    __toppers: function () { return TOPPERS; }, __recent: function () { return recent.slice(); },
+    __toppers: function () { return TOPPERS; }, __digit: function (ch, H, font) { return CANDLES.digitGeometry(ch, H, font); }, __recent: function () { return recent.slice(); },
     __dropAt: function (x, y) { var D = dropper(); return D ? D.baseAt(x, y) : null; },
     __layout: function () { return PLACE.last(); },   // incl. topperH, topperCapped (v1.29) __blocks: function () { return lastBlocks; },
     __candles: function () { return flames.map(function (f) { return [+f.x.toFixed(3), +f.z.toFixed(3), +f.y.toFixed(3)]; }); },
