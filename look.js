@@ -238,17 +238,26 @@
   // Apply LOOK.spot to a THREE.SpotLight (position, cone, colour, shadow).
   function applySpot(spot) {
     if (!spot) return;
-    var S = LOOK.spot;
-    spot.visible = !!S.enabled;
-    spot.intensity = S.intensity;
+    var S = LOOK.spot, on = !!S.enabled;
+    // v1.42: the lamp is always IN the scene — switched off (no light, aimed away, its shadow not
+    // rendered), never removed. A light appearing or starting to cast shadows changes every material's
+    // shader (~2 s of recompiling on a phone when Studio came on or off); a lamp that's merely off
+    // changes nothing, so switching presets is instant.
+    spot.visible = true;
+    spot.intensity = on ? S.intensity : 0;
     spotPosition(spot.position);
+    if (spot.target) {                            // off: pointed straight down from below the floor, so it reaches nothing
+      if (on) spot.target.position.set(0, 0, 0); else { spot.position.set(0, -100, 0); spot.target.position.set(0, -200, 0); }
+      spot.target.updateMatrixWorld();
+    }
     spot.angle = S.angle * Math.PI / 180;
     spot.penumbra = S.softness;
     spot.distance = S.distance * 3;                 // reach: well past the cake
     spot.decay = 2;
     if (S.hex >= 0) spot.color.setHex(S.hex); else kelvinToColor(S.kelvin, spot.color);
-    spot.castShadow = !!(S.enabled && S.castShadow && LOOK.shadows);
+    spot.castShadow = !!(S.castShadow && LOOK.shadows);  // v1.42: constant, so no shader changes; off, its map just isn't redrawn
     if (spot.shadow) {
+      spot.shadow.autoUpdate = on; if (on) spot.shadow.needsUpdate = true;
       if (spot.shadow.mapSize.x !== S.shadowMapSize) { spot.shadow.mapSize.set(S.shadowMapSize, S.shadowMapSize); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
       spot.shadow.camera.near = 1; spot.shadow.camera.far = S.shadowFar;
       spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.03;

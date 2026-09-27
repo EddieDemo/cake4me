@@ -39,11 +39,11 @@
   // into the shadow shader, so changing it would recompile every material (a freeze on a phone).
   // Low sun used to be a fondant finish; it's a lighting setup, so it lives here now.
   var LIGHT_PRESETS = [
-    { name: 'Daylight',  keyScale: 1.0,  elevation: 47.5, azimuth: -38.7, kelvin: 5000, ambient: 1.0 },
-    { name: 'Warm',      keyScale: 1.1,  elevation: 32,   azimuth: -62,   kelvin: 3800, ambient: 0.92 },
-    { name: 'Cool',      keyScale: 1.0,  elevation: 42,   azimuth: 30,    kelvin: 6400, ambient: 1.0 },
-    { name: 'Low sun',   keyScale: 1.6,  elevation: 14,   azimuth: -80,   kelvin: 4600, ambient: 0.7 },
-    { name: 'Overhead',  keyScale: 0.9,  elevation: 72,   azimuth: -20,   kelvin: 5200, ambient: 1.05 },
+    { name: 'Daylight', rigTrim: 0.885,  keyScale: 1.0,  elevation: 47.5, azimuth: -38.7, kelvin: 5000, ambient: 1.0 },
+    { name: 'Warm', rigTrim: 0.9,      keyScale: 1.1,  elevation: 32,   azimuth: -62,   kelvin: 3800, ambient: 0.92 },
+    { name: 'Cool', rigTrim: 0.887,      keyScale: 1.0,  elevation: 42,   azimuth: 30,    kelvin: 6400, ambient: 1.0 },
+    { name: 'Low sun', rigTrim: 0.9,   keyScale: 1.6,  elevation: 14,   azimuth: -80,   kelvin: 4600, ambient: 0.7 },
+    { name: 'Overhead', rigTrim: 0.87,  keyScale: 0.9,  elevation: 72,   azimuth: -20,   kelvin: 5200, ambient: 1.05 },
     // v1.41: STUDIO — a product-photography rig, lighting the whole cake. The key is a real local lamp,
     // a big softbox (the spot light): it pools on the cake and falls off, so the room round it goes dim.
     // The room light drops to a faint glow; the fill moves behind the cake as a cool rim. In the rig's
@@ -77,7 +77,7 @@
     if (P.spot) { Object.keys(P.spot).forEach(function (k) { LK.spot[k] = P.spot[k]; }); LK.spot.hex = -1; LK.spot.castShadow = true; }
     LK.fillDir = P.rim ? { elevation: P.rim.elevation, azimuth: P.rim.azimuth } : null;
     LK.fillScale = P.rim ? P.rim.scale : 1; LK.fillKelvin = P.rim ? P.rim.kelvin : null;
-    LK.rigShapes = P.rigShapes || null; LK.rigPanels = P.panels || null;
+    LK.rigShapes = P.rigShapes || null; LK.rigPanels = P.panels || null; LK.rigTrim = P.rigTrim || null;   // v1.42: each preset's own trim
   }
   function applyLightFromConfig(cfg) {                  // called by build(): the light is part of the cake
     if (!cfg || (cfg.lp === lightPreset && (cfg.lj | 0) === lightJitter && lightApplied)) return;
@@ -483,6 +483,28 @@
     if (!flames.length) return 0;
     var lit = litCount(); return lit <= 0 ? 0 : Math.ceil(lit / flames.length * 4);
   }
+  // v1.43: the FLAMES in the room picture. They're real lights, already lighting the cake, so a shiny
+  // surface should show them — metal numbers catch tiny bright flames, as real gold and silver beside
+  // candles do. Each burning flame is painted where it is, as seen from the numbers (the middle of
+  // the top, at about flame height less a little): an upright warm glow with a faint halo. A flame is
+  // as bright by day as by night, so it's painted the same always (by day its glint is simply subtler
+  // against the brighter room). Tiny, so it adds almost nothing to the room's light — the candles'
+  // real light still does that. The picture can't flicker (it's rebuilt only when the cake is, and
+  // as candles go out or relight, in quarters).
+  var FLAME_RIG = new THREE.Color(1, 0.72, 0.36);
+  function rigFlames() {
+    if (!flames.length) return [];
+    function fy(f) { return f.y != null ? f.y : (f.sprite ? f.sprite.position.y : 1); }
+    var ey = 0; flames.forEach(function (f) { ey += fy(f); }); ey = ey / flames.length - 0.25;
+    var out = [];
+    flames.forEach(function (f) {
+      if (!(f.lit > 0.5)) return;
+      var dir = new THREE.Vector3(f.x, fy(f) - ey, f.z); if (!(dir.lengthSq() > 1e-6)) dir.set(0, 1, 0);
+      out.push({ dir: dir, colour: FLAME_RIG, size: 3.2, aspect: 0.5, core: 1, gain: 1 });          // the flame
+      out.push({ dir: dir.clone(), colour: FLAME_RIG, size: 9, core: 0.16, gain: 1 });               // its glow
+    });
+    return out;
+  }
   function updateRig() {
     if (!RIG || !rigR || !window.CakeLook) return;
     var R = rigR;
@@ -494,8 +516,9 @@
     var ci = darkness > 0 && rigLitQ > 0 ? CakeLook.candleIntensity(flames.length * rigLitQ / 4, darkness) * darkness : 0;
     var glow = (ci > 0 && config) ? new THREE.Color(COL.frost(config, 0)).multiply(candleLight.color).multiplyScalar(ci * RIG_CANDLE) : null;
     scene.environment = RIG.update({
-      sky: R.hemiSky.clone().multiplyScalar(R.hemi * RIG_TRIM), ground: R.hemiGround.clone().multiplyScalar(R.hemi * RIG_TRIM), seen: seen, glow: glow,
+      sky: R.hemiSky.clone().multiplyScalar(R.hemi * (CakeLook.LOOK.rigTrim || RIG_TRIM)), ground: R.hemiGround.clone().multiplyScalar(R.hemi * (CakeLook.LOOK.rigTrim || RIG_TRIM)), seen: seen, glow: glow,
       lights: [rigLight(key, 'key', R.key), rigLight(fill, 'fill', R.fill), (spot.visible && spot.intensity > 0) ? rigLight(spot, 'spot', spot.intensity) : null]
+        .concat(rigFlames())                             // v1.43: the burning candles' flames
         .concat((CakeLook.LOOK.rigPanels || []).map(function (q) {   // v1.41: a preset's panels (Studio)
           var e = q.el * Math.PI / 180, a = q.az * Math.PI / 180;
           return { dir: new THREE.Vector3(Math.cos(e) * Math.sin(a), Math.sin(e), Math.cos(e) * Math.cos(a)), colour: new THREE.Color(q.k, q.k, q.k),
@@ -790,6 +813,7 @@
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
     }
     showFitHint();
+    updateRig();                                         // v1.43: the new candles' flames, in the room picture
 
     // (A "top tier drops in" animation used to live here. It had been dead since the builder
     // began mutating its config in place, came back to life when v0.60 made the tier switch
@@ -851,7 +875,8 @@
 
   // v1.09: the GLSL lives in shaders.js
   // ---- v1.10: hundreds and thousands live in sprinkles.js ----
-  var SPRINKLES = CakeSprinkles.create({ renderer: renderer, camera: camera, lights: SCENE.lights,
+  var SPRINKLES = CakeSprinkles.create({ renderer: renderer, camera: camera, lights: Object.assign({ spot: spot }, SCENE.lights),
+    rigIrradiance: function () { return RIG ? RIG.irradiance() : null; },   // v1.42: the rig's own room light
     tierTops: function (cfg) { return tierTops(cfg); }, tierGroups: function () { return tierGroups; },
     messageBodyH: function () { return messageMesh && messageMesh.__bodyH ? messageMesh.__bodyH : 1; },
     messageSpan: function () { return lastMessageSpan; }, clampInt: clampInt });
@@ -1022,7 +1047,7 @@
     else CakeLook.kelvinToColor(CakeLook.LOOK.keyKelvin, key.color);
     var wasCasting = spot.castShadow, wasVisible = spot.visible;
     CakeLook.applySpot(spot);
-    spot.target.position.set(0, config ? centreOfMass(config) : 0.8, 0);
+    if (CakeLook.LOOK.spot.enabled) { spot.target.position.set(0, config ? centreOfMass(config) : 0.8, 0); spot.target.updateMatrixWorld(); }   // v1.42: an off lamp stays pointed away
     // A light that starts or stops casting changes every material's shader; recompile once, now.
     if (spot.castShadow !== wasCasting || spot.visible !== wasVisible) {
       scene.traverse(function (o) { var m = o.material; if (!m) return; (Array.isArray(m) ? m : [m]).forEach(function (mm) { mm.needsUpdate = true; }); });
@@ -1297,7 +1322,7 @@
     updateSprinkleLights();
     if (flames.length) {
       var lit = litCount();
-      if (RIG && darkness > 0 && rigLitQuarter() !== rigLitQ) updateRig();   // v1.40: the candlelit cake in the room picture follows the candles
+      if (RIG && rigLitQuarter() !== rigLitQ) updateRig();   // v1.40/1.43: the candlelit cake and the flames in the room picture follow the candles
       var target = window.CakeLook ? CakeLook.candleIntensity(lit, darkness) : Math.min(1.6, 0.25 + lit * 0.03);
       // Ease toward it so each extinguished wave reads as a wave of dimming, not a step.
       candleLight.intensity += (target * (0.92 + 0.08 * Math.sin(t * 7)) - candleLight.intensity) * Math.min(1, dt * 6);

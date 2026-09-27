@@ -44,7 +44,9 @@
         uniforms: { uScale: { value: 1000 }, uKeyDir: { value: new THREE.Vector3(0, 1, 0) }, uKeyCol: { value: new THREE.Color(1, 1, 1) },
           uSky: { value: new THREE.Color() }, uGround: { value: new THREE.Color() }, uUp: { value: new THREE.Vector3(0, 1, 0) }, uFillDir: { value: new THREE.Vector3(0, 0, 1) }, uFillCol: { value: new THREE.Color(0, 0, 0) },
           uP1Pos: { value: new THREE.Vector3() }, uP1Col: { value: new THREE.Color(0, 0, 0) }, uP1Cut: { value: 0 },
-          uP2Pos: { value: new THREE.Vector3() }, uP2Col: { value: new THREE.Color(0, 0, 0) }, uP2Cut: { value: 0 } },
+          uP2Pos: { value: new THREE.Vector3() }, uP2Col: { value: new THREE.Color(0, 0, 0) }, uP2Cut: { value: 0 },
+          uSide: { value: new THREE.Color() }, uP3Pos: { value: new THREE.Vector3() }, uP3Col: { value: new THREE.Color(0, 0, 0) }, uP3Cut: { value: 0 },
+          uP3Dir: { value: new THREE.Vector3(0, -1, 0) }, uP3Cos: { value: new THREE.Vector2(1, 1) } },
         vertexShader: SPR_VS, fragmentShader: SPR_FS, extensions: { fragDepth: true }
       });
       CakeResources.keep(sprinkleMat);
@@ -65,6 +67,16 @@
       else { U.uSky.value.copy(ambientLight.color).multiplyScalar(ambientLight.intensity); U.uGround.value.copy(U.uSky.value); }
       U.uP1Pos.value.copy(candleLight.position).applyMatrix4(V); U.uP1Col.value.copy(candleLight.color).multiplyScalar(candleLight.intensity); U.uP1Cut.value = candleLight.distance;
       U.uP2Pos.value.copy(sparkLight.position).applyMatrix4(V); U.uP2Col.value.copy(sparkLight.color).multiplyScalar(sparkLight.intensity); U.uP2Cut.value = sparkLight.distance;
+      U.uSide.value.copy(U.uSky.value).add(U.uGround.value).multiplyScalar(0.5);   // v1.42: as before, without the rig…
+      var irr = deps.rigIrradiance && deps.rigIrradiance();  // …with it, the rig's own room light, measured from its picture
+      if (irr) { U.uSky.value.copy(irr.up); U.uGround.value.copy(irr.down); U.uSide.value.copy(irr.side); }
+      var spot = deps.lights.spot;                         // v1.42: the lamp (Studio's key), in its cone
+      if (spot && spot.visible && spot.intensity > 0) {
+        U.uP3Pos.value.copy(spot.position).applyMatrix4(V);
+        _sv3.copy(spot.target.position).sub(spot.position).normalize().transformDirection(V); U.uP3Dir.value.copy(_sv3);
+        U.uP3Col.value.copy(spot.color).multiplyScalar(spot.intensity); U.uP3Cut.value = spot.distance;
+        U.uP3Cos.value.set(Math.cos(spot.angle), Math.cos(spot.angle * (1 - spot.penumbra)));
+      } else U.uP3Col.value.setRGB(0, 0, 0);
     }
     // What a tier's sprinkles may land on (v1.28): they stick to icing, never bare sponge or filling.
     // Fondant: all of it. A semi-naked scrape: only its frosted top. A naked tier: nothing.

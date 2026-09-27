@@ -53,7 +53,7 @@
       }
       (st.lights || []).forEach(function (L) {             // each light where it really is, a soft-edged glow
         if (!L || L.colour.r + L.colour.g + L.colour.b <= 0) return;
-        var p = at(L.dir), ry = (L.size || 8) / 180 * H, rx = Math.min(W / 2, ry / Math.max(0.2, Math.cos(p.el)));
+        var p = at(L.dir), ry = (L.size || 8) / 180 * H, rx = Math.min(W / 2, ry * (L.aspect || 1) / Math.max(0.2, Math.cos(p.el)));   // aspect: a flame is tall
         if (L.box) {                                       // v1.41: a softbox or a strip — a hard-edged panel, as a studio's lights look
           var m0 = Math.max(L.colour.r, L.colour.g, L.colour.b), c0 = L.colour.clone().multiplyScalar(Math.min(1, m0 * (L.gain || 2)) / m0);
           var bw = L.box[0] / 360 * W / Math.max(0.2, Math.cos(p.el)), bh = L.box[1] / 180 * H;
@@ -86,10 +86,32 @@
       var pm = new THREE.PMREMGenerator(renderer), next = pm.fromEquirectangular(tex);
       tex.dispose(); pm.dispose();
       if (rt) rt.dispose();
-      rt = next; lastKey = k;
+      rt = next; lastKey = k; irr = measure();
       return rt.texture;
     }
-    return { update: update, texture: function () { return rt ? rt.texture : null; }, canvas: c };
+    // v1.42: the picture's own light, as a matte surface facing up, down and sideways receives it
+    // (cosine-weighted) — handed to shaders that light themselves (the sprinkles), so they get exactly
+    // the room light every standard material gets from the picture.
+    var irr = null;
+    function measure() {
+      var d = g.getImageData(0, 0, W, H).data, up = [0, 0, 0], dn = [0, 0, 0], sd = [0, 0, 0], wu = 0, wd = 0, ws = 0, S = 4;
+      function lin(v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+      for (var y = S / 2; y < H; y += S) {
+        var el = (0.5 - y / H) * Math.PI, ce = Math.cos(el), dy = Math.sin(el);
+        for (var x = S / 2; x < W; x += S) {
+          var az = (x / W - 0.5) * 2 * Math.PI, dx = ce * Math.cos(az), dz = ce * Math.sin(az), o = (y * W + x) * 4;
+          var L = [lin(d[o]), lin(d[o + 1]), lin(d[o + 2])], w = ce;   // cos(elevation): equal-area weighting
+          if (dy > 0) { wu += dy * w; for (var k = 0; k < 3; k++) up[k] += L[k] * dy * w; }
+          if (dy < 0) { wd -= dy * w; for (k = 0; k < 3; k++) dn[k] -= L[k] * dy * w; }
+          for (var q = 0; q < 8; q++) {                       // eight sideways normals, averaged
+            var c = dx * Math.cos(q * Math.PI / 4) + dz * Math.sin(q * Math.PI / 4);
+            if (c > 0) { ws += c * w; for (k = 0; k < 3; k++) sd[k] += L[k] * c * w; }
+          }
+        }
+      }
+      return { up: new THREE.Color(up[0] / wu, up[1] / wu, up[2] / wu), down: new THREE.Color(dn[0] / wd, dn[1] / wd, dn[2] / wd), side: new THREE.Color(sd[0] / ws, sd[1] / ws, sd[2] / ws) };
+    }
+    return { update: update, irradiance: function () { return irr; }, texture: function () { return rt ? rt.texture : null; }, canvas: c };
   }
   window.CakeRig = { create: create };
 })();
