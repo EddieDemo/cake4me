@@ -170,6 +170,17 @@
   // its pixels-per-unit so their relief matches too.
   var REF_R = 2.2, CIRC = 2 * Math.PI * REF_R, SPAN = CIRC * SH / SW;
   var PX_SIDE = SW / CIRC, PX_TOP = TW / (2 * REF_R);
+  // v1.44: FIXED REAL SCALE. A comb, a spatula, a turntable ring are the same size on any cake, so a
+  // bigger cake gets more grooves, not wider ones. The patterns are already written in world units;
+  // what scaled was sampling them over a reference cake (radius 2.2) and wrapping the result round the
+  // real one. Now each finish is sampled over the tier's own radius: its circumference round the side
+  // (a whole number of comb teeth, so no seam), its diameter across the top. The side's height repeats
+  // by the same measure, so a tier's height never mattered. The previews keep the reference size.
+  var BASE_R = REF_R;
+  function setScale(R) {
+    REF_R = R; CIRC = 2 * Math.PI * R; SPAN = CIRC * SH / SW; PX_SIDE = SW / CIRC; PX_TOP = TW / (2 * R);
+    if (typeof GROOVE !== 'undefined') { SWEEP_CYCLES = Math.max(1, Math.round(SPAN / GROOVE)); SWEEP_G = SPAN / SWEEP_CYCLES; }
+  }
   function sideField(fn) { return field(SW, SH, function (u, v) { return fn(u * CIRC, v * SPAN, u); }); }
   function topField(fn) { return field(TW, TW, function (u, v) { return fn((u - 0.5) * 2 * REF_R, (v - 0.5) * 2 * REF_R); }); }
   function strokesAt(W, H, count, lenR, widR, seed, ref) {
@@ -240,6 +251,13 @@
   // where two overlap the crest between them is a real intersection — the same cusped peaks as
   // Rings, Whirl, Combed and Ridged, as though one tool made them all.
   // Each stroke is a hollow taken OUT; `depth` varies per stroke so the crests between them read.
+  // v1.45: a spatula stroke is the same size on any cake. carve() sizes strokes as fractions of the
+  // texture, and the texture now spans the tier's own size (v1.44), so the fractions shrink as the tier
+  // grows (by the reference radius over this one) and the count grows with the area.
+  function carveReal(W, H, count, lenR, widR, depth, seed) {
+    var k = BASE_R / REF_R;
+    return carve(W, H, Math.max(1, Math.round(count / (k * k))), [lenR[0] * k, lenR[1] * k], [widR[0] * k, widR[1] * k], depth, seed);
+  }
   function carve(W, H, count, lenR, widR, depth, seed) {
     var h = new Float32Array(W * H); for (var i = 0; i < W * H; i++) h[i] = 1;
     var rs = function (k) { return phash(k, seed, 1.7); };
@@ -271,8 +289,8 @@
     side: function () { return sideField(sweepSide); },
     top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 2.2); }); } };
   FINISHES[2] = { name: 'Rustic', normalScale: 1.0, rough: [0.62, 0.3], displace: 0.05, k: 4.5, world: true,
-    side: function () { return carve(SW, SH, 260, [0.07, 0.13], [0.026, 0.045], 0.62, 11); },
-    top:  function () { return carve(TW, TW, 95, [0.14, 0.26], [0.052, 0.09], 0.62, 23); } };
+    side: function () { return carveReal(SW, SH, 260, [0.07, 0.13], [0.026, 0.045], 0.62, 11); },
+    top:  function () { return carveReal(TW, TW, 95, [0.14, 0.26], [0.052, 0.09], 0.62, 23); } };
   FINISHES[3] = FINISHES[2];                             // retired "Low sun" → Rustic (its lighting is in the link)
   // The comb carried over the rim and in to the centre: a spatula of FIXED width pulled from the
   // rim inward, once per groove, as the decorator works round the cake. The tool doesn't narrow
@@ -379,8 +397,8 @@
     side: function () { return sideField(sweepSide); },
     top:  function () { return topField(function (x, z) { var r = Math.hypot(x, z), a = Math.atan2(x, z); return 0.5 + 0.3 * Math.sin(2 * Math.PI * r / GROOVE - a + fu(a / (Math.PI * 2) + 0.5, r, 6, 1, 2, 8) * 0.8); }); } };
   FINISHES[6] = { name: 'Deep rustic', normalScale: 1.35, rough: [0.62, 0.38], displace: 0.085, k: 6, world: true,
-    side: function () { return carve(SW, SH, 190, [0.09, 0.17], [0.036, 0.065], 0.95, 71); },
-    top:  function () { return carve(TW, TW, 70, [0.18, 0.34], [0.072, 0.13], 0.95, 73); } };
+    side: function () { return carveReal(SW, SH, 190, [0.09, 0.17], [0.036, 0.065], 0.95, 71); },
+    top:  function () { return carveReal(TW, TW, 70, [0.18, 0.34], [0.072, 0.13], 0.95, 73); } };
   // Rings and Whirl (v0.82): the spatula treatment all the way through — Ridged's sides, and a
   // top of rings (or one continuous pass) with the same cusped grooves, uneven depths and wander.
   function ringTop(x, z) {
@@ -416,20 +434,23 @@
     }
   }
   var mapCache = {}, mapKeys = [];
-  function fondantMaps(finish) {
+  function fondantMaps(finish, R) {
     finish = Math.max(0, Math.min(FINISH_COUNT - 1, finish | 0));
-    var F = FINISHES[finish], key = F.name + '@' + SEED.toFixed(4);
+    R = R > 0 ? Math.round(R * 100) / 100 : BASE_R;       // v1.44: the tier's own radius
+    var F = FINISHES[finish], key = F.name + '@' + SEED.toFixed(4) + '@' + R;
     if (!mapCache[key]) {
-      var hs = F.side(), ht = F.top();
+      setScale(R);
+      try { var hs = F.side(), ht = F.top(); } finally { setScale(BASE_R); }
+      var PXS = SW / (2 * Math.PI * R), PXT = TW / (2 * R);
       if (F.soften) { var sr = F.soften === 2 ? 2 : 1; blur(hs, SW, SH, sr, sr); blur(ht, TW, TW, 1, 1); }
       // World patterns are written in centimetres, so their normal strength scales with each
       // map's pixels-per-unit; the older patterns keep their own.
-      var kS = F.world ? F.k * PX_SIDE / 100 : F.k, kT = F.world ? F.k * PX_TOP / 100 : F.k;
+      var kS = F.world ? F.k * PXS / 100 : F.k, kT = F.world ? F.k * PXT / 100 : F.k;
       mapCache[key] = {
         sideN: toNormal(hs, SW, SH, kS), sideR: toRough(hs, SW, SH, F.rough[0], F.rough[1]),
         topN: toNormal(ht, TW, TW, kT), topR: toRough(ht, TW, TW, F.rough[0], F.rough[1])
       };
-      mapKeys.push(key); trimCache(mapCache, mapKeys, 3);
+      mapKeys.push(key); trimCache(mapCache, mapKeys, 6);   // a few tier sizes at once
     }
     var m = mapCache[key], g = grainMaps();
     return { sideN: m.sideN, sideR: m.sideR, topN: m.topN, topR: m.topR, normalScale: F.normalScale, displace: F.displace,

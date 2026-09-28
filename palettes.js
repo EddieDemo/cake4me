@@ -139,11 +139,16 @@
     { name: 'Matcha',          crumb: 0xB9B97C, crust: 0x8E7E4A, detail: 'plain' }
   ];
   var SC_TO_SP = [0, 4, 6, 3, 8, 7, 2];               // vanilla, chocolate, red velvet, lemon, matcha, carrot, strawberry → butter
+  // v1.44: REAL SIZES. One unit is 4.2 cm (the Classic is an 8-inch cake). Widths are cake-tin
+  // sizes, 3–9 inches (the tier's cake, before its icing); heights are tier depths in half inches.
+  // (Radius in units = inches × 2.54 / 4.2 / 2; height = inches × 2.54 / 4.2.)
   var TIERS = {
-    1: [ { r: 2.2, h: 1.6 } ],                                                  // bottom tier first
-    2: [ { r: 2.5, h: 1.5 }, { r: 1.45, h: 1.3 } ],
-    3: [ { r: 2.7, h: 1.4 }, { r: 1.95, h: 1.2 }, { r: 1.2, h: 1.0 } ]
+    1: [ { r: 2.42, h: 1.51 } ],                                                // 8 in × 2½ in — bottom tier first
+    2: [ { r: 2.42, h: 1.51 }, { r: 1.51, h: 1.21 } ],                          // 8 in + 5 in
+    3: [ { r: 2.72, h: 1.51 }, { r: 1.81, h: 1.21 }, { r: 1.21, h: 0.91 } ]    // 9 in + 6 in + 4 in
   };
-  var SHAPE = { rMin: 0.9, rMax: 2.7, hMin: 0.6, hMax: 2.0, steps: 10, ledge: 0 };   // ledge 0: a tier may be exactly as wide as the one below
+  // v1.47: tins up to 10 and 12 inches, tiers up to 4, 5 and 6 inches deep (a "double barrel").
+  var SHAPE = { cmPerUnit: 4.2, tinsIn: [3, 4, 5, 6, 7, 8, 9, 10, 12], depthsIn: [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6],
+                rMin: 0.907, rMax: 3.629, hMin: 0.605, hMax: 3.629, steps: 9, ledge: 0 };   // ledge 0: a tier may be exactly as wide as the one below
   window.CakePalettes = { PALETTES: PALETTES, OCCASIONS: OCCASIONS, SPONGES: SPONGES, SC_TO_SP: SC_TO_SP, TIERS: TIERS, SHAPE: SHAPE };
 })();

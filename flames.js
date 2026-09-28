@@ -22,7 +22,7 @@
     var FLAME = { glow: window.CakeDebug ? CakeDebug.num('glow', 1.6) : 1.6, haloGlow: 0.1, cover: window.CakeDebug ? CakeDebug.num('cover', 1.0) : 1.0, lean: 0.6 };
     var flameGeo = (function () {
       var p = [];
-      for (var i = 0; i <= 24; i++) { var t = i / 24, r = 0.042 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.62)), 0.9) * Math.pow(1 - t, 0.25); p.push(new THREE.Vector2(Math.max(r, 0.0005), t * 0.30)); }
+      for (var i = 0; i <= 24; i++) { var t = i / 24, r = 0.06 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.62)), 0.9) * Math.pow(1 - t, 0.25); p.push(new THREE.Vector2(Math.max(r, 0.0005), t * 0.42)); }   // v1.45: ~1.8 cm tall, ~5 mm across (was 1.3 cm × 3.4 mm)
       var g = new THREE.LatheGeometry(p, 20); CakeResources.keep(g); return g;
     })();
     var emberGeo = new THREE.SphereGeometry(0.009, 8, 6); CakeResources.keep(emberGeo);

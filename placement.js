@@ -110,6 +110,26 @@
       }
       return pts;
     }
+    // v1.46: with a topper, candles go in a RING ROUND THE RIM, evenly spaced with the gap at the front
+    // — one behind; two at the sides; three front-left, front-right and behind… — so only a couple ever
+    // stand in front of the number (real-height candles would hide it). A candle is nudged round the rim
+    // if something's in the way; any the rim can't hold go inside it (front first), then below.
+    function ringRound(n, surfaces, blocks) {
+      var top = surfaces[0], rings = ringsFor(top, 0.46), rim = rings[0];
+      if (!rim || !(rim.r > 0) || rim.cap < 1) return frontFirst(n, surfaces, blocks);
+      var take = Math.min(n, rim.cap), step = TWO_PI / take, pts = [], placed = [];
+      for (var k = 0; k < take; k++) {
+        var a0 = (k + 0.5) * step, ok = null;
+        for (var t = 0; t <= 6 && !ok; t++) {
+          var a = a0 + (t % 2 ? 1 : -1) * Math.ceil(t / 2) * step / 8;
+          var p = { x: Math.sin(a) * rim.r, z: Math.cos(a) * rim.r, y: top.y };
+          if (clearOf(p, blocks)) ok = p;
+        }
+        if (ok) { pts.push(ok); placed.push({ x: ok.x, z: ok.z, r: 0.05 }); }
+      }
+      if (pts.length < n) pts = pts.concat(frontFirst(n - pts.length, surfaces, (blocks || []).concat(placed)));
+      return pts;
+    }
     function layout(n, surfaces, opts) {
       opts = opts || {};
       var blocks = opts.blocks || [], top = surfaces[0], pts = null;
@@ -122,7 +142,7 @@
           if (cand.every(function (p) { return p.y !== top.y || clearOf(p, blocks); })) pts = cand;
         }
       }
-      if (!pts) pts = frontFirst(n, surfaces, blocks);
+      if (!pts) pts = opts.toppers ? ringRound(n, surfaces, blocks) : frontFirst(n, surfaces, blocks);
       lastInfo.placed = pts.length;
       return pts;
     }
@@ -146,7 +166,7 @@
     // Classic top with fondant (4.84 wide), as before, and in proportion on any other — times the
     // builder's Size slider (T.size, 0.6–1.4). Never shorter than about a candle; and the row must
     // still fit across the top, which wins over both (lastTop.capped says it did).
-    var REF_W = 4.84, MIN_H = 0.75;
+    var REF_W = 5.08, MIN_H = 0.75;   // v1.44: the Classic is now exactly 8 in (5.08 wide iced), so toppers keep their size
     var lastTop = { H: 0, capped: false };
     function placeToppers(T, surface, candleHex) {
       lastTop = { H: 0, capped: false };
@@ -160,7 +180,7 @@
       }
       function widthOf(ps) { return ps.reduce(function (w, q) { return w + q.P.width; }, 0) + K.NUM.spacing * (ps.length - 1); }
       var tierW = 2 * (surface.rMax + 0.25);             // the top tier's own width (its top surface keeps 0.25 from the edge)
-      var H = Math.max(MIN_H, K.NUM.height * (tierW / REF_W) * (T.size || 1));
+      var H = T.height || K.NUM.height;                  // v1.46: a real size (5, 7.5 or 10 cm), not a share of the tier
       var parts = partsAt(H);
       if (!parts.length) return null;
       // v1.28: the row must fit across the top with a little rim to spare — shrink it, all together, if not.
@@ -196,8 +216,11 @@
 
       // Thinner, shorter candles when they're packed tight.
       var dense = n > 60;
-      var radius = dense ? 0.05 : 0.065;
-      var height = dense ? 0.52 : 0.62;                   // v0.90: ~23% taller than before
+      // v1.45: REAL PROPORTIONS (1 unit = 4.2 cm). A birthday candle is about 6.3 cm tall and 5 mm
+      // across; packed tight, the thin kind is about 5 cm by 4 mm. (Before: 2.6 cm — right thickness,
+      // under half the height, which made them stubby.)
+      var radius = dense ? 0.048 : 0.06;
+      var height = dense ? 1.2 : 1.5;
       var fs = dense ? 0.22 : 0.28;
       // Each candle stands in its holder: lifted by the spike showing, and the cup's floor.
       var lift = K.HOLDER.gap + radius * K.HOLDER.cupH * K.HOLDER.floor * 0.5;

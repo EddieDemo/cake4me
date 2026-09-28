@@ -225,13 +225,29 @@
   }
   // Key light position from LOOK.keyDir (degrees). Distance is cosmetic for a directional
   // light; it only keeps the shadow camera's near plane sensible.
+  // v1.47: SCENE SCALE. The key's shadow box and the studio lamp were sized for the largest cake of
+  // the time (9 in, three 3½ in tiers). A bigger cake (10–12 in, tiers up to 6 in deep) scales them
+  // up so its top still casts shadows and the lamp still stands above it; anything up to the old
+  // largest keeps scale 1, exactly as before. (The soft-shadow calibration stays as compiled, so
+  // no shader rebuild: a very big cake's shadow edges are a touch softer.)
+  var sceneScale = 1, keyRef = null;                  // keyRef: the key light, kept when the shadows are set up
+  function fitScene(k) {
+    k = Math.max(1, k || 1); if (Math.abs(k - sceneScale) < 1e-3) return false;
+    sceneScale = k;
+    if (keyRef && keyRef.shadow) {
+      var e = LOOK.shadowExtent, cam = keyRef.shadow.camera;
+      cam.left = -e.half * k; cam.right = e.half * k; cam.top = e.top * k; cam.bottom = e.bottom * k; cam.far = e.far * k;
+      cam.updateProjectionMatrix(); keyRef.shadow.needsUpdate = true;
+    }
+    return true;
+  }
   function keyPosition(out) {
-    var e = LOOK.keyDir.elevation * Math.PI / 180, a = LOOK.keyDir.azimuth * Math.PI / 180, d = LOOK.keyDir.distance;
+    var e = LOOK.keyDir.elevation * Math.PI / 180, a = LOOK.keyDir.azimuth * Math.PI / 180, d = LOOK.keyDir.distance * sceneScale;
     out = out || new THREE.Vector3();
     return out.set(d * Math.cos(e) * Math.sin(a), d * Math.sin(e), d * Math.cos(e) * Math.cos(a));
   }
   function spotPosition(out) {
-    var S = LOOK.spot, e = S.elevation * Math.PI / 180, a = S.azimuth * Math.PI / 180, d = S.distance;
+    var S = LOOK.spot, e = S.elevation * Math.PI / 180, a = S.azimuth * Math.PI / 180, d = S.distance * sceneScale;
     out = out || new THREE.Vector3();
     return out.set(d * Math.cos(e) * Math.sin(a), d * Math.sin(e), d * Math.cos(e) * Math.cos(a));
   }
@@ -252,14 +268,14 @@
     }
     spot.angle = S.angle * Math.PI / 180;
     spot.penumbra = S.softness;
-    spot.distance = S.distance * 3;                 // reach: well past the cake
+    spot.distance = S.distance * 3 * sceneScale;    // reach: well past the cake
     spot.decay = 2;
     if (S.hex >= 0) spot.color.setHex(S.hex); else kelvinToColor(S.kelvin, spot.color);
     spot.castShadow = !!(S.castShadow && LOOK.shadows);  // v1.42: constant, so no shader changes; off, its map just isn't redrawn
     if (spot.shadow) {
       spot.shadow.autoUpdate = on; if (on) spot.shadow.needsUpdate = true;
       if (spot.shadow.mapSize.x !== S.shadowMapSize) { spot.shadow.mapSize.set(S.shadowMapSize, S.shadowMapSize); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
-      spot.shadow.camera.near = 1; spot.shadow.camera.far = S.shadowFar;
+      spot.shadow.camera.near = 1; spot.shadow.camera.far = S.shadowFar * sceneScale;
       spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.03;
       // Under PCSS, shadow.radius > 0 flags a perspective map and carries tan(half-cone), so the
       // shader can turn world sizes into map UV at any depth. (SpotLightShadow's fov = 2·angle.)
@@ -353,11 +369,12 @@
                             : type === 'PCSS' ? THREE.PCFShadowMap
                             : THREE.VSMShadowMap;
     if (!key) return;
+    keyRef = key;
     key.castShadow = !!LOOK.shadows;
     if (LOOK.shadows) {
       var e = LOOK.shadowExtent, cam = key.shadow.camera;
       key.shadow.mapSize.set(LOOK.shadowMapSize, LOOK.shadowMapSize);
-      cam.left = -e.half; cam.right = e.half; cam.top = e.top; cam.bottom = e.bottom; cam.near = e.near; cam.far = e.far;
+      cam.left = -e.half * sceneScale; cam.right = e.half * sceneScale; cam.top = e.top * sceneScale; cam.bottom = e.bottom * sceneScale; cam.near = e.near; cam.far = e.far * sceneScale;
       cam.updateProjectionMatrix();
       key.shadow.bias = LOOK.shadowBias; key.shadow.normalBias = LOOK.shadowNormalBias;
       // Under PCSS, shadow.radius is repurposed as the projection flag: 0 = orthographic (the key).
@@ -510,7 +527,7 @@
   }
   function resetLighting() { LIGHT_FIELDS.forEach(function (f) { f[1](f[2]); }); }
 
-  window.CakeLook = {
+  window.CakeLook = { fitScene: fitScene,
     serializeLighting: serializeLighting, applyLighting: applyLighting, resetLighting: resetLighting, setBleed: setBleed, apply: apply, rebuild: apply, tick: tick, adopt: adopt, haloMaterial: haloMaterial, emergency: emergency, litFactor: litFactor, glowFactor: glowFactor, keyPosition: keyPosition, kelvinToColor: kelvinToColor, applySpot: applySpot,
                       darknessFor: darknessFor, roomLights: roomLights, candleIntensity: candleIntensity, LOOK: LOOK };
 })();

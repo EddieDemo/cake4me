@@ -7,7 +7,7 @@
   <meta name="description" content="Someone sent you a cake.">
   <meta property="og:title" content="Someone sent you a cake 🎂">
   <meta property="og:description" content="Open it, blow out the candles, share a slice.">
-  <link rel="stylesheet" href="style.css?v=1.43">
+  <link rel="stylesheet" href="style.css?v=1.47">
 </head>
 <body class="mode-builder">
   <!-- v0.9: the cake (and the box) are objects you hold — spin, tilt, twist. No hash = builder. Hash = viewer. -->
@@ -86,8 +86,8 @@
             <button type="button" data-tier="1">Tier 2</button>
             <button type="button" data-tier="2">Tier 3</button>
           </div><button type="button" class="linkish" id="shape-reset">Reset</button></div>
-          <div class="rowline"><span class="rowlab">Width</span><input id="f-sw" type="range" min="0" max="9" step="1" value="5"><output id="sw-out">—</output></div>
-          <div class="rowline"><span class="rowlab">Height</span><input id="f-sh" type="range" min="0" max="9" step="1" value="5"><output id="sh-out">—</output></div>
+          <div class="rowline"><span class="rowlab">Width</span><input id="f-sw" type="range" min="0" max="8" step="1" value="5"><output id="sw-out">—</output></div>
+          <div class="rowline"><span class="rowlab">Height</span><input id="f-sh" type="range" min="0" max="8" step="1" value="3"><output id="sh-out">—</output></div>
         </div>
 
         <div class="tray" id="tray-sponge" hidden>
@@ -169,7 +169,8 @@
           <div class="rowline" id="tm-row"><span class="rowlab">Finish</span><div class="seg small grow">
             <button type="button" data-tm="0" class="on">Wax</button><button type="button" data-tm="1">Metal</button></div></div>
           <div class="rowline" id="tcl-row"><span class="rowlab">Colour</span><div class="swatches" id="sw-tcl" data-c="tcl"></div></div>
-          <div class="rowline" id="tz-row"><span class="rowlab">Size</span><input id="f-tz" type="range" min="0" max="8" step="1" value="4"><span class="rowlab" id="tz-out" style="min-width:3em;text-align:right">100%</span></div>
+          <div class="rowline" id="tz-row"><span class="rowlab">Size</span><div class="seg small grow">
+            <button type="button" data-tz="0">5 cm</button><button type="button" data-tz="1" class="on">7.5 cm</button><button type="button" data-tz="2">10 cm</button></div></div>
           <div class="hint" id="tz-note" hidden>As big as fits on this top tier.</div>
           <div class="hint" id="toppers-hint"></div>
         </div>
@@ -183,7 +184,7 @@
           <div class="rowline"><label class="toggle inline"><input type="checkbox" id="f-ribbon"><span class="knob"></span><span class="tlabel">Ribbon</span></label>
             <div id="ribbon-opts" class="dim grow"><div class="swatches" id="sw-rc" data-c="rc"></div></div></div>
           <div class="rowline" id="ribbon-width-row">
-            <span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="7" step="1" value="4">
+            <span class="rowlab">Width</span><input id="f-rw" type="range" min="0" max="4" step="1" value="2">
             <span class="rowlab mini">Height</span><input id="f-rp" type="range" min="0" max="9" step="1" value="1">
             <output id="rw-out" hidden>0.32</output></div>
           <div class="rowline" id="ribbon-angle-row">
@@ -311,64 +312,64 @@
 
   <script src="vendor/three.min.js"></script>
   <!-- Screen-space ambient occlusion (three r128 examples, unmodified) -->
-  <script src="vendor/SimplexNoise.js?v=1.43"></script>
-  <script src="vendor/Pass.js?v=1.43"></script>
-  <script src="vendor/CopyShader.js?v=1.43"></script>
-  <script src="vendor/SSAOShader.js?v=1.43"></script>
-  <script src="vendor/SSAOPass.js?v=1.43"></script>
-  <script src="debug.js?v=1.43"></script>
-  <script src="resources.js?v=1.43"></script>
-  <script src="patch.js?v=1.43"></script>
-  <script src="shaders.js?v=1.43"></script>
-  <script src="color.js?v=1.43"></script>
-  <script src="palettes.js?v=1.43"></script>
-  <script src="schema.js?v=1.43"></script>
-  <script src="store.js?v=1.43"></script>
-  <script src="animate.js?v=1.43"></script>
-  <script src="pcss.js?v=1.43"></script>
-  <script src="stage.js?v=1.43"></script>
-  <script src="look.js?v=1.43"></script>
-  <script src="rig.js?v=1.43"></script>
-  <script src="shapes.js?v=1.43"></script>
-  <script src="digits.js?v=1.43"></script>
-  <script src="digits-classic.js?v=1.43"></script>
-  <script src="frosting.js?v=1.43"></script>
-  <script src="scene.js?v=1.43"></script>
-  <script src="pipeline.js?v=1.43"></script>
-  <script src="materials.js?v=1.43"></script>
-  <script src="sponge.js?v=1.43"></script>
-  <script src="tiers.js?v=1.43"></script>
-  <script src="ribbon.js?v=1.43"></script>
-  <script src="body.js?v=1.43"></script>
-  <script src="candles.js?v=1.43"></script>
-  <script src="flames.js?v=1.43"></script>
-  <script src="sparklers.js?v=1.43"></script>
-  <script src="emoji/index.js?v=1.43"></script>
+  <script src="vendor/SimplexNoise.js?v=1.47"></script>
+  <script src="vendor/Pass.js?v=1.47"></script>
+  <script src="vendor/CopyShader.js?v=1.47"></script>
+  <script src="vendor/SSAOShader.js?v=1.47"></script>
+  <script src="vendor/SSAOPass.js?v=1.47"></script>
+  <script src="debug.js?v=1.47"></script>
+  <script src="resources.js?v=1.47"></script>
+  <script src="patch.js?v=1.47"></script>
+  <script src="shaders.js?v=1.47"></script>
+  <script src="color.js?v=1.47"></script>
+  <script src="palettes.js?v=1.47"></script>
+  <script src="schema.js?v=1.47"></script>
+  <script src="store.js?v=1.47"></script>
+  <script src="animate.js?v=1.47"></script>
+  <script src="pcss.js?v=1.47"></script>
+  <script src="stage.js?v=1.47"></script>
+  <script src="look.js?v=1.47"></script>
+  <script src="rig.js?v=1.47"></script>
+  <script src="shapes.js?v=1.47"></script>
+  <script src="digits.js?v=1.47"></script>
+  <script src="digits-classic.js?v=1.47"></script>
+  <script src="frosting.js?v=1.47"></script>
+  <script src="scene.js?v=1.47"></script>
+  <script src="pipeline.js?v=1.47"></script>
+  <script src="materials.js?v=1.47"></script>
+  <script src="sponge.js?v=1.47"></script>
+  <script src="tiers.js?v=1.47"></script>
+  <script src="ribbon.js?v=1.47"></script>
+  <script src="body.js?v=1.47"></script>
+  <script src="candles.js?v=1.47"></script>
+  <script src="flames.js?v=1.47"></script>
+  <script src="sparklers.js?v=1.47"></script>
+  <script src="emoji/index.js?v=1.47"></script>
   <script>
     // A link with emoji toppers loads their outlines before the cake is built (v1.24), so the
     // recipient's cake is complete from the first frame. Everyone else loads them only when needed.
-    window.CAKE_VERSION = '1.43';
+    window.CAKE_VERSION = '1.47';
     (function () {
       var m = /[#&]c=([A-Za-z0-9_-]+)/.exec(location.hash || ''); if (!m) return;
-      try { var raw = atob(m[1].replace(/-/g, '+').replace(/_/g, '/')); if (/^2\|/.test(raw) && /\|te=[^|]/.test(raw)) document.write('<script src="emoji/outlines.js?v=1.43"><\/script>'); } catch (e) {}
+      try { var raw = atob(m[1].replace(/-/g, '+').replace(/_/g, '/')); if (/^2\|/.test(raw) && /\|te=[^|]/.test(raw)) document.write('<script src="emoji/outlines.js?v=1.47"><\/script>'); } catch (e) {}
     })();
   </script>
-  <script src="toppers.js?v=1.43"></script>
-  <script src="placement.js?v=1.43"></script>
-  <script src="smoke.js?v=1.43"></script>
-  <script src="mic.js?v=1.43"></script>
-  <script src="blowout.js?v=1.43"></script>
-  <script src="spin.js?v=1.43"></script>
-  <script src="confetti.js?v=1.43"></script>
-  <script src="cut.js?v=1.43"></script>
-  <script src="message.js?v=1.43"></script>
-  <script src="sprinkles.js?v=1.43"></script>
-  <script src="dev.js?v=1.43"></script>
-  <script src="oklch.js?v=1.43"></script>
-  <script src="theme.js?v=1.43"></script>
-  <script src="picker.js?v=1.43"></script>
-  <script src="dropper.js?v=1.43"></script>
-  <script src="app.js?v=1.43"></script>
-  <div id="build-tag" aria-hidden="true">v1.43</div>
+  <script src="toppers.js?v=1.47"></script>
+  <script src="placement.js?v=1.47"></script>
+  <script src="smoke.js?v=1.47"></script>
+  <script src="mic.js?v=1.47"></script>
+  <script src="blowout.js?v=1.47"></script>
+  <script src="spin.js?v=1.47"></script>
+  <script src="confetti.js?v=1.47"></script>
+  <script src="cut.js?v=1.47"></script>
+  <script src="message.js?v=1.47"></script>
+  <script src="sprinkles.js?v=1.47"></script>
+  <script src="dev.js?v=1.47"></script>
+  <script src="oklch.js?v=1.47"></script>
+  <script src="theme.js?v=1.47"></script>
+  <script src="picker.js?v=1.47"></script>
+  <script src="dropper.js?v=1.47"></script>
+  <script src="app.js?v=1.47"></script>
+  <div id="build-tag" aria-hidden="true">v1.47</div>
 </body>
 </html>

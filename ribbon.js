@@ -7,7 +7,9 @@
 (function () {
   function create(deps) {
     var RIBBON = { thick: 0.02, lift: 0.16, widthMin: 0.12, widthStep: 0.05, steps: 8 };
-    function ribbonWidth(step) { return RIBBON.widthMin + RIBBON.widthStep * Math.max(0, Math.min(RIBBON.steps - 1, step | 0)); }
+    // v1.46: real ribbon widths, as sold: 6, 10, 15, 25 and 38 mm (1 unit = 4.2 cm)
+    RIBBON.widthsMm = [6, 10, 15, 25, 38]; RIBBON.steps = RIBBON.widthsMm.length;
+    function ribbonWidth(step) { return RIBBON.widthsMm[Math.max(0, Math.min(RIBBON.steps - 1, step | 0))] / 42; }
     // Per-tier ribbon settings, three characters per tier: on (0/1), colour index, width step.
     // "rt" is the live array of {on, c, w}; "rbt" is its string form in the link.
     // Ribbon POSITION per tier (v0.77): 0–9, where 0 puts the ribbon's bottom at the bottom of the

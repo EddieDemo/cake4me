@@ -102,10 +102,10 @@
     { name: 'Party',                fc: 1, ic: 7, rc: 0, cc: 3, bg: 9 }
   ];
   var LOOK_BOUNDS = {
-    bottomW: [0, 9], bottomH: [0, 9],      // shape steps for the bottom tier: the builder's full range
-    topH: [3, 6], topInset: [2, 4],         // upper tier: height, and how many width steps narrower
+    bottomW: [2, 7], bottomH: [3, 6],      // v1.47: Shuffle's bottom tier: 5–10 in tins, 2½–4 in deep (the builder goes 3–12 in, 1–6 in)
+    topH: [2, 4], topInset: [1, 3],         // upper tier: 2–3 in deep, one to three tin sizes narrower
     fillings: [1, 2],                       // sponge layers − 1 (a very shallow tier gets one)
-    ribbonChance: 0.5, ribbonW: [2, 5],
+    ribbonChance: 0.5, ribbonW: [1, 3],                  // v1.46: 10–25 mm
     bakedChance: 0.4,                       // a baked (naked) cake rather than a fondant one
     candles: [1, 3, 5],                     // odd counts only
     finishes: [0, 0, 8, 8, 9, 9, 4, 4, 7, 7, 10, 10, 11, 2, 6],   // icing finish: the tooled ones most often, then the rest
@@ -157,7 +157,7 @@
     var ek = Object.keys(window.CakeEmoji || {}), ne = Math.random() < B.emojiChance ? randInt(1, 3 - d.tn.length) : 0, picks = [];
     for (var q = 0; q < ne && ek.length; q++) picks.push(ek[randInt(0, ek.length - 1)]);
     d.te = picks.join('.');
-    d.tz = 4;
+    d.tz = 1;                                            // v1.46: 7.5 cm
     d.tcl = 0;                                           // number toppers match the candles (v1.31)
     d.tf = (d.tn && +d.tn >= 18 && Math.random() < 0.4) ? 1 : 0;   // v1.36: grown-up birthdays go Classic now and then
     d.tm = d.tf && Math.random() < 0.8 ? 1 : 0;          // v1.37: Classic numbers are mostly metal
@@ -237,10 +237,9 @@
     if (document.activeElement !== te) te.value = (draft.te ? draft.te.split('.') : []).map(emojiOf).join('');
     var used = String(draft.tn || '').length + (draft.te ? draft.te.split('.').length : 0);
     $('toppers-hint').textContent = topperNote || (used + ' of 3 toppers — each digit and each emoji is one. ' + TOPPERS.count() + ' emojis to choose from: type them with your emoji keyboard.');
-    // v1.29: the Size slider — the whole row, 60% … 140%; dimmed until there's a topper to size.
-    var tz = $('f-tz'), step = draft.tz == null ? 4 : draft.tz;
-    if (tz && document.activeElement !== tz) tz.value = step;
-    var out = $('tz-out'); if (out) out.textContent = Math.round(60 + 10 * step) + '%';
+    // v1.46: the Size — 5, 7.5 or 10 cm, as number candles are sold; dimmed until there's a topper to size.
+    var tzOn = draft.tz == null ? 1 : draft.tz;
+    Array.prototype.forEach.call(document.querySelectorAll('#tz-row [data-tz]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-tz') === tzOn); });
     var row = $('tz-row'); if (row) row.classList.toggle('dim', !used);
     var crow = $('tcl-row'); if (crow) crow.classList.toggle('dim', !draft.tn);
     var frow = $('tf-row');                              // v1.36: Fun or Classic numbers
@@ -806,8 +805,8 @@
       if (emojis.length && !TOPPERS.ready()) { TOPPERS.ensure(rebuildForToppers); emojis = []; }   // outlines arrive → build again
       // v1.28: whatever already stands on the top reserves its footprint, so no candle clips into it.
       var blocks = sparklers.map(function (g) { return { x: g.position.x, z: g.position.z, r: 0.05 }; });
-      var tzStep = cfg.tz == null ? 4 : cfg.tz;           // v1.29: the Size slider, 60% … 140%
-      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, size: 0.6 + 0.1 * tzStep, font: cfg.tf | 0, metal: cfg.tm === 1, envTint: backdropHexOf(cfg) }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
+      var tzIdx = cfg.tz == null ? 1 : cfg.tz;            // v1.46: the Size — 5, 7.5 or 10 cm
+      if (hasToppers) { var row = PLACE.placeToppers({ digits: cfg.tn, emojis: emojis, height: TOPPER_CM[clampInt(tzIdx, 0, 2, 1)] / SHAPE.cmPerUnit, font: cfg.tf | 0, metal: cfg.tm === 1, envTint: backdropHexOf(cfg) }, surfaces[0], COL.topper(cfg)); if (row) blocks.push(row); }
       else PLACE.noToppers();
       lastBlocks = blocks;
       PLACE.placeCandles(Math.max(0, Math.min(MAX_CANDLES, cfg.n | 0)), surfaces, candleHex, candleFrom, cfg.cs, { toppers: hasToppers, blocks: blocks });
@@ -827,6 +826,12 @@
     CONF.rebuildLandings(cfg);
     if (window.CakeLook) CakeLook.adopt(built);
     FRAME.cake = cakeFrame(cfg);
+    // v1.47: a cake bigger than the old largest (9 in wide, three 3½ in tiers) scales the key's shadow
+    // box and the studio lamp with it (look.js); anything up to that keeps scale 1.
+    if (window.CakeLook && CakeLook.fitScene) {
+      var rW = 0, hT = 0; tiersFor(cfg).forEach(function (t) { rW = Math.max(rW, t.r + 0.12); hT += t.h + 0.12; });
+      if (CakeLook.fitScene(Math.max(1, rW / 3.0, hT / 6.8))) updateRoomLights();
+    }
     if (!boxMode) { frameTarget = FRAME.cake; camTargetY = centreOfMass(cfg); }
     candleLight.position.set(0, y + 0.9, 0);
     candleLight.intensity = window.CakeLook ? CakeLook.candleIntensity(flames.length, darkness) : Math.min(1.6, 0.25 + flames.length * 0.03);
@@ -2528,6 +2533,12 @@
       sprinkleAt: function (pts, i) { return SPRINKLES.colourAt ? SPRINKLES.colourAt(pts, i, draft || config) : null; } });
     return DROP;
   }
+  // v1.44: a real size, as bakers say it — "8″ · 20 cm", "2½″ · 6.4 cm"
+  var TOPPER_CM = [5, 7.5, 10];                          // v1.46: number toppers' heights
+  function realSize(inches) {
+    var cm = inches * 2.54, w = Math.floor(inches), half = inches - w >= 0.5;
+    return (w || !half ? w : '') + (half ? '½' : '') + '″ · ' + (cm < 10 ? cm.toFixed(1) : Math.round(cm)) + ' cm';
+  }
   function roleOf(c) {
     return c === els.swFc ? 'icing' : c === els.swRc ? 'ribbon' : c === els.swCc ? 'candles' : c === els.swTcl ? 'topper'
          : c === els.swBg ? 'backdrop' : c === els.swSp ? 'sponge' : c === els.swIc ? 'filling' : 'writing';
@@ -2666,9 +2677,10 @@
     var st = draft.sh[curTier];
     var w = $('f-sw'), h = $('f-sh');
     // Width can't exceed the tier below minus the ledge — the slider's max moves with it.
-    var maxStep = curTier === 0 ? SHAPE.steps - 1 : Math.max(0, Math.floor(rToStep(stepToR(draft.sh[curTier - 1].r) - SHAPE.ledge)));
+    var maxStep = curTier === 0 ? SHAPE.tinsIn.length - 1 : Math.max(0, Math.floor(rToStep(stepToR(draft.sh[curTier - 1].r) - SHAPE.ledge)));
     w.max = maxStep; w.value = Math.min(st.r, maxStep); h.value = st.h;
-    $('sw-out').textContent = (stepToR(st.r) * 2).toFixed(1); $('sh-out').textContent = stepToH(st.h).toFixed(1);
+    $('sw-out').textContent = realSize(SHAPE.tinsIn[clampInt(st.r, 0, SHAPE.tinsIn.length - 1, 0)]);   // v1.44: tin size
+    $('sh-out').textContent = realSize(SHAPE.depthsIn[clampInt(st.h, 0, SHAPE.depthsIn.length - 1, 0)]);   // tier depth
   }
   // Sliders fire many times per second; rebuilding the cake on every tick is wasted work and,
   // on a phone, memory pressure. Coalesce: at most one rebuild per animation frame.
@@ -2693,7 +2705,7 @@
     var rp = $('f-rp'); if (rp) rp.value = rt.p < 0 ? 1 : rt.p;
     var ra = $('f-ra'); if (ra) ra.value = rt.a || 0;
     Array.prototype.forEach.call($('rib-material').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-rm') === draft.rm); });
-    var out = $('rw-out'); if (out) out.textContent = RIBBONS.ribbonWidth(rt.w).toFixed(2);
+    var out = $('rw-out'); if (out) out.textContent = Math.round(RIBBONS.ribbonWidth(rt.w) * 42) + ' mm';   // v1.46
   }
   function syncTierPills(id, all) {
     var n = tiersFor(draft).length;
@@ -2953,8 +2965,8 @@
     Array.prototype.forEach.call(document.querySelectorAll('#tm-row [data-tm]'), function (b) {   // v1.37
       b.addEventListener('click', function () { draft.tm = +b.getAttribute('data-tm'); draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });
     });
-    $('f-tz').addEventListener('input', function (e) {   // v1.29: topper size
-      draft.tz = clampInt(e.target.value, 0, 8, 4); draft = STORE.set(draft, { silent: true }); syncToppers(); scheduleBuild();
+    Array.prototype.forEach.call(document.querySelectorAll('#tz-row [data-tz]'), function (b) {   // v1.46: topper size
+      b.addEventListener('click', function () { draft.tz = +b.getAttribute('data-tz'); draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });
     });
     $('f-te').addEventListener('focus', function () { TOPPERS.ensure(); });
     $('f-te').addEventListener('input', function (e) {

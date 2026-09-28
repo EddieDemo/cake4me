@@ -149,7 +149,7 @@
         // (frosting.js). There is no flat fondant any more.
         side = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.62, vertexColors: true });
         cap = new THREE.MeshStandardMaterial({ color: fondantHex, roughness: 0.55, vertexColors: true });
-        if (window.CakeFrosting) { fMaps = CakeFrosting.fondantMaps(cfg.ff); CakeFrosting.dressFondant(side, fMaps, rr); CakeFrosting.dressFondant(cap, fMaps, rr); }
+        if (window.CakeFrosting) { fMaps = CakeFrosting.fondantMaps(cfg.ff, rr); /* v1.44: sampled at this tier's own size */ CakeFrosting.dressFondant(side, fMaps, rr); CakeFrosting.dressFondant(cap, fMaps, rr); }
       }
       if (side) nightGlow(side, naked ? deps.SPONGE() : frosting, false);
       nightGlow(cap, naked ? deps.SPONGE() : frosting, false);

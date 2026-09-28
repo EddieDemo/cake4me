@@ -9,12 +9,15 @@
 (function () {
   var PALETTES = CakePalettes.PALETTES, OCCASIONS = CakePalettes.OCCASIONS, SPONGES = CakePalettes.SPONGES, SC_TO_SP = CakePalettes.SC_TO_SP, TIERS = CakePalettes.TIERS, SHAPE = CakePalettes.SHAPE;
   var MAX_CANDLES = 100;          // what a LINK may carry (old gifts keep their count)
-  var RIBBON = { steps: 8 };
+  var RIBBON = { steps: 5 };                              // v1.46: 6 · 10 · 15 · 25 · 38 mm (ribbon.js)
   // shape steps ↔ world sizes (the builder's sliders and the classic tier sizes share these)
-  function rToStep(r) { return Math.round((r - SHAPE.rMin) / (SHAPE.rMax - SHAPE.rMin) * (SHAPE.steps - 1)); }
-  function hToStep(h) { return Math.round((h - SHAPE.hMin) / (SHAPE.hMax - SHAPE.hMin) * (SHAPE.steps - 1)); }
-  function stepToR(st) { return SHAPE.rMin + (SHAPE.rMax - SHAPE.rMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
-  function stepToH(st) { return SHAPE.hMin + (SHAPE.hMax - SHAPE.hMin) * clampInt(st, 0, SHAPE.steps - 1, 0) / (SHAPE.steps - 1); }
+  // v1.44: steps are real sizes — a width step is a tin size, a height step a tier depth (palettes.js)
+  function inUnits(inches) { return inches * 2.54 / SHAPE.cmPerUnit; }
+  function stepToR(st) { var t = SHAPE.tinsIn; return inUnits(t[clampInt(st, 0, t.length - 1, 0)]) / 2; }
+  function stepToH(st) { var d = SHAPE.depthsIn; return inUnits(d[clampInt(st, 0, d.length - 1, 0)]); }
+  function nearest(n, f, x) { var b = 0; for (var i = 1; i < n; i++) if (Math.abs(f(i) - x) < Math.abs(f(b) - x)) b = i; return b; }
+  function rToStep(r) { return nearest(SHAPE.tinsIn.length, stepToR, r); }
+  function hToStep(h) { return nearest(SHAPE.depthsIn.length, stepToH, h); }
   function classicShape(t) { return (TIERS[t] || TIERS[1]).map(function (x) { return { r: rToStep(x.r), h: hToStep(x.h) }; }); }          // ribbon width steps (the geometry's RIBBON in app.js agrees)
   var SCHEMA_VERSION = 1;
   var MAX_MSG = 80;
@@ -24,7 +27,7 @@
     var out = [], clean = String(str || '').replace(/[^0-9]/g, '');
     for (var i = 0; i < 3; i++) {
       if (clean.length >= (i + 1) * 3) {
-        out.push({ on: clean[i * 3] === '1', c: clampInt(+clean[i * 3 + 1], 0, PALETTES.ribbon.length - 1, 0), w: clampInt(+clean[i * 3 + 2], 0, RIBBON.steps - 1, 4) });
+        out.push({ on: clean[i * 3] === '1', c: clampInt(+clean[i * 3 + 1], 0, PALETTES.ribbon.length - 1, 0), w: clampInt(+clean[i * 3 + 2], 0, RIBBON.steps - 1, 2) });
       } else {
         // No per-tier data: derive from the older rb/rc fields so old links look as they did.
         var on = legacyRb === 1 || (legacyRb === 2 && i > 0);
@@ -116,7 +119,7 @@
       sr: clampInt(c.sr, 0, 999, 0),        // the roll: which arrangement
       // Toppers (v1.22): on the top tier only, 3 at most — each digit of the number, and each emoji, is one.
       tn: String(c.tn == null ? '' : c.tn).replace(/[^0-9]/g, '').slice(0, 2),
-      tz: clampInt(c.tz, 0, 8, 4),
+      tz: clampInt(c.tz, 0, 2, 1),          // number toppers' size (v1.46): 5 · 7.5 · 10 cm; missing → 7.5
       tcl: clampInt(c.tcl, 0, PALETTES.topper.length - 1, 0),
       tf: clampInt(c.tf, 0, 1, 0),
       tm: clampInt(c.tm, 0, 1, 0),              // number toppers' finish (v1.37): 0 Wax · 1 Metal              // number toppers' style (v1.36): 0 Fun · 1 Classic   // number toppers' colour (v1.31); 0 = match the candles          // topper size (v1.29): 60% … 140% in 10% steps; 4 = 100%, missing → 100%
@@ -165,7 +168,7 @@
     out.fr = out.frsty[0]; out.fd = out.fds[0];
     // `fc` is the OUTERMOST layer's bottom-tier colour (bow, bleed, older readers).
     out.fc = out.fds[0] ? out.fcs[0] : (out.frsty[0] ? out.frs[0] : out.fcs[0]);
-    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 4), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)), a: (t.a === undefined ? undefined : clampInt(t.a, -4, 4, 0)) }; })
+    out.rt = c.rt && c.rt.length === 3 ? c.rt.map(function (t) { return { on: !!t.on, c: clampInt(t.c, 0, PALETTES.ribbon.length - 1, 0), w: clampInt(t.w, 0, RIBBON.steps - 1, 2), p: (t.p === undefined ? -1 : clampInt(t.p, -1, 9, -1)), a: (t.a === undefined ? undefined : clampInt(t.a, -4, 4, 0)) }; })
                                        : parseRibbons(out.rbt, out.rb, out.rc);
     out.rbt = serializeRibbons(out.rt);
     // v1.31: exact colours of a slot's own (a recent colour now; the picker's later). Live `cxs`
