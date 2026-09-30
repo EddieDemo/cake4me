@@ -32,6 +32,61 @@
       return luminance(frostingHex) > THREE.Color.srgbToLinear(0.42) ? deps.INK_DARK : deps.INK_LIGHT;   // luminance is linear now
     }
 
+    // v1.50: a FILLING'S EDGE on a naked side — one flowing sheet, as in the mock-ups. Creamy: a stiff
+    // bead, a little uneven, standing just proud where more was squeezed out. Glossy and Rich: a sheet
+    // tucked under the sponge above that sags onto the sponge below in soft waves and a few broad lobes
+    // (merged by a smooth union, so the edge is one curve), its lower edge thickened and rounded like
+    // poured paint; no drips. Built over the tier's arc (a cut cake's too), then merged with the stack
+    // so the sponge's wobble moves it with the sponge.
+    function seeded(s) { return function () { s |= 0; s = s + 0x6D2B79F5 | 0; var t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+    function waves(a, s) { return 0.5 + 0.5 * (0.42 * Math.sin(a * 2 + s) + 0.3 * Math.sin(a * 5 + s * 1.7) + 0.18 * Math.sin(a * 11 + s * 2.9) + 0.1 * Math.sin(a * 23 + s * 4.3)); }
+    function smaxp(a, b, k) { var h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; }
+    function sstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+    var SHEET = [ { bead: 0.06 },                                                          // Creamy
+                  { skin: 0.024, lip: 0.06, lobes: 6, lw: [0.3, 0.6], ll: 2.4 },           // Glossy
+                  { skin: 0.038, lip: 0.05, lobes: 6, lw: [0.3, 0.65], ll: 2.8 } ];        // Rich
+    function fillingSheet(r, y0, t, kind, seed, phi0, phiLen) {
+      var P = SHEET[kind] || SHEET[0], rnd = seeded(seed), y1 = y0 + t, sd = rnd() * 10;
+      var cols = Math.max(16, Math.round(phiLen / (Math.PI * 2) * 280)), NS = kind === 0 ? 12 : 22, pos = [], uv = [], idx = [];
+      var lobes = [], swells = [];
+      if (kind === 0) for (var b = 0; b < 5; b++) swells.push({ a: rnd() * Math.PI * 2, w: 0.22 + rnd() * 0.35, h: 0.12 + rnd() * 0.28 });
+      else for (b = 0; b < P.lobes; b++) { var w = P.lw[0] + rnd() * (P.lw[1] - P.lw[0]); lobes.push({ a: rnd() * Math.PI * 2, w: w, L: P.lip * (1.6 + rnd() * P.ll) }); }
+      var D = [];
+      for (var i = 0; i <= cols; i++) {
+        var ph = phi0 + phiLen * i / cols, d = kind === 0 ? 0 : P.lip * (0.3 + 0.9 * waves(ph, sd));
+        lobes.forEach(function (q) { var u = Math.atan2(Math.sin(ph - q.a), Math.cos(ph - q.a)) * r;
+          if (Math.abs(u) < q.w) { var c = Math.sqrt(1 - Math.pow(u / q.w, 2)); d = smaxp(d, q.L > q.w ? (q.L - q.w) + q.w * c : q.L * c, 0.04); } });
+        D.push(d);
+      }
+      for (i = 1; i < cols; i++) D[i] = D[i] * 0.5 + (D[i - 1] + D[i + 1]) * 0.25;
+      for (i = 0; i <= cols; i++) {
+        var ph2 = phi0 + phiLen * i / cols, sx = Math.sin(ph2), cz = Math.cos(ph2), yb = y0 - D[i];
+        var sw = 0; swells.forEach(function (q) { var x = Math.atan2(Math.sin(ph2 - q.a), Math.cos(ph2 - q.a)) / q.w; sw += q.h * Math.exp(-x * x); });
+        var A = kind === 0 ? P.bead * Math.max(0.08, 0.45 + 0.28 * 1.5 * (waves(ph2, sd) * 2 - 1) + sw) : 0, shift = 0.22 * (waves(ph2, sd + 5) * 2 - 1);
+        var tk = kind === 0 ? 0 : P.skin * (0.8 + 0.4 * waves(ph2, sd + 3));
+        for (var k = 0; k <= NS; k++) {
+          var sv = kind === 0 ? k / NS : 1 - Math.pow(1 - k / NS, 1.7), y = y1 + (yb - y1) * sv, th = 0;
+          if (k > 0 && k < NS) {
+            if (kind === 0) { var v = 1 - sv; th = A * Math.pow(Math.max(0, Math.sin(Math.PI * Math.min(1, Math.max(0, v + shift * Math.sin(Math.PI * v))))), 0.45); }
+            else {
+              var span = y1 - yb, s = (y1 - y) / span, rH = tk * 2.2, e = y - yb;
+              th = tk * sstep(0, Math.min(0.5, 0.06 / span), s);                        // tucked in under the sponge above
+              if (e < rH) th = tk * 1.35 * Math.sqrt(Math.max(0, 1 - Math.pow((rH - e) / rH, 2)));   // the rounded lower edge
+              else th = Math.max(th, tk * (1 + 0.35 * Math.exp(-(e - rH) / (rH * 1.5))));
+            }
+          }
+          var rr = r + 0.003 + th;
+          pos.push(rr * sx, y, rr * cz); uv.push(i / cols * 6, k / NS);
+        }
+      }
+      var R1 = NS + 1;
+      for (i = 0; i < cols; i++) for (k = 0; k < NS; k++) { var q = i * R1 + k; idx.push(q, q + 1, q + R1, q + 1, q + R1 + 1, q + R1); }
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      CakeShapes.bakeAO(g, function () { return 0.95; });
+      return g;
+    }
     function buildStack(cfg, tier, TM, sideMat, theta0, len, seg, partial) {
       var rs = tier.rs, hs = tier.hs, scheme = deps.layerScheme(hs, cfg.ly), filling = TM.filling;
       var G = CakeShapes.P.groove, D = CakeShapes.P.disc;
@@ -57,8 +112,19 @@
       if (TM.style !== 4 && smaps) CakeFrosting.dressFondant(lidMat, smaps, rs);   // the baked top, rack marks and all
       mats.push(lidMat);
       var fillMatIndex = {};   // filling end materials start at index 3
+      // v1.49: the filling's material, by its type: Creamy satin (the icing's kind of finish); Glossy a
+      // clear glassy coat and a little glow from within, as light scatters through jam; Rich dense and
+      // glass-smooth. They all take their light from the rig.
+      var fKind = deps.fillKind ? deps.fillKind(cfg) : 0;
       function fillMat(hex) {
-        if (fillMatIndex[hex] === undefined) { fillMatIndex[hex] = mats.length; mats.push(new THREE.MeshStandardMaterial({ color: hex, roughness: 0.7, side: THREE.DoubleSide, vertexColors: true })); }
+        if (fillMatIndex[hex] === undefined) {
+          fillMatIndex[hex] = mats.length;
+          var o = { color: hex, side: THREE.DoubleSide, vertexColors: true };
+          if (fKind === 1) { o.roughness = 0.12; o.clearcoat = 1; o.clearcoatRoughness = 0.05; o.emissive = new THREE.Color(hex).multiplyScalar(0.18); }
+          else if (fKind === 2) { o.roughness = 0.16; o.clearcoat = 1; o.clearcoatRoughness = 0.06; }
+          else { o.roughness = 0.55; o.clearcoat = 0.08; o.clearcoatRoughness = 0.6; }
+          mats.push(new THREE.MeshPhysicalMaterial(o));
+        }
         return fillMatIndex[hex];
       }
       var matOf = [];                                   // material index per geometry, parallel to geoms
@@ -72,7 +138,7 @@
         // occlusion: the bottom layer's foot, and every filling sits in shadow
         CakeShapes.bakeAO(g, function (rr, y) { var v = 1; if (y0 === 0) v = Math.min(v, 0.62 + 0.38 * Math.min(1, y / 0.28)); if (endMat !== 1) v = Math.min(v, 0.72); return v; });
         // Walls: the spanning texture if there is one; otherwise the solid's own material.
-        geoms.push(g); matOf.push(textured ? 0 : (endMat === 1 ? 0 : endMat));
+        geoms.push(g); matOf.push(endMat === 1 ? 0 : endMat);   // v1.49: a filling's own material on its wall, not a painted band
         if (partial) {
           [theta0, theta0 + len].forEach(function (th) {
             var fg = CakeShapes.faceAt(CakeShapes.discFace(r, t, f, y0), th);
@@ -86,7 +152,12 @@
         addSolid(rs, scheme.spongeT, D.spongeFillet, y, 1, k === n - 1); y += scheme.spongeT;
         if (k < n - 1) {
           var hex = filling[k % filling.length];
-          addSolid(rs - G.inset, scheme.fillT, D.fillingFillet, y, fillMat(hex)); y += scheme.fillT;
+          addSolid(rs - G.inset, scheme.fillT, D.fillingFillet, y, fillMat(hex));
+          if (TM.style !== 4) {                            // v1.50: its edge, flowing out over the side (not under a scraped coat)
+            var shg = fillingSheet(rs, y, scheme.fillT, fKind, 977 + (tier.idx || 0) * 131 + k * 17, theta0 || 0, len || Math.PI * 2);
+            geoms.push(shg); matOf.push(fillMat(hex));
+          }
+          y += scheme.fillT;
         }
       }
       var geo = CakeShapes.merge(geoms, function (k) { return matOf[k]; });

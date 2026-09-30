@@ -43,15 +43,41 @@
       { name: 'Champagne', hex: 0xF1D7A7 },
       { name: 'Copper',    hex: 0xC77B4A }
     ],
+    // v1.49: FILLINGS BY TYPE — kind 0 Creamy (buttercreams: satin, the icing's own kind of
+    // material), 1 Glossy (jams and curds: glassy, glowing a little from within), 2 Rich (ganaches
+    // and caramels: dense, glass-smooth). One list, so the link's preset index says the type too.
     filling: [
-      { name: 'Raspberry',  layers: [0xD6336C] },
-      { name: 'Lemon curd', layers: [0xFFD43B] },
-      { name: 'Ganache',    layers: [0x3E2723] },
-      { name: 'Pistachio',  layers: [0xA8D08D] },
-      { name: 'Blueberry',  layers: [0x4C5FD5] },
-      { name: 'Caramel',    layers: [0xC77B3B] },
-      { name: 'Cream',      layers: [0xFFF3C4] },
-      { name: 'Rainbow',    layers: [0xE63946, 0xF4A261, 0xFFD166, 0x52B788, 0x4C5FD5, 0x9B6BFF] }
+      { name: 'Vanilla',          layers: [0xF3E3BF], kind: 0 },
+      { name: 'Swiss meringue',   layers: [0xFFF8EE], kind: 0 },
+      { name: 'Chocolate',        layers: [0x6B4632], kind: 0 },
+      { name: 'Coffee',           layers: [0xB08462], kind: 0 },
+      { name: 'Strawberry',       layers: [0xF4A7B9], kind: 0 },
+      { name: 'Lemon',            layers: [0xF7E08A], kind: 0 },
+      { name: 'Pistachio',        layers: [0xC5D8A4], kind: 0 },
+      { name: 'Salted caramel',   layers: [0xD9A36B], kind: 0 },
+      { name: 'Cream cheese',     layers: [0xFBF1E1], kind: 0 },
+      { name: 'Lavender',         layers: [0xCDB8E6], kind: 0 },
+      { name: 'Rainbow',          layers: [0xE63946, 0xF4A261, 0xFFD166, 0x52B788, 0x4C5FD5, 0x9B6BFF], kind: 0 },
+      { name: 'Raspberry',        layers: [0xB3122E], kind: 1 },
+      { name: 'Strawberry',       layers: [0xD7263D], kind: 1 },
+      { name: 'Cherry',           layers: [0x8E1330], kind: 1 },
+      { name: 'Blackcurrant',     layers: [0x4A1036], kind: 1 },
+      { name: 'Blueberry',        layers: [0x3B2F7A], kind: 1 },
+      { name: 'Apricot',          layers: [0xF2A03D], kind: 1 },
+      { name: 'Orange marmalade', layers: [0xE8751A], kind: 1 },
+      { name: 'Lemon curd',       layers: [0xF6D23A], kind: 1 },
+      { name: 'Passion fruit',    layers: [0xF7B21B], kind: 1 },
+      { name: 'Lime',             layers: [0x9CC43B], kind: 1 },
+      { name: 'Dark chocolate',   layers: [0x3A1D12], kind: 2 },
+      { name: 'Milk chocolate',   layers: [0x6B3E26], kind: 2 },
+      { name: 'White chocolate',  layers: [0xF1E6CF], kind: 2 },
+      { name: 'Ruby chocolate',   layers: [0xB0485E], kind: 2 },
+      { name: 'Salted caramel',   layers: [0xB5651D], kind: 2 },
+      { name: 'Dulce de leche',   layers: [0xC48A4B], kind: 2 },
+      { name: 'Hazelnut',         layers: [0x5C3A24], kind: 2 },
+      { name: 'Coffee',           layers: [0x4B2E20], kind: 2 },
+      { name: 'Biscoff',          layers: [0xA0612F], kind: 2 },
+      { name: 'Matcha',           layers: [0x7E9A4E], kind: 2 }
     ],
     // Ribbons: the band round each upper tier and the bow on the gift box. These used to
     // borrow the candle colour, so you couldn't have white candles and a red ribbon. One

@@ -175,6 +175,9 @@
     d.rt = [0, 1, 2].map(function (i) {
       return { on: i < n && Math.random() < B.ribbonChance, c: L.rc, w: randInt(B.ribbonW[0], B.ribbonW[1]), p: randInt(0, 9), a: randInt(-2, 2) };
     });
+    // v1.49: the filling — Creamy about half the time, Glossy and Rich a quarter each — and more often
+    // than not one that goes with the sponge (a Victoria sponge's raspberry jam, chocolate and ganache…)
+    d.ic = pickFilling(SPONGES[clampIndex(d.sp, SPONGES)].name);
     // v1.34: the colours are one THEME (theme.js): from one of an emoji topper's own colours when
     // there is one, else a random colour, with a strategy (a hue family, neighbours, opposites, three
     // hues, or neutral with an accent) and ramps whose hue bends as they lighten and darken.
@@ -188,12 +191,34 @@
   }
   // v1.34: a theme's colours onto a cake's parts, as exact colours. `keep` = { slots, hex }: the part
   // being edited keeps exactly its colour. The writing keeps its own colour if it has one.
+  var PAIRINGS = {
+    'Classic vanilla': ['Raspberry', 'Strawberry', 'Vanilla', 'Lemon curd', 'Salted caramel'],
+    'Honey sponge': ['Apricot', 'Dulce de leche', 'Vanilla', 'Salted caramel'],
+    'Butter sponge': ['Strawberry', 'Raspberry', 'Swiss meringue', 'Blackcurrant'],
+    'Lemon': ['Lemon curd', 'Lemon', 'Blueberry', 'Raspberry'],
+    'Chocolate': ['Dark chocolate', 'Salted caramel', 'Cherry', 'Milk chocolate', 'Hazelnut'],
+    'Coffee': ['Coffee', 'Milk chocolate', 'Hazelnut', 'Salted caramel'],
+    'Red velvet': ['Cream cheese', 'White chocolate', 'Raspberry'],
+    'Carrot': ['Cream cheese', 'Salted caramel', 'Orange marmalade'],
+    'Matcha': ['White chocolate', 'Matcha', 'Raspberry', 'Lemon curd']
+  };
+  function pickFilling(spongeName) {
+    var r = Math.random(), kind = r < 0.5 ? 0 : r < 0.75 ? 1 : 2, F = PALETTES.filling, i;
+    var pair = PAIRINGS[spongeName];
+    if (pair && Math.random() < 0.65) {                  // a pairing, of the chosen type if it has one
+      var name = pair[randInt(0, pair.length - 1)], any = -1;
+      for (i = 0; i < F.length; i++) if (F[i].name === name) { if ((F[i].kind || 0) === kind) return i; if (any < 0) any = i; }
+      if (any >= 0) return any;
+    }
+    var pool = []; for (i = 0; i < F.length; i++) if ((F[i].kind || 0) === kind && (F[i].name !== 'Rainbow' || Math.random() < 0.15)) pool.push(i);
+    return pool[randInt(0, pool.length - 1)];
+  }
   function applyTheme(d, T, keep) {
     var cx = {}; if (d.cxs && d.cxs.wc != null) cx.wc = d.cxs.wc;
     var n = (d.fcs || [0]).length;
     for (var t = 0; t < n; t++) { cx['f' + t] = T.icing[Math.min(t, T.icing.length - 1)]; cx['r' + t] = T.ribbon; }
     cx.cc = T.candles; if (T.topper != null) cx.tc = T.topper; cx.bg = T.backdrop;
-    if (T.sponge != null) cx.sp = T.sponge; if (T.filling != null) cx.fl = T.filling;
+    if (T.sponge != null) cx.sp = T.sponge; if (T.filling != null && fillKind(d) === 0) cx.fl = T.filling;   // v1.49: a theme tints buttercream, not jam or ganache
     if (keep) keep.slots.forEach(function (k) { cx[k] = keep.hex; });
     d.cxs = cx; d.tcl = 0;
     return d;
@@ -269,6 +294,10 @@
   var FROST_TOP = 0.15;          // fondant: extra height on top
   var FONDANT_BASE_FILLET = 0.05; // fondant is trimmed at the board: half the top rim's roundness
   var FILL_T = 0.16;             // filling thickness, world units — the same whatever the layer count (v0.71: was 0.09)
+  // v1.49: by type, set as each cake is built — Creamy 8 mm, Glossy 4 mm (a jam or curd spreads thin),
+  // Rich 6 mm (1 unit = 4.2 cm). The layer plan, the painted sides and the cut faces all follow it.
+  var FILL_KIND_T = [0.19, 0.095, 0.143];
+  function fillKind(cfg) { var f = PALETTES.filling[clampIndex(cfg && cfg.ic, PALETTES.filling)]; return f && f.kind ? f.kind : 0; }
   var NAKED_CAP_H = 0.12;        // a naked tier's top disc is thin, so no filling hides inside it
   function capHeightFor(cfg, i) { return frostingHasThickness(cfg, i) ? CAP_H : NAKED_CAP_H; }
   // Where the fillings sit in a tier, bottom→top, in world units. Sponge layers are equal;
@@ -336,7 +365,7 @@
   var BODY = CakeBody.create({
     PALETTES: PALETTES, clampIndex: clampIndex, hexCss: function (h) { return hexCss(h); },
     frostingHasThickness: function (cfg, i) { return frostingHasThickness(cfg, i); },
-    layerScheme: function (a, b) { return layerScheme(a, b); }, paintLayers: function (g, W, H, l, s, sp) { return paintLayers(g, W, H, l, s, sp); },
+    layerScheme: function (a, b) { return layerScheme(a, b); }, fillKind: function (c) { return fillKind(c); }, paintLayers: function (g, W, H, l, s, sp) { return paintLayers(g, W, H, l, s, sp); },
     makeCutFaceTexture: function (l, s, t, f, th) { return makeCutFaceTexture(l, s, t, f, th); },
     spongeOf: function (cfg) { return spongeOf(cfg); }, ribbons: function () { return RIBBONS; }, glowMats: function () { return glowMats; },
     crumbNow: function () { return V.mode === 'slice'; },   // the slice page can't wait for the crumb to bake in the background
@@ -753,6 +782,7 @@
   }
 
   function build(cfg, opts) {
+    FILL_T = FILL_KIND_T[fillKind(cfg)];              // v1.49: the filling's thickness, by its type
     applyLightFromConfig(cfg);
     markHeavy();
     cfg = normalize(cfg);                                // derived arrays (rt, sh) must match the tier count; always normalise
@@ -2539,6 +2569,15 @@
     var cm = inches * 2.54, w = Math.floor(inches), half = inches - w >= 0.5;
     return (w || !half ? w : '') + (half ? '½' : '') + '″ · ' + (cm < 10 ? cm.toFixed(1) : Math.round(cm)) + ' cm';
   }
+  // v1.49: the filling's Type row, and a colour row showing only that type's presets. Choosing a
+  // type picks its first preset (a colour of your own stays, now of that type).
+  function syncFillingType() {
+    if (!draft || !els.swIc) return;
+    var k = fillKind(draft);
+    Array.prototype.forEach.call(document.querySelectorAll('#fk-row [data-fk]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-fk') === k); });
+    Array.prototype.forEach.call(els.swIc.querySelectorAll('.swatch[data-i]'), function (b) {
+      var f = PALETTES.filling[+b.getAttribute('data-i')]; b.style.display = (f && (f.kind || 0) === k) ? '' : 'none'; });
+  }
   function roleOf(c) {
     return c === els.swFc ? 'icing' : c === els.swRc ? 'ribbon' : c === els.swCc ? 'candles' : c === els.swTcl ? 'topper'
          : c === els.swBg ? 'backdrop' : c === els.swSp ? 'sponge' : c === els.swIc ? 'filling' : 'writing';
@@ -2590,7 +2629,7 @@
     syncTiers(draft.t);
     // frosting swatches: see syncFrostTiers (per tier)
     syncSwatches(els.swSp, draft.sp);                    // v1.32: with its Custom swatch and recent colours
-    syncSwatches(els.swIc, draft.ic);
+    syncSwatches(els.swIc, draft.ic); syncFillingType();
     syncSwatches(els.swCc, draft.cc);
     // ribbon swatches: see syncRibbon (per tier)
     syncSwatches(els.swTc, draft.tc);
@@ -2964,6 +3003,13 @@
     });
     Array.prototype.forEach.call(document.querySelectorAll('#tm-row [data-tm]'), function (b) {   // v1.37
       b.addEventListener('click', function () { draft.tm = +b.getAttribute('data-tm'); draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#fk-row [data-fk]'), function (b) {   // v1.49: filling type
+      b.addEventListener('click', function () {
+        var k = +b.getAttribute('data-fk'); if (fillKind(draft) === k) return;
+        for (var i = 0; i < PALETTES.filling.length; i++) if ((PALETTES.filling[i].kind || 0) === k) { draft.ic = i; break; }
+        draft = STORE.set(draft, { silent: true }); syncSwatches(els.swIc, draft.ic); syncFillingType(); STORE.commit();
+      });
     });
     Array.prototype.forEach.call(document.querySelectorAll('#tz-row [data-tz]'), function (b) {   // v1.46: topper size
       b.addEventListener('click', function () { draft.tz = +b.getAttribute('data-tz'); draft = STORE.set(draft, { silent: true }); syncToppers(); STORE.commit(); });

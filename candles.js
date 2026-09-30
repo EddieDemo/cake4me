@@ -108,7 +108,7 @@
         uv.setY(i, y + 0.5);
         if (r < 1e-5) continue;
         var th = Math.atan2(z, x), yy = y + 0.5, fade = Math.max(0, Math.min(1, yy / 0.04, (1 - yy) / 0.05));
-        var k = 0.97 * (1 + 0.2 * Math.cos(3 * th + yy * 41) * fade);   // v1.45: about a turn a centimetre, on the real-height candle
+        var k = 0.97 * (1 + 0.2 * Math.cos(3 * th + yy * 26) * fade);   // about a turn a centimetre (v1.48: on the 4.2 cm candle)
         pos.setXYZ(i, x * k, y, z * k);
       }
       uv.needsUpdate = true; g.computeVertexNormals(); return g;

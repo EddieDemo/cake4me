@@ -216,11 +216,12 @@
 
       // Thinner, shorter candles when they're packed tight.
       var dense = n > 60;
-      // v1.45: REAL PROPORTIONS (1 unit = 4.2 cm). A birthday candle is about 6.3 cm tall and 5 mm
-      // across; packed tight, the thin kind is about 5 cm by 4 mm. (Before: 2.6 cm — right thickness,
-      // under half the height, which made them stubby.)
-      var radius = dense ? 0.048 : 0.06;
-      var height = dense ? 1.2 : 1.5;
+      // v1.48: SIX TIMES TALLER THAN WIDE — 4.2 cm by 7 mm (packed tight: 3.4 cm by 5.7 mm). Real
+      // birthday candles (v1.45: 6.3 cm by 5 mm, twelve to one) read as wires on a phone; the first ones
+      // (2.6 cm by 5.5 mm, under five to one) were stubby. Chosen to read well, not to measure true —
+      // and still well under a 7.5 cm number.
+      var radius = dense ? 0.068 : 0.083;
+      var height = dense ? 0.81 : 1.0;
       var fs = dense ? 0.22 : 0.28;
       // Each candle stands in its holder: lifted by the spike showing, and the cup's floor.
       var lift = K.HOLDER.gap + radius * K.HOLDER.cupH * K.HOLDER.floor * 0.5;
