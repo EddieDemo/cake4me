@@ -42,10 +42,15 @@
     function waves(a, s) { return 0.5 + 0.5 * (0.42 * Math.sin(a * 2 + s) + 0.3 * Math.sin(a * 5 + s * 1.7) + 0.18 * Math.sin(a * 11 + s * 2.9) + 0.1 * Math.sin(a * 23 + s * 4.3)); }
     function smaxp(a, b, k) { var h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; }
     function sstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
-    var SHEET = [ { bead: 0.06 },                                                          // Creamy
-                  { skin: 0.024, lip: 0.06, lobes: 6, lw: [0.3, 0.6], ll: 2.4 },           // Glossy
-                  { skin: 0.038, lip: 0.05, lobes: 6, lw: [0.3, 0.65], ll: 2.8 } ];        // Rich
-    function fillingSheet(r, y0, t, kind, seed, phi0, phiLen) {
+    // v1.51: REACH — where the spread filling stops, round each layer: a few mm short of the edge (the
+    // sponges nearly meet there, the filling set back in the gap), flush, or over it; it only bulges and
+    // sags where it overhangs. VARY — how unevenly it was spread: each layer's thickness wanders round
+    // the cake by ± that share (see unevenStack).
+    var SHEET = [ { bead: 0.06, reachA: 0.07, reachBias: 0.02, vary: 0.4 },                                                 // Creamy
+                  { skin: 0.024, lip: 0.06, lobes: 6, lw: [0.3, 0.6], ll: 2.4, reachA: 0.085, reachBias: -0.005, vary: 0.5 },  // Glossy
+                  { skin: 0.038, lip: 0.05, lobes: 6, lw: [0.3, 0.65], ll: 2.8, reachA: 0.08, reachBias: 0.012, vary: 0.45 } ];  // Rich
+    function reachAt(P, ph, sd) { return Math.max(-(CakeShapes.P.groove.inset - 0.006), P.reachA * (waves(ph, sd + 11) * 2 - 1) + P.reachBias); }
+    function fillingSheet(r, y0, t, kind, seed, phi0, phiLen, band) {
       var P = SHEET[kind] || SHEET[0], rnd = seeded(seed), y1 = y0 + t, sd = rnd() * 10;
       var cols = Math.max(16, Math.round(phiLen / (Math.PI * 2) * 280)), NS = kind === 0 ? 12 : 22, pos = [], uv = [], idx = [];
       var lobes = [], swells = [];
@@ -56,14 +61,15 @@
         var ph = phi0 + phiLen * i / cols, d = kind === 0 ? 0 : P.lip * (0.3 + 0.9 * waves(ph, sd));
         lobes.forEach(function (q) { var u = Math.atan2(Math.sin(ph - q.a), Math.cos(ph - q.a)) * r;
           if (Math.abs(u) < q.w) { var c = Math.sqrt(1 - Math.pow(u / q.w, 2)); d = smaxp(d, q.L > q.w ? (q.L - q.w) + q.w * c : q.L * c, 0.04); } });
-        D.push(d);
+        D.push(d * sstep(-0.005, 0.06, reachAt(P, ph, sd)));   // it only sags where it overhangs
       }
       for (i = 1; i < cols; i++) D[i] = D[i] * 0.5 + (D[i - 1] + D[i + 1]) * 0.25;
       for (i = 0; i <= cols; i++) {
-        var ph2 = phi0 + phiLen * i / cols, sx = Math.sin(ph2), cz = Math.cos(ph2), yb = y0 - D[i];
+        var ph2 = phi0 + phiLen * i / cols, sx = Math.sin(ph2), cz = Math.cos(ph2), yb = y0 - D[i], rc = reachAt(P, ph2, sd), over = sstep(-0.005, 0.05, rc);
         var sw = 0; swells.forEach(function (q) { var x = Math.atan2(Math.sin(ph2 - q.a), Math.cos(ph2 - q.a)) / q.w; sw += q.h * Math.exp(-x * x); });
         var A = kind === 0 ? P.bead * Math.max(0.08, 0.45 + 0.28 * 1.5 * (waves(ph2, sd) * 2 - 1) + sw) : 0, shift = 0.22 * (waves(ph2, sd + 5) * 2 - 1);
-        var tk = kind === 0 ? 0 : P.skin * (0.8 + 0.4 * waves(ph2, sd + 3));
+        var tk = kind === 0 ? 0 : P.skin * (0.8 + 0.4 * waves(ph2, sd + 3)) * over;
+        if (kind === 0) A *= over;
         for (var k = 0; k <= NS; k++) {
           var sv = kind === 0 ? k / NS : 1 - Math.pow(1 - k / NS, 1.7), y = y1 + (yb - y1) * sv, th = 0;
           if (k > 0 && k < NS) {
@@ -75,7 +81,8 @@
               else th = Math.max(th, tk * (1 + 0.35 * Math.exp(-(e - rH) / (rH * 1.5))));
             }
           }
-          var rr = r + 0.003 + th;
+          if (band) th *= 1 - sstep(band[0] - 0.03, band[0] + 0.01, y) * (1 - sstep(band[1] - 0.01, band[1] + 0.03, y));   // pressed flat under a ribbon
+          var rr = r + 0.003 + Math.min(0, rc) + th;                                           // short of the edge: set back in the gap
           pos.push(rr * sx, y, rr * cz); uv.push(i / cols * 6, k / NS);
         }
       }
@@ -86,6 +93,29 @@
       g.setIndex(idx); g.computeVertexNormals();
       CakeShapes.bakeAO(g, function () { return 0.95; });
       return g;
+    }
+    // v1.51: UNEVEN LAYERS. A spread filling is never level (spooned honey, Nutella spread thick): each
+    // layer's thickness wanders round the cake by ± vary of its usual. The sponge above rests on it —
+    // its underside follows the filling, its top a little less (soft sponge squashes over a thick spot)
+    // — and the next layer builds on that; the top sponge's top stays level. One remap of every vertex
+    // of the tier by its angle and height — sponges, fillings, their flowing edges and cut faces alike
+    // — so they can never disagree.
+    function unevenStack(geo, scheme, vary, seed) {
+      var n = scheme.n, sT = scheme.spongeT, fT = scheme.fillT, top = n * sT + (n - 1) * fT, p = geo.attributes.position;
+      var nb = [], ub = [];
+      for (var v = 0; v < p.count; v++) {
+        var x = p.getX(v), yv = p.getY(v), z = p.getZ(v);
+        if (yv <= 0 || yv >= top) continue;
+        var a = Math.atan2(x, z), y = 0, prev = fT;
+        nb.length = 0; ub.length = 0;
+        for (var k = 0; k < n; k++) {
+          var sb = y, st = k === n - 1 ? top : y + sT - (prev - fT) * 0.25;
+          nb.push(k * (sT + fT), k * (sT + fT) + sT); ub.push(sb, st); y = st;
+          if (k < n - 1) { var ft = fT * (1 - vary + 2 * vary * waves(a, seed + k * 7.3)); nb.push(k * (sT + fT) + sT, (k + 1) * (sT + fT)); ub.push(y, y + ft); y += ft; prev = ft; }
+        }
+        for (var s = 0; s < nb.length; s += 2) if (yv >= nb[s] && yv <= nb[s + 1]) { p.setY(v, ub[s] + (yv - nb[s]) / (nb[s + 1] - nb[s]) * (ub[s + 1] - ub[s])); break; }
+      }
+      p.needsUpdate = true;
     }
     function buildStack(cfg, tier, TM, sideMat, theta0, len, seg, partial) {
       var rs = tier.rs, hs = tier.hs, scheme = deps.layerScheme(hs, cfg.ly), filling = TM.filling;
@@ -148,13 +178,15 @@
       }
       // Sponge layers and fillings, bottom → top, from the same scheme the textures use.
       var y = 0, n = scheme.n;
+      var rbBand = null, rtt = cfg.rt && cfg.rt[tier.idx || 0];     // v1.51: where this tier's ribbon presses the filling flat
+      if (rtt && rtt.on && deps.ribbons) { var RB = deps.ribbons(), rbw = RB.ribbonWidth(rtt.w), rbc = RB.ribbonY(TM, tier, rbw, rtt.p); rbBand = [rbc - rbw - 0.02, rbc + rbw + 0.02]; }
       for (var k = 0; k < n; k++) {
         addSolid(rs, scheme.spongeT, D.spongeFillet, y, 1, k === n - 1); y += scheme.spongeT;
         if (k < n - 1) {
           var hex = filling[k % filling.length];
           addSolid(rs - G.inset, scheme.fillT, D.fillingFillet, y, fillMat(hex));
           if (TM.style !== 4) {                            // v1.50: its edge, flowing out over the side (not under a scraped coat)
-            var shg = fillingSheet(rs, y, scheme.fillT, fKind, 977 + (tier.idx || 0) * 131 + k * 17, theta0 || 0, len || Math.PI * 2);
+            var shg = fillingSheet(rs, y, scheme.fillT, fKind, 977 + (tier.idx || 0) * 131 + k * 17, theta0 || 0, len || Math.PI * 2, rbBand);
             geoms.push(shg); matOf.push(fillMat(hex));
           }
           y += scheme.fillT;
@@ -162,6 +194,7 @@
       }
       var geo = CakeShapes.merge(geoms, function (k) { return matOf[k]; });
       geoms.forEach(function (g) { g.dispose(); });
+      if (TM.style !== 4 && n > 1) unevenStack(geo, scheme, (SHEET[fKind] || SHEET[0]).vary, 311 + (tier.idx || 0) * 97);   // v1.51
       if (window.CakeFrosting) CakeFrosting.spongeWobble(geo, rs, hs, deps.SPONGE_WOBBLE());   // baked, not machined
       var mesh = new THREE.Mesh(geo, mats);
       mats.forEach(function (m) { if (m !== sideMat) nightGlow(m, m.color.getHex(), false); });
