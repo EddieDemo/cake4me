@@ -133,6 +133,9 @@
       var gk = key + '@' + H.toFixed(3);
       if (geoCache[gk]) return geoCache[gk];
       var e = window.CakeEmojiOutlines && window.CakeEmojiOutlines[key]; if (!e) return null;
+      var SH = window.CakeEmojiSheet, inset = SH ? 0.5 / SH.cell : 0;   // v1.52: where its cell sits on the shared sheet
+      var cellUW = SH ? 1 / SH.cols - 2 * inset : 1, cellVH = SH ? 1 / SH.rows - 2 * inset : 1;
+      var cellU0 = SH && e ? (e.i % SH.cols) / SH.cols + inset : 0, cellV0 = SH && e ? 1 - Math.floor(e.i / SH.cols + 1) / SH.rows + inset : 0;
       var sh = new THREE.Shape();
       smoothOutline(e.p).forEach(function (p, i) { if (i === 0) sh.moveTo(p[0], p[1]); else sh.lineTo(p[0], p[1]); });
       var s = H, NUM = deps.NUM, bev = NUM.bevel;
@@ -146,7 +149,10 @@
       for (var i = 0; i < pos.count; i++) {
         var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
         var u = (x + cx) / s, v = (y + cy0) / s;               // every vertex: straight through the artwork
-        uv.setXY(i, Math.min(0.996, Math.max(0.004, u)), Math.min(0.996, Math.max(0.004, v)));
+        // v1.52: the emoji's own cell on the sheet, baked into its shape — so every emoji shares ONE copy of
+        // the sheet on the GPU (a 2688-px image, ~29 MB uncompressed) instead of one copy each
+        u = Math.min(0.996, Math.max(0.004, u)); v = Math.min(0.996, Math.max(0.004, v));
+        uv.setXY(i, cellU0 + u * cellUW, cellV0 + v * cellVH);
         if (y > top.y && (!centre || Math.abs(x) < w2 * 0.08)) top = { x: x, y: y };
         if (y < bb.min.y + 0.03) lows.push(x);
       }
@@ -154,7 +160,7 @@
       geo.setAttribute('aLit', new THREE.Float32BufferAttribute(new Float32Array(pos.count).fill(1), 1));   // the wax shader's glow switch
       CakeResources.keep(geo);
       return (geoCache[gk] = { geo: geo, width: w2, top: top, foot: lows.length ? lows.reduce(function (a, b) { return a + b; }, 0) / lows.length : 0,
-        material: function () { var m = deps.makeWaxMaterial(0xffffff); m.map = texture(key); return m; } });
+        material: function () { var m = deps.makeWaxMaterial(0xffffff); m.map = sheet(); return m; } });   // v1.52: the one shared sheet
     }
     return { parse: parse, part: part, ready: ready, ensure: ensure, available: function (k) { return !!E[k]; }, count: function () { return Object.keys(E).filter(function (k) { return !TONES.some(function (t) { return k.indexOf(t) >= 0; }); }).length; }, texture: texture, keyOf: keyOf, smoothOutline: smoothOutline };
   }
